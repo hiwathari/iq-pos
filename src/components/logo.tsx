@@ -7,8 +7,9 @@ export function Logo({ className }: { className?: string }) {
         <path d="M17 31C17 23.268 23.268 17 31 17C31 24.732 24.732 31 17 31Z" fill="#5EEAD4" />
       </svg>
       <div className="leading-tight">
-        <div className="text-[15px] font-semibold text-neutral-900">Tasty</div>
-        <div className="text-[15px] font-semibold text-neutral-900 -mt-1">Station</div>
+        <div className="text-[17px] font-bold tracking-tight text-neutral-900">
+          IQ <span className="text-teal-600">POS</span>
+        </div>
       </div>
     </div>
   );

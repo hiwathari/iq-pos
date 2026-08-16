@@ -1,8 +1,24 @@
 "use client";
 
 import { Bell, Search } from "lucide-react";
+import type { Role } from "@/lib/session";
 
-export function Topbar({ title }: { title?: string }) {
+const ROLE_LABEL: Record<Role, string> = {
+  super_admin: "Super Admin",
+  admin: "Admin",
+  staff: "Staff",
+};
+
+function initials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase())
+    .join("");
+}
+
+export function Topbar({ title, name, role }: { title?: string; name: string; role: Role }) {
   return (
     <header className="flex items-center gap-4 border-b border-neutral-200 bg-white px-6 py-4">
       <div className="relative flex-1 max-w-md">
@@ -21,11 +37,11 @@ export function Topbar({ title }: { title?: string }) {
         </button>
         <div className="flex items-center gap-2.5">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-teal-500 to-emerald-600 text-sm font-semibold text-white">
-            IK
+            {initials(name) || "?"}
           </div>
           <div className="hidden sm:block leading-tight">
-            <div className="text-sm font-semibold text-neutral-900">Ibrahim Kadri</div>
-            <div className="text-xs text-neutral-400">Admin</div>
+            <div className="text-sm font-semibold text-neutral-900">{name}</div>
+            <div className="text-xs text-neutral-400">{ROLE_LABEL[role]}</div>
           </div>
         </div>
       </div>

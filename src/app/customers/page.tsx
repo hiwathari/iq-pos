@@ -1,22 +1,19 @@
-"use client";
-
-import { useMemo } from "react";
 import { AppShell } from "@/components/app-shell";
-import { useStore } from "@/lib/store";
+import { requireRestaurantContext } from "@/lib/scope";
+import { listReservations } from "@/lib/data/tables";
 import { Users } from "lucide-react";
 
-export default function CustomersPage() {
-  const { reservations } = useStore();
+export default async function CustomersPage() {
+  const { restaurantId } = await requireRestaurantContext();
+  const reservations = await listReservations(restaurantId);
 
-  const customers = useMemo(() => {
-    const map = new Map<string, { name: string; phone?: string; visits: number }>();
-    for (const r of reservations) {
-      if (!r.customerName || r.customerName === "Available Now") continue;
-      const existing = map.get(r.customerName);
-      map.set(r.customerName, { name: r.customerName, phone: r.phone, visits: (existing?.visits ?? 0) + 1 });
-    }
-    return [...map.values()];
-  }, [reservations]);
+  const map = new Map<string, { name: string; phone: string | null; visits: number }>();
+  for (const r of reservations) {
+    if (!r.customerName || r.customerName === "Available Now") continue;
+    const existing = map.get(r.customerName);
+    map.set(r.customerName, { name: r.customerName, phone: r.phone, visits: (existing?.visits ?? 0) + 1 });
+  }
+  const customers = [...map.values()];
 
   return (
     <AppShell title="Customers">

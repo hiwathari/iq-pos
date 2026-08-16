@@ -1,11 +1,18 @@
 import { AppShell } from "@/components/app-shell";
-import { ComingSoon } from "@/components/coming-soon";
-import { Settings } from "lucide-react";
+import { assertAdmin, requireRestaurantContext } from "@/lib/scope";
+import { listStaff } from "@/lib/data/staff";
+import { getRestaurant } from "@/lib/data/restaurants";
+import { StaffClient } from "./staff-client";
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  const { session, restaurantId } = await requireRestaurantContext();
+  assertAdmin(session);
+
+  const [staff, restaurant] = await Promise.all([listStaff(restaurantId), getRestaurant(restaurantId)]);
+
   return (
     <AppShell title="Settings">
-      <ComingSoon icon={Settings} title="Settings" description="Restaurant, tax, and payment configuration will live here." />
+      <StaffClient staff={staff} restaurantName={restaurant?.name ?? "Restaurant"} />
     </AppShell>
   );
 }

@@ -1,38 +1,28 @@
-"use client";
-
-import { useMemo } from "react";
 import { AppShell } from "@/components/app-shell";
-import { useStore } from "@/lib/store";
+import { requireRestaurantContext } from "@/lib/scope";
+import { listTables, listReservations } from "@/lib/data/tables";
+import { listOrders } from "@/lib/data/orders";
 import { DollarSign, ClipboardList, Table2, Users } from "lucide-react";
 
-export default function DashboardPage() {
-  const { orders, tables, reservations } = useStore();
+export default async function DashboardPage() {
+  const { restaurantId } = await requireRestaurantContext();
+  const [orders, tables, reservations] = await Promise.all([
+    listOrders(restaurantId),
+    listTables(restaurantId),
+    listReservations(restaurantId),
+  ]);
 
-  const stats = useMemo(() => {
-    const revenue = orders.reduce(
-      (sum, o) => sum + o.items.reduce((s, i) => s + i.price * i.qty, 0) + (o.donation ?? 0),
-      0
-    );
-    const onDine = tables.filter((t) => t.status === "on-dine").length;
-    return {
-      revenue,
-      orderCount: orders.length,
-      onDine,
-      tableCount: tables.length,
-      reservationCount: reservations.length,
-    };
-  }, [orders, tables, reservations]);
+  const revenue = orders.reduce((sum, o) => sum + o.items.reduce((s, i) => s + i.price * i.qty, 0) + (o.donation ?? 0), 0);
+  const onDine = tables.filter((t) => t.status === "on-dine").length;
 
-  const topDishes = useMemo(() => {
-    const map = new Map<string, { name: string; qty: number }>();
-    for (const o of orders) {
-      for (const i of o.items) {
-        const existing = map.get(i.name);
-        map.set(i.name, { name: i.name, qty: (existing?.qty ?? 0) + i.qty });
-      }
+  const topDishesMap = new Map<string, { name: string; qty: number }>();
+  for (const o of orders) {
+    for (const i of o.items) {
+      const existing = topDishesMap.get(i.name);
+      topDishesMap.set(i.name, { name: i.name, qty: (existing?.qty ?? 0) + i.qty });
     }
-    return [...map.values()].sort((a, b) => b.qty - a.qty).slice(0, 5);
-  }, [orders]);
+  }
+  const topDishes = [...topDishesMap.values()].sort((a, b) => b.qty - a.qty).slice(0, 5);
 
   return (
     <AppShell title="Dashboard">
@@ -40,10 +30,10 @@ export default function DashboardPage() {
         <h1 className="mb-6 text-xl font-semibold text-neutral-900">Dashboard</h1>
 
         <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard icon={DollarSign} label="Today's Revenue" value={`$${stats.revenue.toFixed(2)}`} tint="bg-teal-50 text-teal-600" />
-          <StatCard icon={ClipboardList} label="Active Orders" value={String(stats.orderCount)} tint="bg-amber-50 text-amber-600" />
-          <StatCard icon={Table2} label="Tables Occupied" value={`${stats.onDine}/${stats.tableCount}`} tint="bg-rose-50 text-rose-600" />
-          <StatCard icon={Users} label="Reservations Today" value={String(stats.reservationCount)} tint="bg-indigo-50 text-indigo-600" />
+          <StatCard icon={DollarSign} label="Today's Revenue" value={`$${revenue.toFixed(2)}`} tint="bg-teal-50 text-teal-600" />
+          <StatCard icon={ClipboardList} label="Active Orders" value={String(orders.length)} tint="bg-amber-50 text-amber-600" />
+          <StatCard icon={Table2} label="Tables Occupied" value={`${onDine}/${tables.length}`} tint="bg-rose-50 text-rose-600" />
+          <StatCard icon={Users} label="Reservations Today" value={String(reservations.length)} tint="bg-indigo-50 text-indigo-600" />
         </div>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -63,6 +53,7 @@ export default function DashboardPage() {
           <div className="rounded-2xl border border-neutral-200 bg-white p-5">
             <h2 className="mb-4 text-sm font-semibold text-neutral-900">Recent Orders</h2>
             <div className="space-y-3">
+              {orders.length === 0 && <p className="text-sm text-neutral-400">No orders yet.</p>}
               {orders.slice(0, 5).map((o) => (
                 <div key={o.id} className="flex items-center justify-between text-sm">
                   <span className="text-neutral-700">

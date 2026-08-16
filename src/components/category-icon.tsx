@@ -33,7 +33,7 @@ const map: Record<CategoryIcon, LucideIcon> = {
   soups: Soup,
 };
 
-export function CategoryIconView({ icon, className }: { icon: CategoryIcon; className?: string }) {
-  const Icon = map[icon] ?? LayoutGrid;
+export function CategoryIconView({ icon, className }: { icon: string; className?: string }) {
+  const Icon = map[icon as CategoryIcon] ?? LayoutGrid;
   return <Icon className={className} />;
 }
