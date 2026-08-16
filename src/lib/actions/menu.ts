@@ -64,3 +64,19 @@ export async function deleteDishAction(dishId: string) {
   revalidatePath("/manage-dishes");
   revalidatePath("/order-line");
 }
+
+export async function setChannelPriceAction(dishId: string, channel: string, price: number | null) {
+  const { session, restaurantId } = await requireRestaurantContext();
+  assertAdmin(session);
+  const [dish] = await db.select().from(dishes).where(and(eq(dishes.id, dishId), eq(dishes.restaurantId, restaurantId)));
+  if (!dish) return;
+  const next = { ...(dish.channelPrices ?? {}) };
+  if (price === null || Number.isNaN(price)) delete next[channel];
+  else next[channel] = price;
+  await db
+    .update(dishes)
+    .set({ channelPrices: next })
+    .where(and(eq(dishes.id, dishId), eq(dishes.restaurantId, restaurantId)));
+  revalidatePath("/pricing");
+  revalidatePath("/order-line");
+}

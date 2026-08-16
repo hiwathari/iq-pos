@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { Reservation, RestaurantTable, TableArea, TableStatus } from "@/lib/types";
+import type { Reservation, ReservationSource, RestaurantTable, TableArea, TableStatus } from "@/lib/types";
 import { setTableStatusAction, createReservationAction, type ReservationInput } from "@/lib/actions/tables";
 import {
   ChevronLeft,
@@ -14,6 +14,7 @@ import {
   Users,
   Armchair,
   X,
+  Globe,
 } from "lucide-react";
 
 const AREAS: TableArea[] = ["Main Dining", "Terrace", "Outdoor"];
@@ -130,7 +131,15 @@ export function ManageTableClient({ tables, reservations }: { tables: Restaurant
                     </span>
                     <div className="text-sm font-semibold text-neutral-800">{r.customerName}</div>
                   </div>
-                  <span className="text-xs text-neutral-400">{r.meal}</span>
+                  <span className="flex items-center gap-1 text-xs text-neutral-400">
+                    {r.source !== "walk-in" && (
+                      <span className="flex items-center gap-0.5 rounded bg-neutral-100 px-1.5 py-0.5 capitalize text-neutral-500">
+                        {r.source === "online" ? <Globe className="h-3 w-3" /> : <Phone className="h-3 w-3" />}
+                        {r.source}
+                      </span>
+                    )}
+                    {r.meal}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between text-xs text-neutral-500">
                   <span className="flex items-center gap-1">
@@ -274,6 +283,7 @@ function AddReservationModal({
   const [guests, setGuests] = useState(2);
   const [meal, setMeal] = useState<"Breakfast" | "Lunch" | "Dinner">("Dinner");
   const [tableId, setTableId] = useState("");
+  const [source, setSource] = useState<ReservationSource>("walk-in");
 
   const canSave = name.trim().length > 0;
 
@@ -353,6 +363,23 @@ function AddReservationModal({
               </select>
             </div>
           </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-neutral-500">Booked Via</label>
+            <div className="grid grid-cols-3 gap-2">
+              {(["walk-in", "phone", "online"] as ReservationSource[]).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setSource(s)}
+                  className={`rounded-lg border px-2 py-1.5 text-xs font-medium capitalize ${
+                    source === s ? "border-teal-600 bg-teal-600 text-white" : "border-neutral-200 text-neutral-500"
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
         <div className="mt-6 flex gap-3">
           <button
@@ -374,6 +401,7 @@ function AddReservationModal({
                 tableNumber: table?.number ?? null,
                 guests,
                 meal,
+                source,
               });
             }}
             className="flex-1 rounded-xl bg-teal-600 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-40"

@@ -48,6 +48,8 @@ export const dishes = sqliteTable("dishes", {
   emoji: text("emoji").notNull().default("🍽️"),
   color: text("color").notNull().default("#DCEEE8"),
   description: text("description"),
+  // Per-channel price overrides, e.g. { "Online": 12.5, "Uber Eats": 14 }. Falls back to `price` when absent/null.
+  channelPrices: text("channel_prices", { mode: "json" }).$type<Record<string, number>>(),
 });
 
 export const tables = sqliteTable("tables", {
@@ -80,6 +82,7 @@ export const reservations = sqliteTable("reservations", {
     .notNull()
     .default("upcoming"),
   meal: text("meal", { enum: ["Breakfast", "Lunch", "Dinner"] }).notNull().default("Dinner"),
+  source: text("source", { enum: ["walk-in", "phone", "online"] }).notNull().default("walk-in"),
   createdAt: timestamp("created_at"),
 });
 
@@ -92,13 +95,40 @@ export const orders = sqliteTable("orders", {
   tableId: text("table_id").references(() => tables.id, { onDelete: "set null" }),
   tableNumber: int("table_number"),
   guests: int("guests").notNull().default(1),
-  channel: text("channel", { enum: ["Dine in", "Wait List", "Take Away"] }).notNull(),
-  status: text("status", { enum: ["In Kitchen", "Wait List", "Ready", "Served"] }).notNull(),
+  channel: text("channel", {
+    enum: ["Dine in", "Wait List", "Take Away", "Delivery", "Online", "Third Party"],
+  }).notNull(),
+  thirdPartyProvider: text("third_party_provider", { enum: ["Uber Eats", "Deliveroo", "Just Eat", "Other"] }),
+  status: text("status", { enum: ["In Kitchen", "Wait List", "Ready", "Served", "Voided"] }).notNull(),
   items: text("items", { mode: "json" }).notNull().$type<{ dishId: string; name: string; price: number; qty: number }[]>(),
   paymentMethod: text("payment_method", { enum: ["Cash", "Card", "Scan"] }),
   donation: real("donation").notNull().default(0),
+  voidReason: text("void_reason"),
   createdAt: timestamp("created_at"),
   createdLabel: text("created_label").notNull().default("Just now"),
+});
+
+export const printers = sqliteTable("printers", {
+  id: id(),
+  restaurantId: text("restaurant_id")
+    .notNull()
+    .references(() => restaurants.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  station: text("station", { enum: ["Kitchen", "Bar", "Receipt", "Expo"] }).notNull(),
+  connection: text("connection", { enum: ["Bluetooth", "Network", "WiFi", "USB"] }).notNull(),
+  address: text("address"),
+  active: int("active", { mode: "boolean" }).notNull().default(true),
+});
+
+export const integrations = sqliteTable("integrations", {
+  id: id(),
+  restaurantId: text("restaurant_id")
+    .notNull()
+    .references(() => restaurants.id, { onDelete: "cascade" }),
+  provider: text("provider", { enum: ["Uber Eats", "Deliveroo", "Just Eat"] }).notNull(),
+  enabled: int("enabled", { mode: "boolean" }).notNull().default(false),
+  storeId: text("store_id"),
+  apiKey: text("api_key"),
 });
 
 export const orderCounters = sqliteTable("order_counters", {

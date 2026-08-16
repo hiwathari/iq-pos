@@ -12,6 +12,9 @@ import {
   LifeBuoy,
   LogOut,
   ShieldCheck,
+  ChefHat as KitchenIcon,
+  BarChart3,
+  Tags,
 } from "lucide-react";
 import { Logo } from "./logo";
 import clsx from "clsx";
@@ -21,9 +24,12 @@ import type { Role } from "@/lib/session";
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["admin", "staff"] as Role[] },
   { href: "/order-line", label: "Order Line", icon: ClipboardList, roles: ["admin", "staff"] as Role[] },
+  { href: "/kitchen", label: "Kitchen Display", icon: KitchenIcon, roles: ["admin", "staff"] as Role[] },
   { href: "/manage-table", label: "Manage Table", icon: Table2, roles: ["admin", "staff"] as Role[] },
   { href: "/manage-dishes", label: "Manage Dishes", icon: ChefHat, roles: ["admin"] as Role[] },
+  { href: "/pricing", label: "Channel Pricing", icon: Tags, roles: ["admin"] as Role[] },
   { href: "/customers", label: "Customers", icon: Users, roles: ["admin", "staff"] as Role[] },
+  { href: "/reports", label: "Reports", icon: BarChart3, roles: ["admin"] as Role[] },
   { href: "/settings", label: "Settings", icon: Settings, roles: ["admin"] as Role[] },
   { href: "/help-center", label: "Help Center", icon: LifeBuoy, roles: ["admin", "staff"] as Role[] },
 ];

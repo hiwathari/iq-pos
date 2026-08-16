@@ -4,7 +4,7 @@ import { IMPERSONATION_COOKIE_NAME, SESSION_COOKIE_NAME, verifySessionToken } fr
 const PUBLIC_PATHS = ["/login"];
 
 // Pages only an admin (or an impersonating super admin) may reach — staff are blocked.
-const ADMIN_ONLY_PREFIXES = ["/manage-dishes", "/settings"];
+const ADMIN_ONLY_PREFIXES = ["/manage-dishes", "/settings", "/reports", "/pricing"];
 
 function isPublic(pathname: string) {
   return PUBLIC_PATHS.some((p) => pathname === p);

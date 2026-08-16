@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { orderCounters, orders, tables } from "@/db/schema";
-import type { OrderChannel, OrderItem, OrderStatus } from "@/lib/types";
+import type { OrderChannel, OrderItem, OrderStatus, ThirdPartyProvider } from "@/lib/types";
 import { requireRestaurantContext } from "@/lib/scope";
 
 async function nextOrderNumber(restaurantId: string) {
@@ -24,6 +24,7 @@ export interface PlaceOrderInput {
   tableNumber: number | null;
   guests: number;
   channel: OrderChannel;
+  thirdPartyProvider?: ThirdPartyProvider;
   items: OrderItem[];
   paymentMethod?: "Cash" | "Card" | "Scan";
   donation: number;
@@ -41,6 +42,7 @@ export async function placeOrderAction(input: PlaceOrderInput) {
         tableNumber: input.tableNumber,
         guests: input.guests,
         channel: input.channel,
+        thirdPartyProvider: input.channel === "Third Party" ? input.thirdPartyProvider : null,
         items: input.items,
         paymentMethod: input.paymentMethod,
         donation: input.donation,
@@ -56,6 +58,7 @@ export async function placeOrderAction(input: PlaceOrderInput) {
       tableNumber: input.tableNumber,
       guests: input.guests,
       channel: input.channel,
+      thirdPartyProvider: input.channel === "Third Party" ? input.thirdPartyProvider : null,
       status: input.channel === "Wait List" ? "Wait List" : "In Kitchen",
       items: input.items,
       paymentMethod: input.paymentMethod,
@@ -74,6 +77,7 @@ export async function placeOrderAction(input: PlaceOrderInput) {
   revalidatePath("/order-line");
   revalidatePath("/manage-table");
   revalidatePath("/dashboard");
+  revalidatePath("/kitchen");
 }
 
 export async function setOrderStatusAction(orderId: string, status: OrderStatus) {
@@ -84,4 +88,17 @@ export async function setOrderStatusAction(orderId: string, status: OrderStatus)
     .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)));
   revalidatePath("/order-line");
   revalidatePath("/dashboard");
+  revalidatePath("/kitchen");
+}
+
+export async function voidOrderAction(orderId: string, reason: string) {
+  const { restaurantId } = await requireRestaurantContext();
+  await db
+    .update(orders)
+    .set({ status: "Voided", voidReason: reason || "No reason given" })
+    .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)));
+  revalidatePath("/order-line");
+  revalidatePath("/dashboard");
+  revalidatePath("/kitchen");
+  revalidatePath("/reports");
 }

@@ -15,7 +15,7 @@ interface StaffRow {
 
 const initialState: CreateStaffState = {};
 
-export function StaffClient({ staff, restaurantName }: { staff: StaffRow[]; restaurantName: string }) {
+export function StaffClient({ staff }: { staff: StaffRow[] }) {
   const [, startTransition] = useTransition();
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -26,10 +26,7 @@ export function StaffClient({ staff, restaurantName }: { staff: StaffRow[]; rest
   }
 
   return (
-    <div className="p-6">
-      <h1 className="mb-1 text-xl font-semibold text-neutral-900">Settings</h1>
-      <p className="mb-6 text-sm text-neutral-500">{restaurantName}</p>
-
+    <div>
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-neutral-900">Team</h2>
         <button

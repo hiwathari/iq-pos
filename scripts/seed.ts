@@ -225,6 +225,18 @@ async function seedRestaurant(opts: {
 
   await db.insert(schema.orderCounters).values({ restaurantId, value: 28 });
 
+  await db.insert(schema.printers).values([
+    { id: uuid(), restaurantId, name: "Kitchen Line 1", station: "Kitchen", connection: "Network", address: "192.168.1.42" },
+    { id: uuid(), restaurantId, name: "Bar Printer", station: "Bar", connection: "Bluetooth", address: "BT-04:A2:C1" },
+    { id: uuid(), restaurantId, name: "Front Counter Receipt", station: "Receipt", connection: "WiFi", address: "192.168.1.50" },
+  ]);
+
+  await db.insert(schema.integrations).values([
+    { id: uuid(), restaurantId, provider: "Uber Eats", enabled: false },
+    { id: uuid(), restaurantId, provider: "Deliveroo", enabled: false },
+    { id: uuid(), restaurantId, provider: "Just Eat", enabled: false },
+  ]);
+
   return restaurantId;
 }
 

@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { reservations, tables } from "@/db/schema";
-import type { TableStatus } from "@/lib/types";
+import type { ReservationSource, TableStatus } from "@/lib/types";
 import { requireRestaurantContext } from "@/lib/scope";
 
 export async function setTableStatusAction(tableId: string, status: TableStatus, seated?: number) {
@@ -30,6 +30,7 @@ export interface ReservationInput {
   tableNumber: number | null;
   guests: number;
   meal: "Breakfast" | "Lunch" | "Dinner";
+  source: ReservationSource;
 }
 
 export async function createReservationAction(input: ReservationInput) {
@@ -46,6 +47,7 @@ export async function createReservationAction(input: ReservationInput) {
     guests: input.guests,
     status: "upcoming",
     meal: input.meal,
+    source: input.source,
   });
   if (input.tableId) {
     await db
