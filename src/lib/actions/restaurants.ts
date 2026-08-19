@@ -4,9 +4,9 @@ import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/db/client";
-import { categories, restaurants, users } from "@/db/schema";
+import { categories, paymentTerminals, printers, restaurants, users } from "@/db/schema";
 import { hashPassword, setImpersonatedRestaurant } from "@/lib/auth";
-import { requireSession } from "@/lib/scope";
+import { assertAdmin, requireRestaurantContext, requireSession } from "@/lib/scope";
 
 function slugify(name: string) {
   const base = name
@@ -59,10 +59,41 @@ export async function createRestaurantAction(
     restaurantId,
   });
 
-  await db.insert(categories).values({ id: crypto.randomUUID(), restaurantId, name: "General", icon: "all" });
+  const kitchenPrinterId = crypto.randomUUID();
+  await db.insert(printers).values({
+    id: kitchenPrinterId,
+    restaurantId,
+    name: "Kitchen Printer",
+    station: "Kitchen",
+    connection: "Network",
+    isDefault: true,
+  });
+
+  await db.insert(paymentTerminals).values({ id: crypto.randomUUID(), restaurantId, name: "Card 1" });
+
+  await db.insert(categories).values({
+    id: crypto.randomUUID(),
+    restaurantId,
+    name: "General",
+    icon: "all",
+    printerId: kitchenPrinterId,
+  });
 
   revalidatePath("/super-admin");
   return {};
+}
+
+export async function updateRestaurantCurrencyAction(currencySymbol: string) {
+  const { session, restaurantId } = await requireRestaurantContext();
+  assertAdmin(session);
+  if (!currencySymbol.trim()) return;
+  await db.update(restaurants).set({ currencySymbol: currencySymbol.trim() }).where(eq(restaurants.id, restaurantId));
+  revalidatePath("/settings");
+  revalidatePath("/order-line");
+  revalidatePath("/manage-dishes");
+  revalidatePath("/pricing");
+  revalidatePath("/reports");
+  revalidatePath("/dashboard");
 }
 
 export async function toggleRestaurantActiveAction(restaurantId: string, active: boolean) {

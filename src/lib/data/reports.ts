@@ -20,7 +20,7 @@ export async function getReportData(restaurantId: string) {
   for (const o of liveOrders) {
     const total = orderTotal(o);
     if (o.paymentMethod === "Cash") cashSales += total;
-    else if (o.paymentMethod === "Card") cardSales += total;
+    else if (o.paymentMethod) cardSales += total; // any named payment terminal
     else otherSales += total;
 
     for (const item of o.items) {

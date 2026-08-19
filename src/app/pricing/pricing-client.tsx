@@ -4,10 +4,10 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
 import type { Dish } from "@/lib/types";
-import { PRICING_CHANNELS } from "@/lib/types";
+import { PRICING_CHANNELS, formatMoney } from "@/lib/types";
 import { setChannelPriceAction } from "@/lib/actions/menu";
 
-export function PricingClient({ dishes }: { dishes: Dish[] }) {
+export function PricingClient({ dishes, currencySymbol }: { dishes: Dish[]; currencySymbol: string }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [query, setQuery] = useState("");
@@ -68,7 +68,7 @@ export function PricingClient({ dishes }: { dishes: Dish[] }) {
                   <span className="mr-2">{dish.emoji}</span>
                   {dish.name}
                 </td>
-                <td className="px-4 py-2.5 text-neutral-500">${dish.price.toFixed(2)}</td>
+                <td className="px-4 py-2.5 text-neutral-500">{formatMoney(dish.price, currencySymbol)}</td>
                 {PRICING_CHANNELS.map((c) => {
                   const key = cellKey(dish.id, c);
                   const override = dish.channelPrices?.[c];

@@ -26,7 +26,7 @@ export interface PlaceOrderInput {
   channel: OrderChannel;
   thirdPartyProvider?: ThirdPartyProvider;
   items: OrderItem[];
-  paymentMethod?: "Cash" | "Card" | "Scan";
+  paymentMethod?: string;
   donation: number;
 }
 

@@ -9,6 +9,7 @@ export interface TicketData {
   tax: number;
   donation: number;
   total: number;
+  currencySymbol: string;
 }
 
 // Opens a small formatted ticket in a new window and triggers the browser's print dialog.
@@ -19,10 +20,10 @@ export function printTicket(ticket: TicketData) {
   const win = window.open("", "_blank", "width=380,height=600");
   if (!win) return;
 
+  const money = (amount: number) => `${ticket.currencySymbol}${amount.toFixed(2)}`;
+
   const rows = ticket.items
-    .map(
-      (i) => `<tr><td>${i.qty}x ${escapeHtml(i.name)}</td><td class="right">$${(i.price * i.qty).toFixed(2)}</td></tr>`
-    )
+    .map((i) => `<tr><td>${i.qty}x ${escapeHtml(i.name)}</td><td class="right">${money(i.price * i.qty)}</td></tr>`)
     .join("");
 
   win.document.write(`<!DOCTYPE html>
@@ -51,10 +52,10 @@ export function printTicket(ticket: TicketData) {
   <table>${rows}</table>
   <hr />
   <table>
-    <tr><td>Subtotal</td><td class="right">$${ticket.subtotal.toFixed(2)}</td></tr>
-    <tr><td>Tax</td><td class="right">$${ticket.tax.toFixed(2)}</td></tr>
-    ${ticket.donation > 0 ? `<tr><td>Donation</td><td class="right">$${ticket.donation.toFixed(2)}</td></tr>` : ""}
-    <tr class="total"><td>Total</td><td class="right">$${ticket.total.toFixed(2)}</td></tr>
+    <tr><td>Subtotal</td><td class="right">${money(ticket.subtotal)}</td></tr>
+    <tr><td>Tax</td><td class="right">${money(ticket.tax)}</td></tr>
+    ${ticket.donation > 0 ? `<tr><td>Donation</td><td class="right">${money(ticket.donation)}</td></tr>` : ""}
+    <tr class="total"><td>Total</td><td class="right">${money(ticket.total)}</td></tr>
   </table>
   <div class="footer">Thank you!</div>
   <script>window.onload = () => { window.print(); }<\/script>

@@ -8,6 +8,7 @@ export const restaurants = sqliteTable("restaurants", {
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
   active: int("active", { mode: "boolean" }).notNull().default(true),
+  currencySymbol: text("currency_symbol").notNull().default("£"),
   createdAt: timestamp("created_at"),
 });
 
@@ -33,6 +34,8 @@ export const categories = sqliteTable("categories", {
     .references(() => restaurants.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   icon: text("icon").notNull().default("all"),
+  printerId: text("printer_id").references(() => printers.id, { onDelete: "set null" }),
+  showOnKitchenDisplay: int("show_on_kitchen_display", { mode: "boolean" }).notNull().default(true),
 });
 
 export const dishes = sqliteTable("dishes", {
@@ -101,7 +104,8 @@ export const orders = sqliteTable("orders", {
   thirdPartyProvider: text("third_party_provider", { enum: ["Uber Eats", "Deliveroo", "Just Eat", "Other"] }),
   status: text("status", { enum: ["In Kitchen", "Wait List", "Ready", "Served", "Voided"] }).notNull(),
   items: text("items", { mode: "json" }).notNull().$type<{ dishId: string; name: string; price: number; qty: number }[]>(),
-  paymentMethod: text("payment_method", { enum: ["Cash", "Card", "Scan"] }),
+  // "Cash", or the name of a payment terminal (see paymentTerminals) — e.g. "Card 1", "Yellow Card".
+  paymentMethod: text("payment_method"),
   donation: real("donation").notNull().default(0),
   voidReason: text("void_reason"),
   createdAt: timestamp("created_at"),
@@ -117,6 +121,16 @@ export const printers = sqliteTable("printers", {
   station: text("station", { enum: ["Kitchen", "Bar", "Receipt", "Expo"] }).notNull(),
   connection: text("connection", { enum: ["Bluetooth", "Network", "WiFi", "USB"] }).notNull(),
   address: text("address"),
+  active: int("active", { mode: "boolean" }).notNull().default(true),
+  isDefault: int("is_default", { mode: "boolean" }).default(false),
+});
+
+export const paymentTerminals = sqliteTable("payment_terminals", {
+  id: id(),
+  restaurantId: text("restaurant_id")
+    .notNull()
+    .references(() => restaurants.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
   active: int("active", { mode: "boolean" }).notNull().default(true),
 });
 

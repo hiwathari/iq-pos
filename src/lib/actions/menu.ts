@@ -6,11 +6,24 @@ import { db } from "@/db/client";
 import { categories, dishes } from "@/db/schema";
 import { assertAdmin, requireRestaurantContext } from "@/lib/scope";
 
-export async function createCategoryAction(name: string) {
+export interface CreateCategoryInput {
+  name: string;
+  printerId: string | null;
+  showOnKitchenDisplay: boolean;
+}
+
+export async function createCategoryAction(input: CreateCategoryInput) {
   const { session, restaurantId } = await requireRestaurantContext();
   assertAdmin(session);
-  if (!name.trim()) return;
-  await db.insert(categories).values({ id: crypto.randomUUID(), restaurantId, name: name.trim(), icon: "all" });
+  if (!input.name.trim()) return;
+  await db.insert(categories).values({
+    id: crypto.randomUUID(),
+    restaurantId,
+    name: input.name.trim(),
+    icon: "all",
+    printerId: input.printerId,
+    showOnKitchenDisplay: input.showOnKitchenDisplay,
+  });
   revalidatePath("/manage-dishes");
   revalidatePath("/order-line");
 }

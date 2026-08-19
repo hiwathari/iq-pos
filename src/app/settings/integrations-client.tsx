@@ -15,7 +15,7 @@ export function IntegrationsClient({ integrations }: { integrations: Integration
     <div>
       <h2 className="text-lg font-semibold text-neutral-900">Delivery Marketplace Integrations</h2>
       <p className="mb-3 text-sm text-neutral-500">
-        Connect third-party ordering platforms. Orders placed there can be routed into your Order Line once each
+        Connect third-party ordering platforms. Orders placed there can be routed into your Till once each
         platform&apos;s real API credentials are added here.
       </p>
       <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-800">

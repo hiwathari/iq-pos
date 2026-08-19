@@ -2,15 +2,19 @@ import { AppShell } from "@/components/app-shell";
 import { requireRestaurantContext } from "@/lib/scope";
 import { listTables, listReservations } from "@/lib/data/tables";
 import { listOrders } from "@/lib/data/orders";
+import { getRestaurant } from "@/lib/data/restaurants";
+import { formatMoney } from "@/lib/types";
 import { DollarSign, ClipboardList, Table2, Users } from "lucide-react";
 
 export default async function DashboardPage() {
   const { restaurantId } = await requireRestaurantContext();
-  const [orders, tables, reservations] = await Promise.all([
+  const [orders, tables, reservations, restaurant] = await Promise.all([
     listOrders(restaurantId),
     listTables(restaurantId),
     listReservations(restaurantId),
+    getRestaurant(restaurantId),
   ]);
+  const currencySymbol = restaurant?.currencySymbol ?? "£";
 
   const revenue = orders.reduce((sum, o) => sum + o.items.reduce((s, i) => s + i.price * i.qty, 0) + (o.donation ?? 0), 0);
   const onDine = tables.filter((t) => t.status === "on-dine").length;
@@ -30,7 +34,7 @@ export default async function DashboardPage() {
         <h1 className="mb-6 text-xl font-semibold text-neutral-900">Dashboard</h1>
 
         <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard icon={DollarSign} label="Today's Revenue" value={`$${revenue.toFixed(2)}`} tint="bg-teal-50 text-teal-600" />
+          <StatCard icon={DollarSign} label="Today's Revenue" value={formatMoney(revenue, currencySymbol)} tint="bg-teal-50 text-teal-600" />
           <StatCard icon={ClipboardList} label="Active Orders" value={String(orders.length)} tint="bg-amber-50 text-amber-600" />
           <StatCard icon={Table2} label="Tables Occupied" value={`${onDine}/${tables.length}`} tint="bg-rose-50 text-rose-600" />
           <StatCard icon={Users} label="Reservations Today" value={String(reservations.length)} tint="bg-indigo-50 text-indigo-600" />

@@ -16,11 +16,12 @@ interface DishModalProps {
   categories: Category[];
   defaultCategoryId: string;
   initial?: Dish | null;
+  currencySymbol?: string;
 }
 
 // Mount this component only while the modal should be visible (e.g. `{open && <DishModal ... />}`)
 // so a fresh instance — and fresh initial state — is created each time it opens.
-export function DishModal({ onClose, onSave, categories, defaultCategoryId, initial }: DishModalProps) {
+export function DishModal({ onClose, onSave, categories, defaultCategoryId, initial, currencySymbol = "£" }: DishModalProps) {
   const [name, setName] = useState(initial?.name ?? "");
   const [categoryId, setCategoryId] = useState(
     initial?.categoryId ?? (defaultCategoryId === "all" ? categories[0]?.id ?? "" : defaultCategoryId)
@@ -71,7 +72,7 @@ export function DishModal({ onClose, onSave, categories, defaultCategoryId, init
               </select>
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-neutral-500">Price ($)</label>
+              <label className="mb-1.5 block text-xs font-medium text-neutral-500">Price ({currencySymbol})</label>
               <input
                 value={price}
                 onChange={(e) => setPrice(e.target.value.replace(/[^0-9.]/g, ""))}

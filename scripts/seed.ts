@@ -114,11 +114,29 @@ async function seedRestaurant(opts: {
     },
   ]);
 
+  const kitchenPrinterId = uuid();
+  await db.insert(schema.printers).values([
+    { id: kitchenPrinterId, restaurantId, name: "Kitchen Line 1", station: "Kitchen", connection: "Network", address: "192.168.1.42", isDefault: true },
+    { id: uuid(), restaurantId, name: "Bar Printer", station: "Bar", connection: "Bluetooth", address: "BT-04:A2:C1" },
+    { id: uuid(), restaurantId, name: "Front Counter Receipt", station: "Receipt", connection: "WiFi", address: "192.168.1.50" },
+  ]);
+
+  await db.insert(schema.paymentTerminals).values([
+    { id: uuid(), restaurantId, name: "Card 1" },
+    { id: uuid(), restaurantId, name: "Card 2" },
+  ]);
+
+  await db.insert(schema.integrations).values([
+    { id: uuid(), restaurantId, provider: "Uber Eats", enabled: false },
+    { id: uuid(), restaurantId, provider: "Deliveroo", enabled: false },
+    { id: uuid(), restaurantId, provider: "Just Eat", enabled: false },
+  ]);
+
   const categoryIds = new Map<string, string>();
   for (const c of CATEGORY_DEFS) {
     const id = uuid();
     categoryIds.set(c.key, id);
-    await db.insert(schema.categories).values({ id, restaurantId, name: c.name, icon: c.icon });
+    await db.insert(schema.categories).values({ id, restaurantId, name: c.name, icon: c.icon, printerId: kitchenPrinterId });
   }
 
   const dishRows = DISH_DEFS.map((d) => ({
@@ -224,18 +242,6 @@ async function seedRestaurant(opts: {
   ]);
 
   await db.insert(schema.orderCounters).values({ restaurantId, value: 28 });
-
-  await db.insert(schema.printers).values([
-    { id: uuid(), restaurantId, name: "Kitchen Line 1", station: "Kitchen", connection: "Network", address: "192.168.1.42" },
-    { id: uuid(), restaurantId, name: "Bar Printer", station: "Bar", connection: "Bluetooth", address: "BT-04:A2:C1" },
-    { id: uuid(), restaurantId, name: "Front Counter Receipt", station: "Receipt", connection: "WiFi", address: "192.168.1.50" },
-  ]);
-
-  await db.insert(schema.integrations).values([
-    { id: uuid(), restaurantId, provider: "Uber Eats", enabled: false },
-    { id: uuid(), restaurantId, provider: "Deliveroo", enabled: false },
-    { id: uuid(), restaurantId, provider: "Just Eat", enabled: false },
-  ]);
 
   return restaurantId;
 }

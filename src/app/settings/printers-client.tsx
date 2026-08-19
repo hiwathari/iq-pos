@@ -2,8 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Bluetooth, Cable, Plus, Trash2, Wifi, X } from "lucide-react";
-import { createPrinterAction, deletePrinterAction, togglePrinterActiveAction } from "@/lib/actions/printers";
+import { Bluetooth, Cable, Plus, Star, Trash2, Wifi, X } from "lucide-react";
+import { createPrinterAction, deletePrinterAction, setDefaultPrinterAction, togglePrinterActiveAction } from "@/lib/actions/printers";
 import type { Printer, PrinterConnection, PrinterStation } from "@/lib/types";
 
 const STATIONS: PrinterStation[] = ["Kitchen", "Bar", "Receipt", "Expo"];
@@ -31,6 +31,13 @@ export function PrintersClient({ printers }: { printers: Printer[] }) {
   function remove(id: string) {
     startTransition(async () => {
       await deletePrinterAction(id);
+      router.refresh();
+    });
+  }
+
+  function makeDefault(id: string) {
+    startTransition(async () => {
+      await setDefaultPrinterAction(id);
       router.refresh();
     });
   }
@@ -67,15 +74,30 @@ export function PrintersClient({ printers }: { printers: Printer[] }) {
                   {p.station} station &middot; {p.connection}
                   {p.address ? ` · ${p.address}` : ""}
                 </div>
-                <span
-                  className={`mt-2 inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
-                    p.active ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-500"
-                  }`}
-                >
-                  {p.active ? "Active" : "Disabled"}
-                </span>
+                <div className="mt-2 flex items-center gap-1.5">
+                  <span
+                    className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
+                      p.active ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-500"
+                    }`}
+                  >
+                    {p.active ? "Active" : "Disabled"}
+                  </span>
+                  {p.isDefault && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                      <Star className="h-3 w-3 fill-current" /> Default
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="flex flex-col gap-1.5">
+                {!p.isDefault && (
+                  <button
+                    onClick={() => makeDefault(p.id)}
+                    className="rounded-lg border border-neutral-200 px-2.5 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
+                  >
+                    Set as default
+                  </button>
+                )}
                 <button
                   onClick={() => toggle(p.id, !p.active)}
                   className="rounded-lg border border-neutral-200 px-2.5 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-50"

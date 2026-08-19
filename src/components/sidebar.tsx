@@ -23,7 +23,7 @@ import type { Role } from "@/lib/session";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["admin", "staff"] as Role[] },
-  { href: "/order-line", label: "Order Line", icon: ClipboardList, roles: ["admin", "staff"] as Role[] },
+  { href: "/order-line", label: "Till", icon: ClipboardList, roles: ["admin", "staff"] as Role[] },
   { href: "/kitchen", label: "Kitchen Display", icon: KitchenIcon, roles: ["admin", "staff"] as Role[] },
   { href: "/manage-table", label: "Manage Table", icon: Table2, roles: ["admin", "staff"] as Role[] },
   { href: "/manage-dishes", label: "Manage Dishes", icon: ChefHat, roles: ["admin"] as Role[] },

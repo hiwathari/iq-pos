@@ -10,9 +10,11 @@ import type {
   OrderChannel,
   OrderItem,
   OrderStatus,
+  PaymentTerminal,
   RestaurantTable,
   ThirdPartyProvider,
 } from "@/lib/types";
+import { formatMoney } from "@/lib/types";
 import { placeOrderAction, setOrderStatusAction, voidOrderAction } from "@/lib/actions/orders";
 import { printTicket } from "@/lib/print-ticket";
 import {
@@ -24,7 +26,6 @@ import {
   Trash2,
   Wallet,
   CreditCard,
-  ScanLine,
   LayoutGrid,
   X,
   Printer,
@@ -81,11 +82,15 @@ export function OrderLineClient({
   dishes,
   tables,
   orders,
+  paymentTerminals,
+  currencySymbol,
 }: {
   categories: Category[];
   dishes: Dish[];
   tables: RestaurantTable[];
   orders: Order[];
+  paymentTerminals: PaymentTerminal[];
+  currencySymbol: string;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -102,7 +107,7 @@ export function OrderLineClient({
 
   const [queueTab, setQueueTab] = useState<QueueTab>("All");
   const [menuCategory, setMenuCategory] = useState<string>("all");
-  const [paymentMethod, setPaymentMethod] = useState<"Cash" | "Card" | "Scan">("Card");
+  const [paymentMethod, setPaymentMethod] = useState<string>("Cash");
   const [donation, setDonation] = useState(true);
   const [tableEditorOpen, setTableEditorOpen] = useState(false);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
@@ -244,6 +249,7 @@ export function OrderLineClient({
       tax,
       donation: donationAmount,
       total,
+      currencySymbol,
     });
   }
 
@@ -263,6 +269,8 @@ export function OrderLineClient({
     total,
     paymentMethod,
     setPaymentMethod,
+    paymentTerminals,
+    currencySymbol,
     removeCartItem,
     handlePlaceOrder,
     handleAdvanceStatus,
@@ -275,7 +283,7 @@ export function OrderLineClient({
     <div className="flex h-full min-h-0">
       {/* Main column */}
       <div className="flex-1 overflow-y-auto p-6 pb-24 lg:pb-6">
-        <h1 className="mb-4 text-xl font-semibold text-neutral-900">Order Line</h1>
+        <h1 className="mb-4 text-xl font-semibold text-neutral-900">Till</h1>
 
         {/* Queue tabs */}
         <div className="mb-5 flex flex-wrap items-center gap-2">
@@ -399,7 +407,7 @@ export function OrderLineClient({
                 <div className="mb-2 line-clamp-1 font-semibold text-neutral-900">{dish.name}</div>
                 <div className="mt-auto flex items-center justify-between">
                   <span className="font-semibold text-neutral-800">
-                    ${price.toFixed(2)}
+                    {formatMoney(price, currencySymbol)}
                     {price !== dish.price && <span className="ml-1 text-[10px] font-normal text-teal-600">({cart.channel})</span>}
                   </span>
                   <div className="flex items-center gap-2">
@@ -429,7 +437,7 @@ export function OrderLineClient({
       </div>
 
       {/* Desktop cart panel */}
-      <div className="hidden w-[400px] shrink-0 flex-col border-l border-neutral-200 bg-white p-5 lg:flex overflow-y-auto">
+      <div className="hidden w-[400px] shrink-0 flex-col border-l border-neutral-200 bg-white p-5 lg:flex min-h-0">
         <CartPanel {...cartPanelProps} showClose={false} />
       </div>
 
@@ -440,16 +448,14 @@ export function OrderLineClient({
           className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-teal-600 px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-teal-600/30 lg:hidden"
         >
           <ShoppingBag className="h-4 w-4" />
-          {cart.items.reduce((s, i) => s + i.qty, 0)} · ${total.toFixed(2)}
+          {cart.items.reduce((s, i) => s + i.qty, 0)} · {formatMoney(total, currencySymbol)}
         </button>
       )}
 
       {/* Mobile cart drawer */}
       {mobileCartOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-white lg:hidden">
-          <div className="flex-1 overflow-y-auto p-5">
-            <CartPanel {...cartPanelProps} showClose />
-          </div>
+        <div className="fixed inset-0 z-50 flex flex-col bg-white p-5 lg:hidden">
+          <CartPanel {...cartPanelProps} showClose />
         </div>
       )}
 
@@ -472,8 +478,10 @@ interface CartPanelProps {
   setDonation: (v: boolean) => void;
   donationAmount: number;
   total: number;
-  paymentMethod: "Cash" | "Card" | "Scan";
-  setPaymentMethod: (v: "Cash" | "Card" | "Scan") => void;
+  paymentMethod: string;
+  setPaymentMethod: (v: string) => void;
+  paymentTerminals: PaymentTerminal[];
+  currencySymbol: string;
   removeCartItem: (id: string) => void;
   handlePlaceOrder: () => void;
   handleAdvanceStatus: (next: OrderStatus) => void;
@@ -498,6 +506,8 @@ function CartPanel({
   total,
   paymentMethod,
   setPaymentMethod,
+  paymentTerminals,
+  currencySymbol,
   removeCartItem,
   handlePlaceOrder,
   handleAdvanceStatus,
@@ -507,8 +517,8 @@ function CartPanel({
   showClose,
 }: CartPanelProps) {
   return (
-    <>
-      <div className="mb-4 flex items-start justify-between">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="mb-4 flex shrink-0 items-start justify-between">
         <div>
           <h2 className="text-lg font-semibold text-neutral-900">
             {cart.tableNumber ? `Table No #${String(cart.tableNumber).padStart(2, "0")}` : `${cart.channel} Order`}
@@ -551,7 +561,7 @@ function CartPanel({
       </div>
 
       {tableEditorOpen && (
-        <div className="mb-4 space-y-3 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+        <div className="mb-4 shrink-0 space-y-3 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
           <div>
             <label className="mb-1 block text-xs font-medium text-neutral-500">Table</label>
             <select
@@ -617,106 +627,117 @@ function CartPanel({
         </div>
       )}
 
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-neutral-900">Ordered Items</h3>
-        <span className="text-sm font-semibold text-neutral-400">
-          {String(cart.items.reduce((s, i) => s + i.qty, 0)).padStart(2, "0")}
-        </span>
-      </div>
-
-      <div className="mb-4 space-y-3">
-        {cart.items.length === 0 && (
-          <div className="flex h-32 items-center justify-center text-center text-sm text-neutral-400">
-            No items yet.
-            <br />
-            Tap a dish to add it to the order.
-          </div>
-        )}
-        {cart.items.map((item) => (
-          <div key={item.dishId} className="flex items-center justify-between gap-2 text-sm">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="shrink-0 font-semibold text-teal-600">{item.qty}x</span>
-              <span className="truncate text-neutral-700">{item.name}</span>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <span className="font-semibold text-neutral-800">${(item.price * item.qty).toFixed(2)}</span>
-              <button onClick={() => removeCartItem(item.dishId)} className="text-neutral-300 hover:text-rose-500">
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-5 space-y-2 border-t border-neutral-100 pt-4">
-        <h3 className="mb-1 text-sm font-semibold text-neutral-900">Payment Summary</h3>
-        <div className="flex justify-between text-sm text-neutral-500">
-          <span>Subtotal</span>
-          <span>${subtotal.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between text-sm text-neutral-500">
-          <span>Tax (6%)</span>
-          <span>${tax.toFixed(2)}</span>
-        </div>
-        <label className="flex items-center justify-between text-sm text-neutral-500">
-          <span className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={donation}
-              onChange={(e) => setDonation(e.target.checked)}
-              className="h-3.5 w-3.5 accent-teal-600"
-            />
-            Donation for Palestine
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-neutral-900">Ordered Items</h3>
+          <span className="text-sm font-semibold text-neutral-400">
+            {String(cart.items.reduce((s, i) => s + i.qty, 0)).padStart(2, "0")}
           </span>
-          <span>${donationAmount.toFixed(2)}</span>
-        </label>
-        <div className="flex justify-between border-t border-neutral-100 pt-2 text-base font-semibold text-neutral-900">
-          <span>Total Payable</span>
-          <span>${total.toFixed(2)}</span>
+        </div>
+
+        <div className="space-y-3">
+          {cart.items.length === 0 && (
+            <div className="flex h-32 items-center justify-center text-center text-sm text-neutral-400">
+              No items yet.
+              <br />
+              Tap a dish to add it to the order.
+            </div>
+          )}
+          {cart.items.map((item) => (
+            <div key={item.dishId} className="flex items-center justify-between gap-2 text-sm">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="shrink-0 font-semibold text-teal-600">{item.qty}x</span>
+                <span className="truncate text-neutral-700">{item.name}</span>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="font-semibold text-neutral-800">{formatMoney(item.price * item.qty, currencySymbol)}</span>
+                <button onClick={() => removeCartItem(item.dishId)} className="text-neutral-300 hover:text-rose-500">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
-      <div className="mt-4">
-        <h3 className="mb-2 text-sm font-semibold text-neutral-900">Payment Method</h3>
-        <div className="grid grid-cols-3 gap-2">
-          <PaymentButton icon={Wallet} label="Cash" active={paymentMethod === "Cash"} onClick={() => setPaymentMethod("Cash")} />
-          <PaymentButton icon={CreditCard} label="Card" active={paymentMethod === "Card"} onClick={() => setPaymentMethod("Card")} />
-          <PaymentButton icon={ScanLine} label="Scan" active={paymentMethod === "Scan"} onClick={() => setPaymentMethod("Scan")} />
+      <div className="shrink-0">
+        <div className="space-y-2 border-t border-neutral-100 pt-4">
+          <h3 className="mb-1 text-sm font-semibold text-neutral-900">Payment Summary</h3>
+          <div className="flex justify-between text-sm text-neutral-500">
+            <span>Subtotal</span>
+            <span>{formatMoney(subtotal, currencySymbol)}</span>
+          </div>
+          <div className="flex justify-between text-sm text-neutral-500">
+            <span>Tax (6%)</span>
+            <span>{formatMoney(tax, currencySymbol)}</span>
+          </div>
+          <label className="flex items-center justify-between text-sm text-neutral-500">
+            <span className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={donation}
+                onChange={(e) => setDonation(e.target.checked)}
+                className="h-3.5 w-3.5 accent-teal-600"
+              />
+              Donation for Palestine
+            </span>
+            <span>{formatMoney(donationAmount, currencySymbol)}</span>
+          </label>
+          <div className="flex justify-between border-t border-neutral-100 pt-2 text-base font-semibold text-neutral-900">
+            <span>Total Payable</span>
+            <span>{formatMoney(total, currencySymbol)}</span>
+          </div>
         </div>
-      </div>
 
-      {editingOrder && editingOrder.status !== "Voided" && (
-        <div className="mt-4 flex items-center justify-between rounded-xl bg-neutral-50 px-3 py-2 text-sm">
-          <span className="text-neutral-500">Order Status</span>
-          <StatusStepper status={editingOrder.status} onAdvance={handleAdvanceStatus} />
+        <div className="mt-4">
+          <h3 className="mb-2 text-sm font-semibold text-neutral-900">Payment Method</h3>
+          <div className="grid grid-cols-3 gap-2">
+            <PaymentButton icon={Wallet} label="Cash" active={paymentMethod === "Cash"} onClick={() => setPaymentMethod("Cash")} />
+            {paymentTerminals.map((t) => (
+              <PaymentButton
+                key={t.id}
+                icon={CreditCard}
+                label={t.name}
+                active={paymentMethod === t.name}
+                onClick={() => setPaymentMethod(t.name)}
+              />
+            ))}
+          </div>
         </div>
-      )}
 
-      {editingOrder?.status === "Voided" && (
-        <div className="mt-4 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">
-          Voided{editingOrder.voidReason ? ` — ${editingOrder.voidReason}` : ""}
-        </div>
-      )}
-
-      <div className="mt-4 flex gap-2">
-        <button
-          onClick={handlePlaceOrder}
-          disabled={cart.items.length === 0}
-          className="flex-1 rounded-xl bg-teal-600 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {cart.editingOrderId ? "Update Order" : "Place Order"} · ${total.toFixed(2)}
-        </button>
-        {editingOrder && editingOrder.status !== "Voided" && editingOrder.status !== "Served" && (
-          <button
-            onClick={onVoidClick}
-            className="flex items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-4 text-rose-600 hover:bg-rose-100"
-            title="Void order"
-          >
-            <Ban className="h-4 w-4" />
-          </button>
+        {editingOrder && editingOrder.status !== "Voided" && (
+          <div className="mt-4 flex items-center justify-between rounded-xl bg-neutral-50 px-3 py-2 text-sm">
+            <span className="text-neutral-500">Order Status</span>
+            <StatusStepper status={editingOrder.status} onAdvance={handleAdvanceStatus} />
+          </div>
         )}
+
+        {editingOrder?.status === "Voided" && (
+          <div className="mt-4 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            Voided{editingOrder.voidReason ? ` — ${editingOrder.voidReason}` : ""}
+          </div>
+        )}
+
+        <div className="mt-4 flex gap-2">
+          <button
+            onClick={handlePlaceOrder}
+            disabled={cart.items.length === 0}
+            className="flex-1 rounded-xl bg-teal-600 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {cart.editingOrderId ? "Update Order" : "Place Order"} · {formatMoney(total, currencySymbol)}
+          </button>
+          {editingOrder && editingOrder.status !== "Voided" && editingOrder.status !== "Served" && (
+            <button
+              onClick={onVoidClick}
+              className="flex items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-4 text-rose-600 hover:bg-rose-100"
+              title="Void order"
+            >
+              <Ban className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
-    </>
+    </div>
   );
 }
 

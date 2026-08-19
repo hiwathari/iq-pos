@@ -1,12 +1,15 @@
 import { AppShell } from "@/components/app-shell";
 import { assertAdmin, requireRestaurantContext } from "@/lib/scope";
 import { getReportData } from "@/lib/data/reports";
+import { getRestaurant } from "@/lib/data/restaurants";
+import { formatMoney } from "@/lib/types";
 import { Users, Package, Wallet, CreditCard, QrCode, DollarSign, Ban } from "lucide-react";
 
 export default async function ReportsPage() {
   const { session, restaurantId } = await requireRestaurantContext();
   assertAdmin(session);
-  const report = await getReportData(restaurantId);
+  const [report, restaurant] = await Promise.all([getReportData(restaurantId), getRestaurant(restaurantId)]);
+  const currencySymbol = restaurant?.currencySymbol ?? "£";
 
   return (
     <AppShell title="Reports">
@@ -15,14 +18,14 @@ export default async function ReportsPage() {
 
         <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard icon={Users} label="Total Customers" value={String(report.totalCustomers)} tint="bg-indigo-50 text-indigo-600" />
-          <StatCard icon={DollarSign} label="Total Sales" value={`$${report.totalSales.toFixed(2)}`} tint="bg-teal-50 text-teal-600" />
-          <StatCard icon={Wallet} label="Cash Sales" value={`$${report.cashSales.toFixed(2)}`} tint="bg-emerald-50 text-emerald-600" />
-          <StatCard icon={CreditCard} label="Card Sales" value={`$${report.cardSales.toFixed(2)}`} tint="bg-blue-50 text-blue-600" />
-          <StatCard icon={QrCode} label="Other Sales" value={`$${report.otherSales.toFixed(2)}`} tint="bg-amber-50 text-amber-600" />
+          <StatCard icon={DollarSign} label="Total Sales" value={formatMoney(report.totalSales, currencySymbol)} tint="bg-teal-50 text-teal-600" />
+          <StatCard icon={Wallet} label="Cash Sales" value={formatMoney(report.cashSales, currencySymbol)} tint="bg-emerald-50 text-emerald-600" />
+          <StatCard icon={CreditCard} label="Card Sales" value={formatMoney(report.cardSales, currencySymbol)} tint="bg-blue-50 text-blue-600" />
+          <StatCard icon={QrCode} label="Other Sales" value={formatMoney(report.otherSales, currencySymbol)} tint="bg-amber-50 text-amber-600" />
           <StatCard
             icon={Ban}
             label="Void Order Amount"
-            value={`$${report.voidOrderAmount.toFixed(2)}`}
+            value={formatMoney(report.voidOrderAmount, currencySymbol)}
             sub={`${report.voidOrderCount} voided order${report.voidOrderCount === 1 ? "" : "s"}`}
             tint="bg-rose-50 text-rose-600"
           />
