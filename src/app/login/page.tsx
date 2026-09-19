@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Logo } from "@/components/logo";
 import { LoginForm } from "./login-form";
 
@@ -14,22 +15,19 @@ export default function LoginPage() {
           <LoginForm />
         </div>
 
-        <div className="mt-5 rounded-2xl border border-dashed border-neutral-300 bg-white/60 p-4 text-xs text-neutral-500">
-          <div className="mb-2 font-semibold text-neutral-600">Demo accounts</div>
-          <div className="space-y-1.5">
-            <div className="flex justify-between gap-3">
-              <span>Super Admin</span>
-              <span className="font-mono text-neutral-700">super@iqpos.app / SuperAdmin123!</span>
-            </div>
-            <div className="flex justify-between gap-3">
-              <span>Restaurant Admin</span>
-              <span className="font-mono text-neutral-700">admin@tastystation.iqpos.app / Admin123!</span>
-            </div>
-            <div className="flex justify-between gap-3">
-              <span>Staff</span>
-              <span className="font-mono text-neutral-700">staff@tastystation.iqpos.app / Staff123!</span>
-            </div>
-          </div>
+        <div className="mt-5 flex gap-3 text-center text-xs">
+          <Link
+            href="/till-login"
+            className="flex-1 rounded-xl border border-neutral-200 bg-white py-2.5 font-medium text-neutral-500 hover:bg-neutral-50"
+          >
+            Till device? Enter PIN →
+          </Link>
+          <Link
+            href="/kitchen-login"
+            className="flex-1 rounded-xl border border-neutral-200 bg-white py-2.5 font-medium text-neutral-500 hover:bg-neutral-50"
+          >
+            Kitchen screen? Enter PIN →
+          </Link>
         </div>
       </div>
     </div>

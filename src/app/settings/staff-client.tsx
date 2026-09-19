@@ -1,8 +1,13 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
-import { Plus, X } from "lucide-react";
-import { createStaffAction, toggleStaffActiveAction, type CreateStaffState } from "@/lib/actions/staff";
+import { KeyRound, Plus, X } from "lucide-react";
+import {
+  createStaffAction,
+  generateTillPinAction,
+  toggleStaffActiveAction,
+  type CreateStaffState,
+} from "@/lib/actions/staff";
 import type { Role } from "@/lib/session";
 
 interface StaffRow {
@@ -11,6 +16,7 @@ interface StaffRow {
   name: string;
   role: Role;
   active: boolean;
+  tillPin: string | null;
 }
 
 const initialState: CreateStaffState = {};
@@ -25,13 +31,25 @@ export function StaffClient({ staff }: { staff: StaffRow[] }) {
     });
   }
 
+  function handleGeneratePin(userId: string) {
+    startTransition(async () => {
+      await generateTillPinAction(userId);
+    });
+  }
+
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-neutral-900">Team</h2>
+        <div>
+          <h2 className="text-lg font-semibold text-neutral-900">Team</h2>
+          <p className="text-sm text-neutral-500">
+            Give a staff member a Till PIN so they can unlock the Till on a shared device at{" "}
+            <span className="font-mono text-neutral-700">/till-login</span> without a full sign-in.
+          </p>
+        </div>
         <button
           onClick={() => setModalOpen(true)}
-          className="flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-700"
+          className="flex shrink-0 items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-700"
         >
           <Plus className="h-4 w-4" /> Add Staff Account
         </button>
@@ -45,6 +63,7 @@ export function StaffClient({ staff }: { staff: StaffRow[] }) {
               <th className="px-5 py-3">Email</th>
               <th className="px-5 py-3">Role</th>
               <th className="px-5 py-3">Status</th>
+              <th className="px-5 py-3">Till PIN</th>
               <th className="px-5 py-3 text-right">Actions</th>
             </tr>
           </thead>
@@ -63,19 +82,34 @@ export function StaffClient({ staff }: { staff: StaffRow[] }) {
                     {s.active ? "Active" : "Deactivated"}
                   </span>
                 </td>
+                <td className="px-5 py-3">
+                  {s.tillPin ? (
+                    <span className="font-mono text-sm font-semibold tracking-widest text-neutral-800">{s.tillPin}</span>
+                  ) : (
+                    <span className="text-xs text-neutral-400">Not set</span>
+                  )}
+                </td>
                 <td className="px-5 py-3 text-right">
-                  <button
-                    onClick={() => handleToggle(s.id, !s.active)}
-                    className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
-                  >
-                    {s.active ? "Deactivate" : "Reactivate"}
-                  </button>
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => handleGeneratePin(s.id)}
+                      className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
+                    >
+                      <KeyRound className="h-3.5 w-3.5" /> {s.tillPin ? "Regenerate" : "Generate PIN"}
+                    </button>
+                    <button
+                      onClick={() => handleToggle(s.id, !s.active)}
+                      className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
+                    >
+                      {s.active ? "Deactivate" : "Reactivate"}
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
             {staff.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-5 py-10 text-center text-neutral-400">
+                <td colSpan={6} className="px-5 py-10 text-center text-neutral-400">
                   No staff accounts yet.
                 </td>
               </tr>

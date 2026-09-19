@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db/client";
 import { users } from "@/db/schema";
-import { createSession, destroySession, verifyPassword } from "@/lib/auth";
+import { createSession, destroySession, getSession, verifyPassword } from "@/lib/auth";
 
 export interface LoginState {
   error?: string;
@@ -42,6 +42,9 @@ export async function loginAction(_prevState: LoginState | undefined, formData: 
 }
 
 export async function logoutAction() {
+  const session = await getSession();
   await destroySession();
+  if (session?.role === "till") redirect("/till-login");
+  if (session?.role === "kitchen_display") redirect("/kitchen-login");
   redirect("/login");
 }

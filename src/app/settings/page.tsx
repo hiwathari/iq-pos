@@ -8,6 +8,7 @@ import { PrintersClient } from "./printers-client";
 import { PaymentTerminalsClient } from "./payment-terminals-client";
 import { IntegrationsClient } from "./integrations-client";
 import { RestaurantClient } from "./restaurant-client";
+import { KitchenAccessClient } from "./kitchen-access-client";
 
 export default async function SettingsPage() {
   const { session, restaurantId } = await requireRestaurantContext();
@@ -32,6 +33,9 @@ export default async function SettingsPage() {
         <RestaurantClient currencySymbol={restaurant?.currencySymbol ?? "£"} />
         <div className="border-t border-neutral-100 pt-8">
           <StaffClient staff={staff} />
+        </div>
+        <div className="border-t border-neutral-100 pt-8">
+          <KitchenAccessClient kitchenPin={restaurant?.kitchenPin ?? null} />
         </div>
         <div className="border-t border-neutral-100 pt-8">
           <PrintersClient printers={printers} />

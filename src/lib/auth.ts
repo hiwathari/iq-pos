@@ -22,15 +22,15 @@ export async function verifyPassword(password: string, hash: string) {
   return bcrypt.compare(password, hash);
 }
 
-export async function createSession(payload: SessionPayload) {
-  const token = await signSessionToken(payload);
+export async function createSession(payload: SessionPayload, maxAgeSeconds: number = SESSION_DURATION_SECONDS) {
+  const token = await signSessionToken(payload, maxAgeSeconds);
   const store = await cookies();
   store.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: SESSION_DURATION_SECONDS,
+    maxAge: maxAgeSeconds,
   });
 }
 

@@ -7,6 +7,8 @@ const ROLE_LABEL: Record<Role, string> = {
   super_admin: "Super Admin",
   admin: "Admin",
   staff: "Staff",
+  till: "Till",
+  kitchen_display: "Kitchen Display",
 };
 
 function initials(name: string) {

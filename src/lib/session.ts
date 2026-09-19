@@ -2,7 +2,9 @@
 // Used by both middleware (edge runtime) and lib/auth.ts (Node runtime).
 import { SignJWT, jwtVerify } from "jose";
 
-export type Role = "super_admin" | "admin" | "staff";
+// "till" and "kitchen_display" are ephemeral device sessions minted by a 6-digit PIN
+// (see lib/actions/pin-auth.ts) — they never correspond to a stored user role.
+export type Role = "super_admin" | "admin" | "staff" | "till" | "kitchen_display";
 
 export interface SessionPayload {
   userId: string;
@@ -24,11 +26,11 @@ function getSecretKey() {
   return new TextEncoder().encode(secret);
 }
 
-export async function signSessionToken(payload: SessionPayload) {
+export async function signSessionToken(payload: SessionPayload, expiresInSeconds: number = SESSION_DURATION_SECONDS) {
   return new SignJWT({ ...payload })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime(`${SESSION_DURATION_SECONDS}s`)
+    .setExpirationTime(`${expiresInSeconds}s`)
     .sign(getSecretKey());
 }
 

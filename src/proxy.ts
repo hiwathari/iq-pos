@@ -1,13 +1,20 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { IMPERSONATION_COOKIE_NAME, SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/session";
+import { IMPERSONATION_COOKIE_NAME, SESSION_COOKIE_NAME, verifySessionToken, type Role } from "@/lib/session";
 
-const PUBLIC_PATHS = ["/login"];
+const PUBLIC_PATHS = ["/login", "/till-login", "/kitchen-login"];
 
 // Pages only an admin (or an impersonating super admin) may reach — staff are blocked.
 const ADMIN_ONLY_PREFIXES = ["/manage-dishes", "/settings", "/reports", "/pricing"];
 
 function isPublic(pathname: string) {
   return PUBLIC_PATHS.some((p) => pathname === p);
+}
+
+function homeFor(role: Role) {
+  if (role === "super_admin") return "/super-admin";
+  if (role === "till") return "/order-line";
+  if (role === "kitchen_display") return "/kitchen";
+  return "/dashboard";
 }
 
 export async function proxy(request: NextRequest) {
@@ -25,8 +32,8 @@ export async function proxy(request: NextRequest) {
   const session = token ? await verifySessionToken(token) : null;
 
   if (isPublic(pathname)) {
-    if (session && pathname === "/login") {
-      return NextResponse.redirect(new URL(session.role === "super_admin" ? "/super-admin" : "/dashboard", request.url));
+    if (session) {
+      return NextResponse.redirect(new URL(homeFor(session.role), request.url));
     }
     return NextResponse.next();
   }
@@ -35,6 +42,14 @@ export async function proxy(request: NextRequest) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("next", pathname);
     return NextResponse.redirect(loginUrl);
+  }
+
+  if (session.role === "till" && pathname !== "/order-line") {
+    return NextResponse.redirect(new URL("/order-line", request.url));
+  }
+
+  if (session.role === "kitchen_display" && pathname !== "/kitchen") {
+    return NextResponse.redirect(new URL("/kitchen", request.url));
   }
 
   const isSuperAdminPath = pathname.startsWith("/super-admin");

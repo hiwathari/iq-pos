@@ -3,6 +3,7 @@ import { getRestaurant } from "@/lib/data/restaurants";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 import { ImpersonationBanner } from "./impersonation-banner";
+import { LockedShell } from "./locked-shell";
 
 export async function AppShell({ children, title }: { children: React.ReactNode; title?: string }) {
   const session = await getSession();
@@ -10,6 +11,16 @@ export async function AppShell({ children, title }: { children: React.ReactNode;
 
   const activeRestaurantId = await getActiveRestaurantId(session);
   const restaurant = activeRestaurantId ? await getRestaurant(activeRestaurantId) : null;
+
+  if (session.role === "till" || session.role === "kitchen_display") {
+    const label = session.role === "till" ? `Till · ${session.name}` : "Kitchen Display";
+    return (
+      <LockedShell restaurantName={restaurant?.name} label={label}>
+        {children}
+      </LockedShell>
+    );
+  }
+
   const isImpersonating = session.role === "super_admin" && Boolean(await getImpersonatedRestaurantId());
 
   return (
