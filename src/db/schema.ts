@@ -13,6 +13,9 @@ export const restaurants = sqliteTable(
     currencySymbol: text("currency_symbol").notNull().default("£"),
     // 6-digit code that unlocks the Kitchen Display on a shared device via /kitchen-login, no staff login required.
     kitchenPin: text("kitchen_pin"),
+    // Minutes an order can sit before its Kitchen Display timer reads fully "red". Color bands
+    // (green/yellow/orange/red) are computed as fractions of this value — see kitchen-client.tsx.
+    kitchenTimerLimitMinutes: int("kitchen_timer_limit_minutes").notNull().default(30),
     createdAt: timestamp("created_at"),
   },
   (table) => [uniqueIndex("restaurants_kitchen_pin_idx").on(table.kitchenPin)]
@@ -63,19 +66,23 @@ export const dishes = sqliteTable("dishes", {
   channelPrices: text("channel_prices", { mode: "json" }).$type<Record<string, number>>(),
 });
 
-export const tables = sqliteTable("tables", {
-  id: id(),
-  restaurantId: text("restaurant_id")
-    .notNull()
-    .references(() => restaurants.id, { onDelete: "cascade" }),
-  number: int("number").notNull(),
-  area: text("area", { enum: ["Main Dining", "Terrace", "Outdoor"] }).notNull(),
-  capacity: int("capacity").notNull(),
-  status: text("status", { enum: ["available", "reserved", "on-dine"] })
-    .notNull()
-    .default("available"),
-  seated: int("seated").notNull().default(0),
-});
+export const tables = sqliteTable(
+  "tables",
+  {
+    id: id(),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    number: int("number").notNull(),
+    area: text("area", { enum: ["Main Dining", "Terrace", "Outdoor"] }).notNull(),
+    capacity: int("capacity").notNull(),
+    status: text("status", { enum: ["available", "reserved", "on-dine"] })
+      .notNull()
+      .default("available"),
+    seated: int("seated").notNull().default(0),
+  },
+  (table) => [uniqueIndex("tables_restaurant_number_idx").on(table.restaurantId, table.number)]
+);
 
 export const reservations = sqliteTable("reservations", {
   id: id(),
@@ -111,7 +118,9 @@ export const orders = sqliteTable("orders", {
   }).notNull(),
   thirdPartyProvider: text("third_party_provider", { enum: ["Uber Eats", "Deliveroo", "Just Eat", "Other"] }),
   status: text("status", { enum: ["In Kitchen", "Wait List", "Ready", "Served", "Voided"] }).notNull(),
-  items: text("items", { mode: "json" }).notNull().$type<{ dishId: string; name: string; price: number; qty: number }[]>(),
+  items: text("items", { mode: "json" }).notNull().$type<
+    { dishId: string; name: string; price: number; qty: number; ready?: boolean }[]
+  >(),
   // "Cash", or the name of a payment terminal (see paymentTerminals) — e.g. "Card 1", "Yellow Card".
   paymentMethod: text("payment_method"),
   // Captured for Take Away (name/phone) and Delivery (name/phone/address) orders.

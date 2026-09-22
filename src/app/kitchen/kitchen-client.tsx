@@ -1,25 +1,38 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Order, OrderStatus } from "@/lib/types";
-import { setOrderStatusAction, voidOrderAction } from "@/lib/actions/orders";
-import { Ban, Bike, CheckCircle2, ChefHat, Clock, MapPin, Phone, ShoppingBag, X } from "lucide-react";
+import { setOrderStatusAction, toggleOrderItemReadyAction, voidOrderAction } from "@/lib/actions/orders";
+import { Ban, Bike, Check, CheckCircle2, ChefHat, Clock, MapPin, Phone, ShoppingBag, X } from "lucide-react";
 
-const COLUMNS: { statuses: OrderStatus[]; label: string; accent: string }[] = [
-  { statuses: ["Wait List", "In Kitchen"], label: "Pending", accent: "border-t-amber-400" },
-  { statuses: ["Ready"], label: "Ready", accent: "border-t-teal-500" },
-  { statuses: ["Served"], label: "Completed", accent: "border-t-neutral-300" },
+const COLUMNS: { statuses: OrderStatus[]; label: string; accent: string; showTimer: boolean }[] = [
+  { statuses: ["Wait List", "In Kitchen"], label: "Pending", accent: "border-t-amber-400", showTimer: true },
+  { statuses: ["Ready"], label: "Ready", accent: "border-t-teal-500", showTimer: true },
+  { statuses: ["Served"], label: "Completed", accent: "border-t-neutral-300", showTimer: false },
 ];
 
-export function KitchenClient({ orders }: { orders: Order[] }) {
+export function KitchenClient({ orders, timerLimitMinutes }: { orders: Order[]; timerLimitMinutes: number }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [voidTarget, setVoidTarget] = useState<Order | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   function advance(orderId: string, status: OrderStatus) {
     startTransition(async () => {
       await setOrderStatusAction(orderId, status);
+      router.refresh();
+    });
+  }
+
+  function toggleItem(orderId: string, dishId: string, ready: boolean) {
+    startTransition(async () => {
+      await toggleOrderItemReadyAction(orderId, dishId, ready);
       router.refresh();
     });
   }
@@ -68,7 +81,10 @@ export function KitchenClient({ orders }: { orders: Order[] }) {
                   <OrderTicket
                     key={order.id}
                     order={order}
+                    now={col.showTimer ? now : null}
+                    timerLimitMinutes={timerLimitMinutes}
                     onAdvance={(status) => advance(order.id, status)}
+                    onToggleItem={(dishId, ready) => toggleItem(order.id, dishId, ready)}
                     onVoid={() => setVoidTarget(order)}
                   />
                 ))}
@@ -83,15 +99,48 @@ export function KitchenClient({ orders }: { orders: Order[] }) {
   );
 }
 
+const TIMER_STYLES = {
+  green: "bg-emerald-100 text-emerald-700",
+  yellow: "bg-yellow-100 text-yellow-700",
+  orange: "bg-orange-100 text-orange-700",
+  red: "bg-rose-100 text-rose-700 animate-pulse",
+} as const;
+
+function timerBand(elapsedMs: number, limitMinutes: number) {
+  const fraction = elapsedMs / (limitMinutes * 60_000);
+  if (fraction >= 1) return "red";
+  if (fraction >= 0.75) return "orange";
+  if (fraction >= 0.5) return "yellow";
+  return "green";
+}
+
+function formatElapsed(elapsedMs: number) {
+  const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
+  return `${mins}:${String(secs).padStart(2, "0")}`;
+}
+
 function OrderTicket({
   order,
+  now,
+  timerLimitMinutes,
   onAdvance,
+  onToggleItem,
   onVoid,
 }: {
   order: Order;
+  now: number | null;
+  timerLimitMinutes: number;
   onAdvance: (status: OrderStatus) => void;
+  onToggleItem: (dishId: string, ready: boolean) => void;
   onVoid: () => void;
 }) {
+  const elapsedMs = now !== null ? now - order.createdAt : null;
+  const band = elapsedMs !== null ? timerBand(elapsedMs, timerLimitMinutes) : null;
+  const itemsCheckable = order.status === "In Kitchen";
+  const allItemsReady = order.items.every((i) => i.ready);
+
   return (
     <div
       className={`rounded-xl border p-3.5 shadow-sm ${
@@ -100,9 +149,15 @@ function OrderTicket({
     >
       <div className="mb-2 flex items-center justify-between">
         <span className="text-base font-bold text-neutral-900">#{order.orderNumber}</span>
-        <span className="flex items-center gap-1 text-xs font-medium text-neutral-400">
-          <Clock className="h-3.5 w-3.5" /> {order.createdLabel}
-        </span>
+        {elapsedMs !== null && band ? (
+          <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold ${TIMER_STYLES[band]}`}>
+            <Clock className="h-3.5 w-3.5" /> {formatElapsed(elapsedMs)}
+          </span>
+        ) : (
+          <span className="flex items-center gap-1 text-xs font-medium text-neutral-400">
+            <Clock className="h-3.5 w-3.5" /> {order.createdLabel}
+          </span>
+        )}
       </div>
 
       {order.channel === "Delivery" && (
@@ -138,20 +193,41 @@ function OrderTicket({
       )}
 
       <ul className="mb-3 space-y-1">
-        {order.items.map((item) => (
-          <li key={item.dishId} className="flex items-baseline gap-2 text-sm">
-            <span className="font-bold text-teal-600">{item.qty}×</span>
-            <span className="text-neutral-800">{item.name}</span>
-          </li>
-        ))}
+        {order.items.map((item) =>
+          itemsCheckable ? (
+            <li key={item.dishId}>
+              <button
+                onClick={() => onToggleItem(item.dishId, !item.ready)}
+                className="flex w-full items-center gap-2 rounded-lg py-1 text-left text-sm hover:bg-neutral-50"
+              >
+                <span
+                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                    item.ready ? "border-teal-600 bg-teal-600 text-white" : "border-neutral-300"
+                  }`}
+                >
+                  {item.ready && <Check className="h-3 w-3" strokeWidth={3} />}
+                </span>
+                <span className={`font-bold ${item.ready ? "text-neutral-300" : "text-teal-600"}`}>{item.qty}×</span>
+                <span className={item.ready ? "text-neutral-400 line-through" : "text-neutral-800"}>{item.name}</span>
+              </button>
+            </li>
+          ) : (
+            <li key={item.dishId} className="flex items-baseline gap-2 text-sm">
+              <span className="font-bold text-teal-600">{item.qty}×</span>
+              <span className={item.ready ? "text-neutral-400 line-through" : "text-neutral-800"}>{item.name}</span>
+            </li>
+          )
+        )}
       </ul>
       <div className="flex gap-2">
         {order.status === "In Kitchen" && (
           <button
             onClick={() => onAdvance("Ready")}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-teal-600 py-3 text-sm font-bold text-white active:scale-95"
+            disabled={!allItemsReady}
+            title={allItemsReady ? undefined : "Tick off every item first"}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-teal-600 py-3 text-sm font-bold text-white active:scale-95 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-400"
           >
-            <CheckCircle2 className="h-4 w-4" /> Mark Ready
+            <CheckCircle2 className="h-4 w-4" /> Mark Order Ready
           </button>
         )}
         {order.status === "Wait List" && (

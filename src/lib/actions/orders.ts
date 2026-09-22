@@ -7,6 +7,14 @@ import { orderCounters, orders, tables } from "@/db/schema";
 import type { OrderChannel, OrderItem, OrderStatus, ThirdPartyProvider } from "@/lib/types";
 import { requireRestaurantContext } from "@/lib/scope";
 
+// 5-character order codes, base36-encoded from a per-restaurant counter. Deliberately not a
+// plain incrementing decimal (so it doesn't read as "order #31 of the day"), but zero-padded
+// base36 preserves numeric ordering character-by-character ('0'-'9' < 'A'-'Z' in ASCII too),
+// so sorting the codes as strings reproduces the order they were placed in.
+function encodeOrderNumber(counter: number) {
+  return counter.toString(36).toUpperCase().padStart(5, "0");
+}
+
 async function nextOrderNumber(restaurantId: string) {
   const [existing] = await db.select().from(orderCounters).where(eq(orderCounters.restaurantId, restaurantId)).limit(1);
   const next = (existing?.value ?? 30) + 1;
@@ -15,7 +23,7 @@ async function nextOrderNumber(restaurantId: string) {
   } else {
     await db.insert(orderCounters).values({ restaurantId, value: next });
   }
-  return `F${String(next).padStart(4, "0")}`;
+  return encodeOrderNumber(next);
 }
 
 export interface PlaceOrderInput {
@@ -89,6 +97,21 @@ export async function placeOrderAction(input: PlaceOrderInput) {
   revalidatePath("/manage-table");
   revalidatePath("/dashboard");
   revalidatePath("/kitchen");
+}
+
+export async function toggleOrderItemReadyAction(orderId: string, dishId: string, ready: boolean) {
+  const { restaurantId } = await requireRestaurantContext();
+  const [order] = await db
+    .select()
+    .from(orders)
+    .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)))
+    .limit(1);
+  if (!order) return;
+
+  const items = order.items.map((i) => (i.dishId === dishId ? { ...i, ready } : i));
+  await db.update(orders).set({ items }).where(eq(orders.id, orderId));
+  revalidatePath("/kitchen");
+  revalidatePath("/order-line");
 }
 
 export async function setOrderStatusAction(orderId: string, status: OrderStatus) {

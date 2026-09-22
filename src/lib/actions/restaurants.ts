@@ -114,6 +114,15 @@ export async function generateKitchenPinAction() {
   revalidatePath("/settings");
 }
 
+export async function updateKitchenTimerLimitAction(minutes: number) {
+  const { session, restaurantId } = await requireRestaurantContext();
+  assertAdmin(session);
+  const clamped = Math.min(120, Math.max(1, Math.round(minutes)));
+  await db.update(restaurants).set({ kitchenTimerLimitMinutes: clamped }).where(eq(restaurants.id, restaurantId));
+  revalidatePath("/settings");
+  revalidatePath("/kitchen");
+}
+
 export async function toggleRestaurantActiveAction(restaurantId: string, active: boolean) {
   const session = await requireSession();
   if (session.role !== "super_admin") throw new Error("Forbidden");

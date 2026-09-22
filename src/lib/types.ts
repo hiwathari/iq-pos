@@ -31,6 +31,9 @@ export interface OrderItem {
   name: string;
   price: number;
   qty: number;
+  // Ticked off on the Kitchen Display as each item is prepped; the whole order can only
+  // advance past "In Kitchen" once every item is ready.
+  ready?: boolean;
 }
 
 export type TableArea = "Main Dining" | "Terrace" | "Outdoor";

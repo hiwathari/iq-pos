@@ -30,7 +30,10 @@ export default async function SettingsPage() {
           <p className="text-sm text-neutral-500">{restaurant?.name ?? "Restaurant"}</p>
         </div>
 
-        <RestaurantClient currencySymbol={restaurant?.currencySymbol ?? "£"} />
+        <RestaurantClient
+          currencySymbol={restaurant?.currencySymbol ?? "£"}
+          kitchenTimerLimitMinutes={restaurant?.kitchenTimerLimitMinutes ?? 30}
+        />
         <div className="border-t border-neutral-100 pt-8">
           <StaffClient staff={staff} />
         </div>
