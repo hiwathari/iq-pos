@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Order, OrderStatus } from "@/lib/types";
 import { setOrderStatusAction, voidOrderAction } from "@/lib/actions/orders";
-import { Ban, CheckCircle2, ChefHat, Clock, X } from "lucide-react";
+import { Ban, Bike, CheckCircle2, ChefHat, Clock, MapPin, Phone, ShoppingBag, X } from "lucide-react";
 
 const COLUMNS: { statuses: OrderStatus[]; label: string; accent: string }[] = [
   { statuses: ["Wait List", "In Kitchen"], label: "Pending", accent: "border-t-amber-400" },
@@ -93,17 +93,50 @@ function OrderTicket({
   onVoid: () => void;
 }) {
   return (
-    <div className="rounded-xl border border-neutral-200 p-3.5 shadow-sm">
+    <div
+      className={`rounded-xl border p-3.5 shadow-sm ${
+        order.channel === "Delivery" ? "border-blue-200 bg-blue-50/40" : "border-neutral-200"
+      }`}
+    >
       <div className="mb-2 flex items-center justify-between">
         <span className="text-base font-bold text-neutral-900">#{order.orderNumber}</span>
         <span className="flex items-center gap-1 text-xs font-medium text-neutral-400">
           <Clock className="h-3.5 w-3.5" /> {order.createdLabel}
         </span>
       </div>
+
+      {order.channel === "Delivery" && (
+        <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-blue-100 px-2.5 py-1 text-xs font-bold text-blue-700">
+          <Bike className="h-3.5 w-3.5" /> DELIVERY
+        </div>
+      )}
+      {order.channel === "Take Away" && (
+        <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700">
+          <ShoppingBag className="h-3.5 w-3.5" /> TAKEAWAY
+        </div>
+      )}
+
       <div className="mb-3 text-xs font-semibold text-neutral-500">
         {order.tableNumber ? `Table ${String(order.tableNumber).padStart(2, "0")}` : order.channel}
         {order.thirdPartyProvider ? ` · ${order.thirdPartyProvider}` : ""}
       </div>
+
+      {(order.customerName || order.customerPhone || order.customerAddress) && (
+        <div className="mb-3 space-y-1 rounded-lg bg-neutral-50 px-2.5 py-2 text-xs text-neutral-600">
+          {order.customerName && <div className="font-semibold text-neutral-800">{order.customerName}</div>}
+          {order.customerPhone && (
+            <div className="flex items-center gap-1.5">
+              <Phone className="h-3 w-3 shrink-0" /> {order.customerPhone}
+            </div>
+          )}
+          {order.customerAddress && (
+            <div className="flex items-start gap-1.5">
+              <MapPin className="h-3 w-3 shrink-0 translate-y-0.5" /> {order.customerAddress}
+            </div>
+          )}
+        </div>
+      )}
+
       <ul className="mb-3 space-y-1">
         {order.items.map((item) => (
           <li key={item.dishId} className="flex items-baseline gap-2 text-sm">

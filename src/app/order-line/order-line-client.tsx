@@ -17,6 +17,7 @@ import type {
 import { formatMoney } from "@/lib/types";
 import { placeOrderAction, setOrderStatusAction, voidOrderAction } from "@/lib/actions/orders";
 import { printTicket } from "@/lib/print-ticket";
+import { TableLayoutPicker } from "@/components/table-layout-picker";
 import {
   ChevronLeft,
   ChevronRight,
@@ -31,6 +32,10 @@ import {
   Printer,
   Ban,
   ShoppingBag,
+  Bike,
+  MapPin,
+  Phone,
+  User,
 } from "lucide-react";
 
 const QUEUE_TABS = ["All", "Dine in", "Wait List", "Take Away", "Delivery", "Served"] as const;
@@ -65,6 +70,9 @@ interface CartState {
   channel: OrderChannel;
   thirdPartyProvider: ThirdPartyProvider;
   items: OrderItem[];
+  customerName: string;
+  customerPhone: string;
+  customerAddress: string;
 }
 
 const emptyCart: CartState = {
@@ -75,6 +83,9 @@ const emptyCart: CartState = {
   channel: "Dine in",
   thirdPartyProvider: "Uber Eats",
   items: [],
+  customerName: "",
+  customerPhone: "",
+  customerAddress: "",
 };
 
 export function OrderLineClient({
@@ -109,7 +120,10 @@ export function OrderLineClient({
   const [menuCategory, setMenuCategory] = useState<string>("all");
   const [paymentMethod, setPaymentMethod] = useState<string>("Cash");
   const [donation, setDonation] = useState(true);
-  const [tableEditorOpen, setTableEditorOpen] = useState(false);
+  // Open by default for a brand-new order so Order Type/table selection is the first thing
+  // staff see — collapsed when a table was already picked from Manage Table, or when editing.
+  const [tableEditorOpen, setTableEditorOpen] = useState(() => !searchParams.get("tableId"));
+  const [tablePickerOpen, setTablePickerOpen] = useState(false);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
   const [voidModalOpen, setVoidModalOpen] = useState(false);
 
@@ -155,7 +169,6 @@ export function OrderLineClient({
   const donationAmount = donation && cart.items.length > 0 ? 1 : 0;
   const total = subtotal + tax + donationAmount;
 
-  const availableTables = tables.filter((t) => t.status !== "on-dine" || t.id === cart.tableId);
   const editingOrder = cart.editingOrderId ? orders.find((o) => o.id === cart.editingOrderId) : null;
 
   function scroll(ref: React.RefObject<HTMLDivElement | null>, dir: 1 | -1) {
@@ -192,9 +205,13 @@ export function OrderLineClient({
       channel: order.channel,
       thirdPartyProvider: order.thirdPartyProvider ?? "Uber Eats",
       items: order.items,
+      customerName: order.customerName ?? "",
+      customerPhone: order.customerPhone ?? "",
+      customerAddress: order.customerAddress ?? "",
     });
     setDonation((order.donation ?? 0) > 0);
     if (order.paymentMethod) setPaymentMethod(order.paymentMethod);
+    setTableEditorOpen(false);
     setMobileCartOpen(true);
   }
 
@@ -211,9 +228,13 @@ export function OrderLineClient({
         items: cart.items,
         paymentMethod,
         donation: donationAmount,
+        customerName: cart.customerName.trim() || undefined,
+        customerPhone: cart.customerPhone.trim() || undefined,
+        customerAddress: cart.customerAddress.trim() || undefined,
       });
       setCart(emptyCart);
       setDonation(true);
+      setTableEditorOpen(true);
       setMobileCartOpen(false);
       router.refresh();
     });
@@ -250,6 +271,9 @@ export function OrderLineClient({
       donation: donationAmount,
       total,
       currencySymbol,
+      customerName: cart.customerName || undefined,
+      customerPhone: cart.customerPhone || undefined,
+      customerAddress: cart.channel === "Delivery" ? cart.customerAddress || undefined : undefined,
     });
   }
 
@@ -259,7 +283,8 @@ export function OrderLineClient({
     editingOrder,
     tableEditorOpen,
     setTableEditorOpen,
-    availableTables,
+    tablePickerOpen,
+    setTablePickerOpen,
     tables,
     subtotal,
     tax,
@@ -327,7 +352,9 @@ export function OrderLineClient({
               >
                 <div className="flex items-center justify-between text-sm font-semibold text-neutral-800">
                   <span>Order #{order.orderNumber}</span>
-                  <span className="text-neutral-500">
+                  <span className="flex items-center gap-1 text-neutral-500">
+                    {order.channel === "Delivery" && <Bike className="h-3.5 w-3.5 text-blue-500" />}
+                    {order.channel === "Take Away" && <ShoppingBag className="h-3.5 w-3.5 text-amber-500" />}
                     {order.tableNumber ? `Table ${String(order.tableNumber).padStart(2, "0")}` : order.channel}
                   </span>
                 </div>
@@ -470,7 +497,8 @@ interface CartPanelProps {
   editingOrder: Order | null | undefined;
   tableEditorOpen: boolean;
   setTableEditorOpen: (v: boolean | ((v: boolean) => boolean)) => void;
-  availableTables: RestaurantTable[];
+  tablePickerOpen: boolean;
+  setTablePickerOpen: (v: boolean) => void;
   tables: RestaurantTable[];
   subtotal: number;
   tax: number;
@@ -497,7 +525,9 @@ function CartPanel({
   editingOrder,
   tableEditorOpen,
   setTableEditorOpen,
-  availableTables,
+  tablePickerOpen,
+  setTablePickerOpen,
+  tables,
   subtotal,
   tax,
   donation,
@@ -520,13 +550,23 @@ function CartPanel({
     <div className="flex h-full min-h-0 flex-col">
       <div className="mb-4 flex shrink-0 items-start justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-neutral-900">
-            {cart.tableNumber ? `Table No #${String(cart.tableNumber).padStart(2, "0")}` : `${cart.channel} Order`}
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-neutral-900">
+            {cart.tableNumber
+              ? `Table No #${String(cart.tableNumber).padStart(2, "0")}`
+              : cart.customerName
+                ? `${cart.channel} · ${cart.customerName}`
+                : `${cart.channel} Order`}
+            {cart.channel === "Delivery" && <Bike className="h-4 w-4 text-blue-500" />}
+            {cart.channel === "Take Away" && <ShoppingBag className="h-4 w-4 text-amber-500" />}
           </h2>
           <p className="mt-0.5 text-sm text-neutral-400">
             {cart.editingOrderId ? `Order #${editingOrder?.orderNumber}` : "New Order"}
-            {" · "}
-            {cart.guests} {cart.guests === 1 ? "Person" : "People"}
+            {cart.channel === "Dine in" || cart.channel === "Wait List" ? (
+              <>
+                {" · "}
+                {cart.guests} {cart.guests === 1 ? "Person" : "People"}
+              </>
+            ) : null}
           </p>
         </div>
         <div className="flex items-center gap-1.5">
@@ -544,7 +584,10 @@ function CartPanel({
             <Pencil className="h-4 w-4" />
           </button>
           <button
-            onClick={() => setCart(emptyCart)}
+            onClick={() => {
+              setCart(emptyCart);
+              setTableEditorOpen(true);
+            }}
             className="rounded-lg border border-neutral-200 p-1.5 text-neutral-400 hover:bg-rose-50 hover:text-rose-600"
           >
             <Trash2 className="h-4 w-4" />
@@ -563,36 +606,8 @@ function CartPanel({
       {tableEditorOpen && (
         <div className="mb-4 shrink-0 space-y-3 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-neutral-500">Table</label>
-            <select
-              value={cart.tableId ?? ""}
-              onChange={(e) => {
-                const t = availableTables.find((tb) => tb.id === e.target.value);
-                setCart((prev) => ({ ...prev, tableId: t?.id ?? null, tableNumber: t?.number ?? null }));
-              }}
-              className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-teal-500"
-            >
-              <option value="">No Table</option>
-              {availableTables.map((t) => (
-                <option key={t.id} value={t.id}>
-                  Table {t.number} · {t.area} · seats {t.capacity}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-neutral-500">Guests</label>
-            <input
-              type="number"
-              min={1}
-              value={cart.guests}
-              onChange={(e) => setCart((prev) => ({ ...prev, guests: Math.max(1, Number(e.target.value)) }))}
-              className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-teal-500"
-            />
-          </div>
-          <div>
             <label className="mb-1 block text-xs font-medium text-neutral-500">Order Type</label>
-            <div className="grid grid-cols-2 gap-1.5">
+            <div className="grid grid-cols-3 gap-1.5">
               {CHANNELS.map((c) => (
                 <button
                   key={c}
@@ -606,6 +621,78 @@ function CartPanel({
               ))}
             </div>
           </div>
+
+          {(cart.channel === "Dine in" || cart.channel === "Wait List") && (
+            <>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-neutral-500">Table</label>
+                <button
+                  onClick={() => setTablePickerOpen(true)}
+                  className="flex w-full items-center justify-between rounded-lg border border-neutral-200 bg-white px-3 py-2 text-left text-sm text-neutral-700 hover:border-teal-400"
+                >
+                  {cart.tableNumber ? (
+                    <span className="font-medium">Table {String(cart.tableNumber).padStart(2, "0")}</span>
+                  ) : (
+                    <span className="text-neutral-400">No table selected</span>
+                  )}
+                  <LayoutGrid className="h-4 w-4 text-neutral-400" />
+                </button>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-neutral-500">Guests</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={cart.guests}
+                  onChange={(e) => setCart((prev) => ({ ...prev, guests: Math.max(1, Number(e.target.value)) }))}
+                  className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                />
+              </div>
+            </>
+          )}
+
+          {(cart.channel === "Take Away" || cart.channel === "Delivery") && (
+            <>
+              <div>
+                <label className="mb-1 flex items-center gap-1.5 text-xs font-medium text-neutral-500">
+                  <User className="h-3.5 w-3.5" /> Customer Name
+                </label>
+                <input
+                  value={cart.customerName}
+                  onChange={(e) => setCart((prev) => ({ ...prev, customerName: e.target.value }))}
+                  placeholder="e.g. Sarah"
+                  className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                />
+              </div>
+              <div>
+                <label className="mb-1 flex items-center gap-1.5 text-xs font-medium text-neutral-500">
+                  <Phone className="h-3.5 w-3.5" /> Phone
+                </label>
+                <input
+                  value={cart.customerPhone}
+                  onChange={(e) => setCart((prev) => ({ ...prev, customerPhone: e.target.value }))}
+                  placeholder="+44 7000 000000"
+                  className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                />
+              </div>
+            </>
+          )}
+
+          {cart.channel === "Delivery" && (
+            <div>
+              <label className="mb-1 flex items-center gap-1.5 text-xs font-medium text-neutral-500">
+                <MapPin className="h-3.5 w-3.5" /> Delivery Address
+              </label>
+              <textarea
+                value={cart.customerAddress}
+                onChange={(e) => setCart((prev) => ({ ...prev, customerAddress: e.target.value }))}
+                rows={2}
+                placeholder="Flat, street, postcode…"
+                className="w-full resize-none rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-teal-500"
+              />
+            </div>
+          )}
+
           {cart.channel === "Third Party" && (
             <div>
               <label className="mb-1 block text-xs font-medium text-neutral-500">Provider</label>
@@ -625,6 +712,18 @@ function CartPanel({
             </div>
           )}
         </div>
+      )}
+
+      {tablePickerOpen && (
+        <TableLayoutPicker
+          tables={tables}
+          selectedTableId={cart.tableId}
+          onSelect={(table) => {
+            setCart((prev) => ({ ...prev, tableId: table.id, tableNumber: table.number }));
+            setTablePickerOpen(false);
+          }}
+          onClose={() => setTablePickerOpen(false)}
+        />
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto">

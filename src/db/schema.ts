@@ -114,6 +114,10 @@ export const orders = sqliteTable("orders", {
   items: text("items", { mode: "json" }).notNull().$type<{ dishId: string; name: string; price: number; qty: number }[]>(),
   // "Cash", or the name of a payment terminal (see paymentTerminals) — e.g. "Card 1", "Yellow Card".
   paymentMethod: text("payment_method"),
+  // Captured for Take Away (name/phone) and Delivery (name/phone/address) orders.
+  customerName: text("customer_name"),
+  customerPhone: text("customer_phone"),
+  customerAddress: text("customer_address"),
   donation: real("donation").notNull().default(0),
   voidReason: text("void_reason"),
   createdAt: timestamp("created_at"),

@@ -10,6 +10,9 @@ export interface TicketData {
   donation: number;
   total: number;
   currencySymbol: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerAddress?: string;
 }
 
 // Opens a small formatted ticket in a new window and triggers the browser's print dialog.
@@ -35,6 +38,7 @@ export function printTicket(ticket: TicketData) {
   body { font-family: 'Courier New', monospace; width: 300px; margin: 0 auto; padding: 16px; color: #111; }
   h1 { font-size: 16px; text-align: center; margin: 0 0 4px; }
   .meta { text-align: center; font-size: 12px; color: #555; margin-bottom: 12px; }
+  .customer { text-align: center; font-size: 12px; color: #333; margin-bottom: 10px; line-height: 1.4; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   td { padding: 3px 0; }
   .right { text-align: right; }
@@ -48,6 +52,15 @@ export function printTicket(ticket: TicketData) {
   <div class="meta">Order #${escapeHtml(ticket.orderNumber)} &middot; ${escapeHtml(ticket.channel)}${
     ticket.tableNumber ? ` &middot; Table ${ticket.tableNumber}` : ""
   }</div>
+  ${
+    ticket.customerName || ticket.customerPhone || ticket.customerAddress
+      ? `<div class="customer">
+          ${ticket.customerName ? `<div><strong>${escapeHtml(ticket.customerName)}</strong></div>` : ""}
+          ${ticket.customerPhone ? `<div>${escapeHtml(ticket.customerPhone)}</div>` : ""}
+          ${ticket.customerAddress ? `<div>${escapeHtml(ticket.customerAddress)}</div>` : ""}
+        </div>`
+      : ""
+  }
   <hr />
   <table>${rows}</table>
   <hr />

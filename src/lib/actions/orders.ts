@@ -28,11 +28,16 @@ export interface PlaceOrderInput {
   items: OrderItem[];
   paymentMethod?: string;
   donation: number;
+  customerName?: string;
+  customerPhone?: string;
+  customerAddress?: string;
 }
 
 export async function placeOrderAction(input: PlaceOrderInput) {
   const { restaurantId } = await requireRestaurantContext();
   if (input.items.length === 0) return;
+
+  const hasCustomerInfo = input.channel === "Take Away" || input.channel === "Delivery";
 
   if (input.editingOrderId) {
     await db
@@ -46,6 +51,9 @@ export async function placeOrderAction(input: PlaceOrderInput) {
         items: input.items,
         paymentMethod: input.paymentMethod,
         donation: input.donation,
+        customerName: hasCustomerInfo ? input.customerName || null : null,
+        customerPhone: hasCustomerInfo ? input.customerPhone || null : null,
+        customerAddress: input.channel === "Delivery" ? input.customerAddress || null : null,
       })
       .where(and(eq(orders.id, input.editingOrderId), eq(orders.restaurantId, restaurantId)));
   } else {
@@ -63,6 +71,9 @@ export async function placeOrderAction(input: PlaceOrderInput) {
       items: input.items,
       paymentMethod: input.paymentMethod,
       donation: input.donation,
+      customerName: hasCustomerInfo ? input.customerName || null : null,
+      customerPhone: hasCustomerInfo ? input.customerPhone || null : null,
+      customerAddress: input.channel === "Delivery" ? input.customerAddress || null : null,
       createdLabel: "Just now",
     });
 
