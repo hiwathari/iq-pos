@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Armchair, Users, X } from "lucide-react";
 import type { RestaurantTable, TableArea } from "@/lib/types";
 
-const AREAS: TableArea[] = ["Main Dining", "Terrace", "Outdoor"];
+const AREAS: TableArea[] = ["Ground Floor", "1st Floor", "Basement"];
 
 const STATUS_DOT: Record<RestaurantTable["status"], string> = {
   available: "bg-indigo-400",
@@ -31,7 +31,7 @@ export function TableLayoutPicker({
   onSelect: (table: RestaurantTable) => void;
   onClose: () => void;
 }) {
-  const [area, setArea] = useState<TableArea>("Main Dining");
+  const [area, setArea] = useState<TableArea>("Ground Floor");
   const areaTables = useMemo(() => tables.filter((t) => t.area === area), [tables, area]);
 
   return (

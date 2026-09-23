@@ -74,7 +74,7 @@ export const tables = sqliteTable(
       .notNull()
       .references(() => restaurants.id, { onDelete: "cascade" }),
     number: int("number").notNull(),
-    area: text("area", { enum: ["Main Dining", "Terrace", "Outdoor"] }).notNull(),
+    area: text("area", { enum: ["Ground Floor", "1st Floor", "Basement"] }).notNull(),
     capacity: int("capacity").notNull(),
     status: text("status", { enum: ["available", "reserved", "on-dine"] })
       .notNull()

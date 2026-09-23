@@ -19,7 +19,7 @@ export async function createTableAction(
   assertAdmin(session);
 
   const number = Number(formData.get("number"));
-  const area = String(formData.get("area") || "Main Dining") as TableArea;
+  const area = String(formData.get("area") || "Ground Floor") as TableArea;
   const capacity = Math.max(1, Number(formData.get("capacity")) || 1);
 
   if (!Number.isInteger(number) || number <= 0) return { error: "Enter a valid table number." };

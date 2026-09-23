@@ -36,7 +36,7 @@ export interface OrderItem {
   ready?: boolean;
 }
 
-export type TableArea = "Main Dining" | "Terrace" | "Outdoor";
+export type TableArea = "Ground Floor" | "1st Floor" | "Basement";
 export type TableStatus = "available" | "reserved" | "on-dine";
 export type ReservationStatus = "upcoming" | "on-dine" | "paid" | "unpaid" | "available";
 export type ReservationSource = "walk-in" | "phone" | "online";

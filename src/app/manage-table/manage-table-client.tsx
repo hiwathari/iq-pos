@@ -25,7 +25,7 @@ import {
   Globe,
 } from "lucide-react";
 
-const AREAS: TableArea[] = ["Main Dining", "Terrace", "Outdoor"];
+const AREAS: TableArea[] = ["Ground Floor", "1st Floor", "Basement"];
 
 const STATUS_META: Record<TableStatus, { label: string; dot: string; card: string; text: string }> = {
   available: { label: "Available", dot: "bg-indigo-400", card: "bg-indigo-50 border-indigo-100", text: "text-indigo-700" },
@@ -45,7 +45,7 @@ export function ManageTableClient({ tables, reservations }: { tables: Restaurant
   const router = useRouter();
   const [, startTransition] = useTransition();
 
-  const [area, setArea] = useState<TableArea>("Main Dining");
+  const [area, setArea] = useState<TableArea>("Ground Floor");
   const [query, setQuery] = useState("");
   const [resFilter, setResFilter] = useState<"All" | "Reservation" | "On Dine">("All");
   const [openTableId, setOpenTableId] = useState<string | null>(null);
