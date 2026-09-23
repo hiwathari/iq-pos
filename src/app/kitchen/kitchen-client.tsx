@@ -198,23 +198,27 @@ function OrderTicket({
             <li key={item.dishId}>
               <button
                 onClick={() => onToggleItem(item.dishId, !item.ready)}
-                className="flex w-full items-center gap-2 rounded-lg py-1 text-left text-sm hover:bg-neutral-50"
+                className="flex w-full items-start gap-2 rounded-lg py-1 text-left text-sm hover:bg-neutral-50"
               >
                 <span
-                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                  className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
                     item.ready ? "border-teal-600 bg-teal-600 text-white" : "border-neutral-300"
                   }`}
                 >
                   {item.ready && <Check className="h-3 w-3" strokeWidth={3} />}
                 </span>
-                <span className={`font-bold ${item.ready ? "text-neutral-300" : "text-teal-600"}`}>{item.qty}×</span>
-                <span className={item.ready ? "text-neutral-400 line-through" : "text-neutral-800"}>{item.name}</span>
+                <span className="min-w-0">
+                  <span className={`font-bold ${item.ready ? "text-neutral-300" : "text-teal-600"}`}>{item.qty}× </span>
+                  <span className={item.ready ? "text-neutral-400 line-through" : "text-neutral-800"}>{item.name}</span>
+                  {item.note && <div className="text-xs font-semibold italic text-amber-600">↳ {item.note}</div>}
+                </span>
               </button>
             </li>
           ) : (
-            <li key={item.dishId} className="flex items-baseline gap-2 text-sm">
-              <span className="font-bold text-teal-600">{item.qty}×</span>
+            <li key={item.dishId} className="text-sm">
+              <span className="font-bold text-teal-600">{item.qty}× </span>
               <span className={item.ready ? "text-neutral-400 line-through" : "text-neutral-800"}>{item.name}</span>
+              {item.note && <div className="ml-4 text-xs font-semibold italic text-amber-600">↳ {item.note}</div>}
             </li>
           )
         )}

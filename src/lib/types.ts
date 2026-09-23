@@ -34,6 +34,13 @@ export interface OrderItem {
   // Ticked off on the Kitchen Display as each item is prepped; the whole order can only
   // advance past "In Kitchen" once every item is ready.
   ready?: boolean;
+  // Free-text prep instruction (e.g. "no onions") — set on the Till, shown on Kitchen Display.
+  note?: string;
+}
+
+export interface PaymentLine {
+  method: string;
+  amount: number;
 }
 
 export type TableArea = "Ground Floor" | "1st Floor" | "Basement";

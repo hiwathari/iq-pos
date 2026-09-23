@@ -119,15 +119,25 @@ export const orders = sqliteTable("orders", {
   thirdPartyProvider: text("third_party_provider", { enum: ["Uber Eats", "Deliveroo", "Just Eat", "Other"] }),
   status: text("status", { enum: ["In Kitchen", "Wait List", "Ready", "Served", "Voided"] }).notNull(),
   items: text("items", { mode: "json" }).notNull().$type<
-    { dishId: string; name: string; price: number; qty: number; ready?: boolean }[]
+    { dishId: string; name: string; price: number; qty: number; ready?: boolean; note?: string }[]
   >(),
-  // "Cash", or the name of a payment terminal (see paymentTerminals) — e.g. "Card 1", "Yellow Card".
+  // "Cash", the name of a payment terminal, or "Split" when paid across multiple methods
+  // (see `payments` for the breakdown) — kept for quick display and legacy orders.
   paymentMethod: text("payment_method"),
+  // Present when the order was paid across more than one method — e.g. half cash, half a
+  // named card terminal. Empty/absent for the common single-method case.
+  payments: text("payments", { mode: "json" }).$type<{ method: string; amount: number }[]>(),
+  // Cash actually handed over by the customer, when it exceeds the cash portion owed —
+  // lets the till show change due. Null when no cash was tendered above the amount due.
+  cashReceived: real("cash_received"),
   // Captured for Take Away (name/phone) and Delivery (name/phone/address) orders.
   customerName: text("customer_name"),
   customerPhone: text("customer_phone"),
   customerAddress: text("customer_address"),
   donation: real("donation").notNull().default(0),
+  // Snapshot of who rang up the order (admin/staff/till-PIN session) for staff-level reporting.
+  createdByUserId: text("created_by_user_id"),
+  createdByName: text("created_by_name"),
   voidReason: text("void_reason"),
   createdAt: timestamp("created_at"),
   createdLabel: text("created_label").notNull().default("Just now"),

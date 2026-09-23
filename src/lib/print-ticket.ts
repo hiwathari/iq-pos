@@ -4,7 +4,7 @@ export interface TicketData {
   orderNumber: string;
   tableNumber: number | null;
   channel: string;
-  items: { name: string; qty: number; price: number }[];
+  items: { name: string; qty: number; price: number; note?: string }[];
   subtotal: number;
   tax: number;
   donation: number;
@@ -13,6 +13,9 @@ export interface TicketData {
   customerName?: string;
   customerPhone?: string;
   customerAddress?: string;
+  payments?: { method: string; amount: number }[];
+  cashReceived?: number;
+  changeDue?: number;
 }
 
 // Opens a small formatted ticket in a new window and triggers the browser's print dialog.
@@ -26,7 +29,14 @@ export function printTicket(ticket: TicketData) {
   const money = (amount: number) => `${ticket.currencySymbol}${amount.toFixed(2)}`;
 
   const rows = ticket.items
-    .map((i) => `<tr><td>${i.qty}x ${escapeHtml(i.name)}</td><td class="right">${money(i.price * i.qty)}</td></tr>`)
+    .map(
+      (i) =>
+        `<tr><td>${i.qty}x ${escapeHtml(i.name)}${i.note ? `<div class="note">↳ ${escapeHtml(i.note)}</div>` : ""}</td><td class="right">${money(i.price * i.qty)}</td></tr>`
+    )
+    .join("");
+
+  const paymentRows = ticket.payments
+    ?.map((p) => `<tr><td>Paid — ${escapeHtml(p.method)}</td><td class="right">${money(p.amount)}</td></tr>`)
     .join("");
 
   win.document.write(`<!DOCTYPE html>
@@ -39,6 +49,7 @@ export function printTicket(ticket: TicketData) {
   h1 { font-size: 16px; text-align: center; margin: 0 0 4px; }
   .meta { text-align: center; font-size: 12px; color: #555; margin-bottom: 12px; }
   .customer { text-align: center; font-size: 12px; color: #333; margin-bottom: 10px; line-height: 1.4; }
+  .note { font-size: 11px; font-style: italic; color: #555; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   td { padding: 3px 0; }
   .right { text-align: right; }
@@ -70,6 +81,19 @@ export function printTicket(ticket: TicketData) {
     ${ticket.donation > 0 ? `<tr><td>Donation</td><td class="right">${money(ticket.donation)}</td></tr>` : ""}
     <tr class="total"><td>Total</td><td class="right">${money(ticket.total)}</td></tr>
   </table>
+  ${
+    paymentRows
+      ? `<hr /><table>${paymentRows}</table>`
+      : ""
+  }
+  ${
+    ticket.cashReceived
+      ? `<hr /><table>
+          <tr><td>Cash Received</td><td class="right">${money(ticket.cashReceived)}</td></tr>
+          ${ticket.changeDue ? `<tr class="total"><td>Change Due</td><td class="right">${money(ticket.changeDue)}</td></tr>` : ""}
+        </table>`
+      : ""
+  }
   <div class="footer">Thank you!</div>
   <script>window.onload = () => { window.print(); }<\/script>
 </body>

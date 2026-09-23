@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { orderCounters, orders, tables } from "@/db/schema";
-import type { OrderChannel, OrderItem, OrderStatus, ThirdPartyProvider } from "@/lib/types";
+import type { OrderChannel, OrderItem, OrderStatus, PaymentLine, ThirdPartyProvider } from "@/lib/types";
 import { requireRestaurantContext } from "@/lib/scope";
 
 // 5-character order codes, base36-encoded from a per-restaurant counter. Deliberately not a
@@ -34,7 +34,8 @@ export interface PlaceOrderInput {
   channel: OrderChannel;
   thirdPartyProvider?: ThirdPartyProvider;
   items: OrderItem[];
-  paymentMethod?: string;
+  payments: PaymentLine[];
+  cashReceived?: number;
   donation: number;
   customerName?: string;
   customerPhone?: string;
@@ -42,10 +43,13 @@ export interface PlaceOrderInput {
 }
 
 export async function placeOrderAction(input: PlaceOrderInput) {
-  const { restaurantId } = await requireRestaurantContext();
+  const { session, restaurantId } = await requireRestaurantContext();
   if (input.items.length === 0) return;
 
   const hasCustomerInfo = input.channel === "Take Away" || input.channel === "Delivery";
+  const paymentMethod =
+    input.payments.length === 0 ? null : input.payments.length === 1 ? input.payments[0].method : "Split";
+  const payments = input.payments.length > 1 ? input.payments : null;
 
   if (input.editingOrderId) {
     await db
@@ -57,7 +61,9 @@ export async function placeOrderAction(input: PlaceOrderInput) {
         channel: input.channel,
         thirdPartyProvider: input.channel === "Third Party" ? input.thirdPartyProvider : null,
         items: input.items,
-        paymentMethod: input.paymentMethod,
+        paymentMethod,
+        payments,
+        cashReceived: input.cashReceived ?? null,
         donation: input.donation,
         customerName: hasCustomerInfo ? input.customerName || null : null,
         customerPhone: hasCustomerInfo ? input.customerPhone || null : null,
@@ -77,11 +83,15 @@ export async function placeOrderAction(input: PlaceOrderInput) {
       thirdPartyProvider: input.channel === "Third Party" ? input.thirdPartyProvider : null,
       status: input.channel === "Wait List" ? "Wait List" : "In Kitchen",
       items: input.items,
-      paymentMethod: input.paymentMethod,
+      paymentMethod,
+      payments,
+      cashReceived: input.cashReceived ?? null,
       donation: input.donation,
       customerName: hasCustomerInfo ? input.customerName || null : null,
       customerPhone: hasCustomerInfo ? input.customerPhone || null : null,
       customerAddress: input.channel === "Delivery" ? input.customerAddress || null : null,
+      createdByUserId: session.userId,
+      createdByName: session.name,
       createdLabel: "Just now",
     });
 

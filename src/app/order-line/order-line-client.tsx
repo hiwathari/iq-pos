@@ -10,6 +10,7 @@ import type {
   OrderChannel,
   OrderItem,
   OrderStatus,
+  PaymentLine,
   PaymentTerminal,
   RestaurantTable,
   ThirdPartyProvider,
@@ -36,6 +37,7 @@ import {
   MapPin,
   Phone,
   User,
+  MessageSquarePlus,
 } from "lucide-react";
 
 const QUEUE_TABS = ["All", "Dine in", "Wait List", "Take Away", "Delivery", "Served"] as const;
@@ -73,6 +75,8 @@ interface CartState {
   customerName: string;
   customerPhone: string;
   customerAddress: string;
+  payments: PaymentLine[];
+  cashReceived: string;
 }
 
 const emptyCart: CartState = {
@@ -86,6 +90,8 @@ const emptyCart: CartState = {
   customerName: "",
   customerPhone: "",
   customerAddress: "",
+  payments: [],
+  cashReceived: "",
 };
 
 export function OrderLineClient({
@@ -118,8 +124,9 @@ export function OrderLineClient({
 
   const [queueTab, setQueueTab] = useState<QueueTab>("All");
   const [menuCategory, setMenuCategory] = useState<string>("all");
-  const [paymentMethod, setPaymentMethod] = useState<string>("Cash");
   const [donation, setDonation] = useState(true);
+  const [noteEditorFor, setNoteEditorFor] = useState<string | null>(null);
+  const [customItemModalOpen, setCustomItemModalOpen] = useState(false);
   // Open by default for a brand-new order so Order Type/table selection is the first thing
   // staff see — collapsed when a table was already picked from Manage Table, or when editing.
   const [tableEditorOpen, setTableEditorOpen] = useState(() => !searchParams.get("tableId"));
@@ -196,7 +203,25 @@ export function OrderLineClient({
     setCart((prev) => ({ ...prev, items: prev.items.filter((i) => i.dishId !== dishId) }));
   }
 
+  function addCustomItem(name: string, price: number, qty: number) {
+    setCart((prev) => ({
+      ...prev,
+      items: [...prev.items, { dishId: `custom:${crypto.randomUUID()}`, name, price, qty }],
+    }));
+  }
+
+  function updateItemNote(dishId: string, note: string) {
+    setCart((prev) => ({
+      ...prev,
+      items: prev.items.map((i) => (i.dishId === dishId ? { ...i, note: note || undefined } : i)),
+    }));
+  }
+
   function loadOrderIntoCart(order: Order) {
+    const orderTotalAmount = order.items.reduce((sum, i) => sum + i.price * i.qty, 0) * (1 + TAX_RATE) + (order.donation ?? 0);
+    const payments: PaymentLine[] =
+      order.payments?.length ? order.payments : order.paymentMethod ? [{ method: order.paymentMethod, amount: orderTotalAmount }] : [];
+
     setCart({
       editingOrderId: order.id,
       tableId: order.tableId,
@@ -208,15 +233,23 @@ export function OrderLineClient({
       customerName: order.customerName ?? "",
       customerPhone: order.customerPhone ?? "",
       customerAddress: order.customerAddress ?? "",
+      payments,
+      cashReceived: order.cashReceived ? String(order.cashReceived) : "",
     });
     setDonation((order.donation ?? 0) > 0);
-    if (order.paymentMethod) setPaymentMethod(order.paymentMethod);
     setTableEditorOpen(false);
     setMobileCartOpen(true);
   }
 
+  const paymentsTotal = cart.payments.reduce((sum, p) => sum + p.amount, 0);
+  const paymentsRemaining = total - paymentsTotal;
+  const isFullyPaid = cart.items.length > 0 && Math.abs(paymentsRemaining) < 0.01;
+  const cashLine = cart.payments.find((p) => p.method === "Cash");
+  const cashReceivedAmount = Number(cart.cashReceived) || 0;
+  const changeDue = cashLine && cashReceivedAmount > cashLine.amount ? cashReceivedAmount - cashLine.amount : 0;
+
   function handlePlaceOrder() {
-    if (cart.items.length === 0) return;
+    if (cart.items.length === 0 || !isFullyPaid) return;
     startTransition(async () => {
       await placeOrderAction({
         editingOrderId: cart.editingOrderId,
@@ -226,7 +259,8 @@ export function OrderLineClient({
         channel: cart.channel,
         thirdPartyProvider: cart.channel === "Third Party" ? cart.thirdPartyProvider : undefined,
         items: cart.items,
-        paymentMethod,
+        payments: cart.payments,
+        cashReceived: cashLine ? cashReceivedAmount || undefined : undefined,
         donation: donationAmount,
         customerName: cart.customerName.trim() || undefined,
         customerPhone: cart.customerPhone.trim() || undefined,
@@ -274,6 +308,9 @@ export function OrderLineClient({
       customerName: cart.customerName || undefined,
       customerPhone: cart.customerPhone || undefined,
       customerAddress: cart.channel === "Delivery" ? cart.customerAddress || undefined : undefined,
+      payments: cart.payments.length > 1 ? cart.payments : undefined,
+      cashReceived: cashLine ? cashReceivedAmount || undefined : undefined,
+      changeDue: changeDue || undefined,
     });
   }
 
@@ -292,11 +329,17 @@ export function OrderLineClient({
     setDonation,
     donationAmount,
     total,
-    paymentMethod,
-    setPaymentMethod,
+    paymentsTotal,
+    paymentsRemaining,
+    isFullyPaid,
+    changeDue,
     paymentTerminals,
     currencySymbol,
     removeCartItem,
+    noteEditorFor,
+    setNoteEditorFor,
+    updateItemNote,
+    onAddCustomItem: () => setCustomItemModalOpen(true),
     handlePlaceOrder,
     handleAdvanceStatus,
     handlePrint,
@@ -487,6 +530,15 @@ export function OrderLineClient({
       )}
 
       {voidModalOpen && <VoidModal onCancel={() => setVoidModalOpen(false)} onConfirm={handleVoid} />}
+      {customItemModalOpen && (
+        <CustomItemModal
+          onClose={() => setCustomItemModalOpen(false)}
+          onSave={(name, price, qty) => {
+            addCustomItem(name, price, qty);
+            setCustomItemModalOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -506,11 +558,17 @@ interface CartPanelProps {
   setDonation: (v: boolean) => void;
   donationAmount: number;
   total: number;
-  paymentMethod: string;
-  setPaymentMethod: (v: string) => void;
+  paymentsTotal: number;
+  paymentsRemaining: number;
+  isFullyPaid: boolean;
+  changeDue: number;
   paymentTerminals: PaymentTerminal[];
   currencySymbol: string;
   removeCartItem: (id: string) => void;
+  noteEditorFor: string | null;
+  setNoteEditorFor: (v: string | null) => void;
+  updateItemNote: (dishId: string, note: string) => void;
+  onAddCustomItem: () => void;
   handlePlaceOrder: () => void;
   handleAdvanceStatus: (next: OrderStatus) => void;
   handlePrint: () => void;
@@ -534,11 +592,17 @@ function CartPanel({
   setDonation,
   donationAmount,
   total,
-  paymentMethod,
-  setPaymentMethod,
+  paymentsTotal,
+  paymentsRemaining,
+  isFullyPaid,
+  changeDue,
   paymentTerminals,
   currencySymbol,
   removeCartItem,
+  noteEditorFor,
+  setNoteEditorFor,
+  updateItemNote,
+  onAddCustomItem,
   handlePlaceOrder,
   handleAdvanceStatus,
   handlePrint,
@@ -546,6 +610,25 @@ function CartPanel({
   onClose,
   showClose,
 }: CartPanelProps) {
+  function addPaymentLine(method: string) {
+    setCart((prev) => {
+      if (prev.payments.some((p) => p.method === method)) return prev;
+      const applied = prev.payments.reduce((s, p) => s + p.amount, 0);
+      const remaining = Math.max(0, Math.round((total - applied) * 100) / 100);
+      return { ...prev, payments: [...prev.payments, { method, amount: remaining }] };
+    });
+  }
+
+  function updatePaymentAmount(method: string, amount: number) {
+    setCart((prev) => ({
+      ...prev,
+      payments: prev.payments.map((p) => (p.method === method ? { ...p, amount } : p)),
+    }));
+  }
+
+  function removePaymentLine(method: string) {
+    setCart((prev) => ({ ...prev, payments: prev.payments.filter((p) => p.method !== method) }));
+  }
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="mb-4 flex shrink-0 items-start justify-between">
@@ -603,8 +686,11 @@ function CartPanel({
         </div>
       </div>
 
+      {/* Everything below the header scrolls as one region so the Place Order button at the
+          bottom always stays reachable, however much the order-type/payment sections grow. */}
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
       {tableEditorOpen && (
-        <div className="mb-4 shrink-0 space-y-3 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+        <div className="space-y-3 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
           <div>
             <label className="mb-1 block text-xs font-medium text-neutral-500">Order Type</label>
             <div className="grid grid-cols-3 gap-1.5">
@@ -726,12 +812,20 @@ function CartPanel({
         />
       )}
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div>
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-neutral-900">Ordered Items</h3>
-          <span className="text-sm font-semibold text-neutral-400">
-            {String(cart.items.reduce((s, i) => s + i.qty, 0)).padStart(2, "0")}
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onAddCustomItem}
+              className="flex items-center gap-1 rounded-lg border border-dashed border-neutral-300 px-2 py-1 text-xs font-medium text-neutral-500 hover:border-teal-400 hover:text-teal-600"
+            >
+              <Plus className="h-3 w-3" /> Custom
+            </button>
+            <span className="text-sm font-semibold text-neutral-400">
+              {String(cart.items.reduce((s, i) => s + i.qty, 0)).padStart(2, "0")}
+            </span>
+          </div>
         </div>
 
         <div className="space-y-3">
@@ -743,23 +837,46 @@ function CartPanel({
             </div>
           )}
           {cart.items.map((item) => (
-            <div key={item.dishId} className="flex items-center justify-between gap-2 text-sm">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="shrink-0 font-semibold text-teal-600">{item.qty}x</span>
-                <span className="truncate text-neutral-700">{item.name}</span>
+            <div key={item.dishId} className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2 text-sm">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="shrink-0 font-semibold text-teal-600">{item.qty}x</span>
+                  <span className="truncate text-neutral-700">{item.name}</span>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <span className="font-semibold text-neutral-800">{formatMoney(item.price * item.qty, currencySymbol)}</span>
+                  <button
+                    onClick={() => setNoteEditorFor(noteEditorFor === item.dishId ? null : item.dishId)}
+                    title="Add note for kitchen"
+                    className={`rounded p-0.5 ${item.note ? "text-amber-500" : "text-neutral-300 hover:text-teal-600"}`}
+                  >
+                    <MessageSquarePlus className="h-3.5 w-3.5" />
+                  </button>
+                  <button onClick={() => removeCartItem(item.dishId)} className="text-neutral-300 hover:text-rose-500">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <span className="font-semibold text-neutral-800">{formatMoney(item.price * item.qty, currencySymbol)}</span>
-                <button onClick={() => removeCartItem(item.dishId)} className="text-neutral-300 hover:text-rose-500">
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
+              {item.note && noteEditorFor !== item.dishId && (
+                <div className="ml-5 text-xs italic text-amber-600">Note: {item.note}</div>
+              )}
+              {noteEditorFor === item.dishId && (
+                <input
+                  autoFocus
+                  value={item.note ?? ""}
+                  onChange={(e) => updateItemNote(item.dishId, e.target.value)}
+                  onBlur={() => setNoteEditorFor(null)}
+                  onKeyDown={(e) => e.key === "Enter" && setNoteEditorFor(null)}
+                  placeholder="e.g. no onions, extra spicy…"
+                  className="ml-5 w-[calc(100%-1.25rem)] rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs outline-none focus:border-amber-400"
+                />
+              )}
             </div>
           ))}
         </div>
       </div>
 
-      <div className="shrink-0">
+      <div>
         <div className="space-y-2 border-t border-neutral-100 pt-4">
           <h3 className="mb-1 text-sm font-semibold text-neutral-900">Payment Summary</h3>
           <div className="flex justify-between text-sm text-neutral-500">
@@ -790,37 +907,110 @@ function CartPanel({
 
         <div className="mt-4">
           <h3 className="mb-2 text-sm font-semibold text-neutral-900">Payment Method</h3>
+          <p className="mb-2 text-xs text-neutral-400">
+            Tap a method to apply it — tap more than one to split the bill across them.
+          </p>
           <div className="grid grid-cols-3 gap-2">
-            <PaymentButton icon={Wallet} label="Cash" active={paymentMethod === "Cash"} onClick={() => setPaymentMethod("Cash")} />
+            <PaymentButton
+              icon={Wallet}
+              label="Cash"
+              active={cart.payments.some((p) => p.method === "Cash")}
+              onClick={() => addPaymentLine("Cash")}
+            />
             {paymentTerminals.map((t) => (
               <PaymentButton
                 key={t.id}
                 icon={CreditCard}
                 label={t.name}
-                active={paymentMethod === t.name}
-                onClick={() => setPaymentMethod(t.name)}
+                active={cart.payments.some((p) => p.method === t.name)}
+                onClick={() => addPaymentLine(t.name)}
               />
             ))}
           </div>
-        </div>
 
+          {cart.payments.length > 0 && (
+            <div className="mt-3 space-y-2 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+              {cart.payments.map((p) => (
+                <div key={p.method} className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="w-20 shrink-0 truncate text-xs font-semibold text-neutral-700">{p.method}</span>
+                    <div className="relative flex-1">
+                      <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-neutral-400">
+                        {currencySymbol}
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={p.amount}
+                        onChange={(e) => updatePaymentAmount(p.method, Math.max(0, Number(e.target.value) || 0))}
+                        className="w-full rounded-lg border border-neutral-200 bg-white py-1.5 pl-6 pr-2 text-sm outline-none focus:border-teal-500"
+                      />
+                    </div>
+                    <button onClick={() => removePaymentLine(p.method)} className="text-neutral-300 hover:text-rose-500">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  {p.method === "Cash" && (
+                    <div className="ml-[5.5rem] flex items-center gap-2 text-xs">
+                      <span className="shrink-0 text-neutral-500">Received</span>
+                      <div className="relative flex-1">
+                        <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400">
+                          {currencySymbol}
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={cart.cashReceived}
+                          onChange={(e) => setCart((prev) => ({ ...prev, cashReceived: e.target.value }))}
+                          placeholder={p.amount.toFixed(2)}
+                          className="w-full rounded-lg border border-neutral-200 bg-white py-1.5 pl-6 pr-2 outline-none focus:border-teal-500"
+                        />
+                      </div>
+                      {changeDue > 0 && (
+                        <span className="shrink-0 font-semibold text-emerald-600">
+                          Change {formatMoney(changeDue, currencySymbol)}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              <div
+                className={`flex justify-between border-t border-neutral-200 pt-2 text-xs font-semibold ${
+                  isFullyPaid ? "text-emerald-600" : "text-amber-600"
+                }`}
+              >
+                <span>{isFullyPaid ? "Fully paid" : paymentsRemaining > 0 ? "Remaining" : "Overpaid by"}</span>
+                <span>{isFullyPaid ? formatMoney(paymentsTotal, currencySymbol) : formatMoney(Math.abs(paymentsRemaining), currencySymbol)}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+      </div>
+
+      <div className="shrink-0">
         {editingOrder && editingOrder.status !== "Voided" && (
-          <div className="mt-4 flex items-center justify-between rounded-xl bg-neutral-50 px-3 py-2 text-sm">
+          <div className="mb-4 flex items-center justify-between rounded-xl bg-neutral-50 px-3 py-2 text-sm">
             <span className="text-neutral-500">Order Status</span>
             <StatusStepper status={editingOrder.status} onAdvance={handleAdvanceStatus} />
           </div>
         )}
 
         {editingOrder?.status === "Voided" && (
-          <div className="mt-4 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          <div className="mb-4 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">
             Voided{editingOrder.voidReason ? ` — ${editingOrder.voidReason}` : ""}
           </div>
         )}
 
-        <div className="mt-4 flex gap-2">
+        <div className="flex gap-2 border-t border-neutral-100 pt-4">
           <button
             onClick={handlePlaceOrder}
-            disabled={cart.items.length === 0}
+            disabled={cart.items.length === 0 || !isFullyPaid}
+            title={!isFullyPaid ? "Payments must add up to the total before placing the order" : undefined}
             className="flex-1 rounded-xl bg-teal-600 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {cart.editingOrderId ? "Update Order" : "Place Order"} · {formatMoney(total, currencySymbol)}
@@ -871,6 +1061,84 @@ function VoidModal({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: (
             className="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-semibold text-white hover:bg-rose-700"
           >
             Void Order
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CustomItemModal({
+  onClose,
+  onSave,
+}: {
+  onClose: () => void;
+  onSave: (name: string, price: number, qty: number) => void;
+}) {
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState("");
+  const [qty, setQty] = useState(1);
+
+  const canSave = name.trim().length > 0 && Number(price) > 0;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-neutral-900">Add Custom Item</h2>
+          <button onClick={onClose} className="rounded-full p-1 text-neutral-400 hover:bg-neutral-100">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-neutral-500">Item Name</label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              autoFocus
+              placeholder="e.g. Extra sauce"
+              className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-neutral-500">Price</label>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="0.00"
+                className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-neutral-500">Qty</label>
+              <input
+                type="number"
+                min={1}
+                value={qty}
+                onChange={(e) => setQty(Math.max(1, Number(e.target.value) || 1))}
+                className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+              />
+            </div>
+          </div>
+        </div>
+        <div className="mt-6 flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-xl border border-neutral-200 py-2.5 text-sm font-medium text-neutral-600 hover:bg-neutral-50"
+          >
+            Cancel
+          </button>
+          <button
+            disabled={!canSave}
+            onClick={() => onSave(name.trim(), Number(price), qty)}
+            className="flex-1 rounded-xl bg-teal-600 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Add to Order
           </button>
         </div>
       </div>
