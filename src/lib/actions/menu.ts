@@ -34,6 +34,7 @@ export interface DishInput {
   price: number;
   emoji: string;
   description: string;
+  imageUrl?: string;
 }
 
 export async function createDishAction(input: DishInput) {
@@ -48,6 +49,7 @@ export async function createDishAction(input: DishInput) {
     emoji: input.emoji,
     color: "#DCEEE8",
     description: input.description || null,
+    imageUrl: input.imageUrl?.trim() || null,
   });
   revalidatePath("/manage-dishes");
   revalidatePath("/order-line");
@@ -64,6 +66,7 @@ export async function updateDishAction(dishId: string, input: DishInput) {
       price: input.price,
       emoji: input.emoji,
       description: input.description || null,
+      imageUrl: input.imageUrl?.trim() || null,
     })
     .where(and(eq(dishes.id, dishId), eq(dishes.restaurantId, restaurantId)));
   revalidatePath("/manage-dishes");

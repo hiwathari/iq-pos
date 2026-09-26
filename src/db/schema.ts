@@ -68,6 +68,8 @@ export const dishes = sqliteTable("dishes", {
   emoji: text("emoji").notNull().default("🍽️"),
   color: text("color").notNull().default("#DCEEE8"),
   description: text("description"),
+  // Optional photo URL — shown instead of the emoji tile on the Till and Manage Dishes when set.
+  imageUrl: text("image_url"),
   // Per-channel price overrides, e.g. { "Online": 12.5, "Uber Eats": 14 }. Falls back to `price` when absent/null.
   channelPrices: text("channel_prices", { mode: "json" }).$type<Record<string, number>>(),
 });

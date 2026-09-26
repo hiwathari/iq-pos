@@ -218,12 +218,16 @@ export function ManageDishesClient({
                 {filteredDishes.map((dish) => (
                   <tr key={dish.id} className="hover:bg-neutral-50/60">
                     <td className="flex items-center gap-3 px-5 py-3">
-                      <span
-                        className="flex h-9 w-9 items-center justify-center rounded-full text-base"
-                        style={{ backgroundColor: dish.color }}
-                      >
-                        {dish.emoji}
-                      </span>
+                      {dish.imageUrl ? (
+                        <img src={dish.imageUrl} alt={dish.name} className="h-9 w-9 rounded-full object-cover" />
+                      ) : (
+                        <span
+                          className="flex h-9 w-9 items-center justify-center rounded-full text-base"
+                          style={{ backgroundColor: dish.color }}
+                        >
+                          {dish.emoji}
+                        </span>
+                      )}
                       <span className="font-medium text-neutral-800">{dish.name}</span>
                     </td>
                     <td className="px-5 py-3 text-neutral-500">
@@ -362,12 +366,16 @@ function DishCard({
           )}
         </div>
       </div>
-      <div
-        className="mb-3 flex h-16 w-16 items-center justify-center rounded-full text-3xl"
-        style={{ backgroundColor: dish.color }}
-      >
-        {dish.emoji}
-      </div>
+      {dish.imageUrl ? (
+        <img src={dish.imageUrl} alt={dish.name} className="mb-3 h-16 w-16 rounded-2xl object-cover" />
+      ) : (
+        <div
+          className="mb-3 flex h-16 w-16 items-center justify-center rounded-full text-3xl"
+          style={{ backgroundColor: dish.color }}
+        >
+          {dish.emoji}
+        </div>
+      )}
       <div className="text-xs text-neutral-400">{categoryName}</div>
       <div className="mb-1 font-semibold text-neutral-900">{dish.name}</div>
       <div className="font-semibold text-neutral-800">{formatMoney(dish.price, currencySymbol)}</div>

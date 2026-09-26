@@ -540,12 +540,16 @@ export function OrderLineClient({
                   qty > 0 ? "border-teal-400 ring-1 ring-teal-100" : "border-neutral-200"
                 }`}
               >
-                <div
-                  className="mb-3 flex h-14 w-14 items-center justify-center rounded-full text-2xl"
-                  style={{ backgroundColor: dish.color }}
-                >
-                  {dish.emoji}
-                </div>
+                {dish.imageUrl ? (
+                  <img src={dish.imageUrl} alt={dish.name} className="mb-3 h-14 w-14 rounded-xl object-cover" />
+                ) : (
+                  <div
+                    className="mb-3 flex h-14 w-14 items-center justify-center rounded-full text-2xl"
+                    style={{ backgroundColor: dish.color }}
+                  >
+                    {dish.emoji}
+                  </div>
+                )}
                 <div className="text-xs text-neutral-400">
                   {categories.find((c) => c.id === dish.categoryId)?.name}
                 </div>

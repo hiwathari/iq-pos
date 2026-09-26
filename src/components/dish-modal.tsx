@@ -12,7 +12,14 @@ const EMOJI_PRESETS = [
 
 interface DishModalProps {
   onClose: () => void;
-  onSave: (values: { name: string; categoryId: string; price: number; emoji: string; description: string }) => void;
+  onSave: (values: {
+    name: string;
+    categoryId: string;
+    price: number;
+    emoji: string;
+    description: string;
+    imageUrl: string;
+  }) => void;
   categories: Category[];
   defaultCategoryId: string;
   initial?: Dish | null;
@@ -29,6 +36,7 @@ export function DishModal({ onClose, onSave, categories, defaultCategoryId, init
   const [price, setPrice] = useState(initial ? String(initial.price) : "");
   const [emoji, setEmoji] = useState(initial?.emoji ?? "🍽️");
   const [description, setDescription] = useState(initial?.description ?? "");
+  const [imageUrl, setImageUrl] = useState(initial?.imageUrl ?? "");
 
   const canSave = name.trim().length > 0 && categoryId && Number(price) > 0;
 
@@ -84,6 +92,17 @@ export function DishModal({ onClose, onSave, categories, defaultCategoryId, init
           </div>
 
           <div>
+            <label className="mb-1.5 block text-xs font-medium text-neutral-500">Photo URL (optional)</label>
+            <input
+              value={imageUrl}
+              onChange={(e) => setImageUrl(e.target.value)}
+              placeholder="https://…/dish.jpg"
+              className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+            />
+            <p className="mt-1 text-xs text-neutral-400">Shown instead of the icon below when set.</p>
+          </div>
+
+          <div>
             <label className="mb-1.5 block text-xs font-medium text-neutral-500">Icon</label>
             <div className="grid grid-cols-10 gap-1.5 rounded-xl border border-neutral-200 p-2">
               {EMOJI_PRESETS.map((e) => (
@@ -124,7 +143,14 @@ export function DishModal({ onClose, onSave, categories, defaultCategoryId, init
             disabled={!canSave}
             onClick={() =>
               canSave &&
-              onSave({ name: name.trim(), categoryId, price: Number(price), emoji, description: description.trim() })
+              onSave({
+                name: name.trim(),
+                categoryId,
+                price: Number(price),
+                emoji,
+                description: description.trim(),
+                imageUrl: imageUrl.trim(),
+              })
             }
             className="flex-1 rounded-xl bg-teal-600 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
