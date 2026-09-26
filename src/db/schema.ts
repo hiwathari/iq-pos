@@ -150,6 +150,12 @@ export const orders = sqliteTable("orders", {
   voidReason: text("void_reason"),
   createdAt: timestamp("created_at"),
   createdLabel: text("created_label").notNull().default("Just now"),
+  // Bumped when an already-sent order's contents (items/payments/table/etc.) are edited —
+  // distinct from a plain status change — so Kitchen/Till can flag "this ticket just changed".
+  updatedAt: int("updated_at"),
+  // When the order's status became "Served" — the Kitchen Display auto-clears a completed
+  // ticket about a minute after this so the board doesn't pile up with old tickets.
+  servedAt: int("served_at"),
 });
 
 export const printers = sqliteTable("printers", {

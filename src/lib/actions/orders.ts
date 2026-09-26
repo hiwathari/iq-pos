@@ -68,6 +68,7 @@ export async function placeOrderAction(input: PlaceOrderInput) {
         customerName: hasCustomerInfo ? input.customerName || null : null,
         customerPhone: hasCustomerInfo ? input.customerPhone || null : null,
         customerAddress: input.channel === "Delivery" ? input.customerAddress || null : null,
+        updatedAt: Date.now(),
       })
       .where(and(eq(orders.id, input.editingOrderId), eq(orders.restaurantId, restaurantId)));
   } else {
@@ -128,7 +129,7 @@ export async function setOrderStatusAction(orderId: string, status: OrderStatus)
   const { restaurantId } = await requireRestaurantContext();
   await db
     .update(orders)
-    .set({ status })
+    .set({ status, servedAt: status === "Served" ? Date.now() : undefined })
     .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)));
   revalidatePath("/order-line");
   revalidatePath("/dashboard");

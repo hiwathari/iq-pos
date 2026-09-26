@@ -4,12 +4,17 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Order, OrderStatus } from "@/lib/types";
 import { setOrderStatusAction, toggleOrderItemReadyAction, voidOrderAction } from "@/lib/actions/orders";
-import { Ban, Bike, Check, CheckCircle2, ChefHat, Clock, MapPin, Phone, ShoppingBag, X } from "lucide-react";
+import { Ban, Bike, Check, CheckCircle2, ChefHat, Clock, MapPin, Phone, RefreshCw, ShoppingBag, X, XCircle } from "lucide-react";
+
+// A completed ticket stays visible for a minute after being served so staff can double-check
+// it, then drops off the board on its own so Completed doesn't pile up with old tickets.
+const COMPLETED_RETENTION_MS = 60_000;
 
 const COLUMNS: { statuses: OrderStatus[]; label: string; accent: string; showTimer: boolean }[] = [
   { statuses: ["Wait List", "In Kitchen"], label: "Pending", accent: "border-t-amber-400", showTimer: true },
   { statuses: ["Ready"], label: "Ready", accent: "border-t-teal-500", showTimer: true },
   { statuses: ["Served"], label: "Completed", accent: "border-t-neutral-300", showTimer: false },
+  { statuses: ["Voided"], label: "Voided", accent: "border-t-rose-400", showTimer: false },
 ];
 
 export function KitchenClient({ orders, timerLimitMinutes }: { orders: Order[]; timerLimitMinutes: number }) {
@@ -53,24 +58,20 @@ export function KitchenClient({ orders, timerLimitMinutes }: { orders: Order[]; 
     });
   }
 
-  const voided = orders.filter((o) => o.status === "Voided");
-
   return (
     <div className="flex h-full min-h-0 flex-col bg-neutral-100 p-4">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="flex items-center gap-2 text-xl font-bold text-neutral-900">
           <ChefHat className="h-6 w-6 text-teal-600" /> Kitchen Display
         </h1>
-        {voided.length > 0 && (
-          <span className="flex items-center gap-1.5 rounded-full bg-rose-100 px-3 py-1.5 text-xs font-semibold text-rose-700">
-            <Ban className="h-3.5 w-3.5" /> {voided.length} voided today
-          </span>
-        )}
       </div>
 
-      <div className="grid flex-1 grid-cols-1 gap-4 overflow-hidden md:grid-cols-3">
+      <div className="grid flex-1 grid-cols-1 gap-4 overflow-hidden md:grid-cols-4">
         {COLUMNS.map((col) => {
-          const columnOrders = orders.filter((o) => col.statuses.includes(o.status));
+          let columnOrders = orders.filter((o) => col.statuses.includes(o.status));
+          if (col.label === "Completed") {
+            columnOrders = columnOrders.filter((o) => now - (o.servedAt ?? o.createdAt) < COMPLETED_RETENTION_MS);
+          }
           return (
             <div key={col.label} className="flex min-h-0 flex-col rounded-2xl bg-white">
               <div className={`flex items-center justify-between border-t-4 ${col.accent} rounded-t-2xl px-4 py-3`}>
@@ -146,16 +147,31 @@ function OrderTicket({
   const band = elapsedMs !== null ? timerBand(elapsedMs, timerLimitMinutes) : null;
   const itemsCheckable = order.status === "In Kitchen";
   const allItemsReady = order.items.every((i) => i.ready);
+  const isVoided = order.status === "Voided";
+  // Flags a ticket that was edited (items/table/etc. changed) after being sent, so kitchen
+  // notices the change — cleared once it's done (Served/Voided), since it no longer matters.
+  const wasUpdated = !!order.updatedAt && order.status !== "Served" && order.status !== "Voided";
 
   return (
     <div
       className={`rounded-xl border p-3.5 shadow-sm ${
-        order.channel === "Delivery" ? "border-blue-200 bg-blue-50/40" : "border-neutral-200"
+        isVoided
+          ? "border-rose-200 bg-rose-50/60 opacity-75"
+          : order.channel === "Delivery"
+            ? "border-blue-200 bg-blue-50/40"
+            : "border-neutral-200"
       }`}
     >
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-base font-bold text-neutral-900">#{order.orderNumber}</span>
-        {elapsedMs !== null && band ? (
+        <span className="flex items-center gap-1.5 text-base font-bold text-neutral-900">
+          {isVoided && <XCircle className="h-4 w-4 text-rose-500" />}
+          <span className={isVoided ? "line-through decoration-rose-400" : undefined}>#{order.orderNumber}</span>
+        </span>
+        {isVoided ? (
+          <span className="flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">
+            <Ban className="h-3.5 w-3.5" /> Voided
+          </span>
+        ) : elapsedMs !== null && band ? (
           <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold ${TIMER_STYLES[band]}`}>
             <Clock className="h-3.5 w-3.5" /> {formatElapsed(elapsedMs)}
           </span>
@@ -165,6 +181,18 @@ function OrderTicket({
           </span>
         )}
       </div>
+
+      {isVoided && (
+        <div className="mb-2 rounded-lg bg-rose-100 px-2.5 py-1.5 text-xs font-semibold text-rose-700">
+          Cancelled{order.voidReason ? ` — ${order.voidReason}` : ""}
+        </div>
+      )}
+
+      {wasUpdated && (
+        <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700">
+          <RefreshCw className="h-3.5 w-3.5" /> UPDATED — recheck the items below
+        </div>
+      )}
 
       {order.channel === "Delivery" && (
         <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-blue-100 px-2.5 py-1 text-xs font-bold text-blue-700">
@@ -229,42 +257,44 @@ function OrderTicket({
           )
         )}
       </ul>
-      <div className="flex gap-2">
-        {order.status === "In Kitchen" && (
-          <button
-            onClick={() => onAdvance("Ready")}
-            disabled={!allItemsReady}
-            title={allItemsReady ? undefined : "Tick off every item first"}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-teal-600 py-3 text-sm font-bold text-white active:scale-95 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-400"
-          >
-            <CheckCircle2 className="h-4 w-4" /> Mark Order Ready
-          </button>
-        )}
-        {order.status === "Wait List" && (
-          <button
-            onClick={() => onAdvance("In Kitchen")}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-amber-500 py-3 text-sm font-bold text-white active:scale-95"
-          >
-            Send to Kitchen
-          </button>
-        )}
-        {order.status === "Ready" && (
-          <button
-            onClick={() => onAdvance("Served")}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-neutral-800 py-3 text-sm font-bold text-white active:scale-95"
-          >
-            <CheckCircle2 className="h-4 w-4" /> Mark Served
-          </button>
-        )}
-        {order.status !== "Served" && (
-          <button
-            onClick={onVoid}
-            className="flex items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-3 text-rose-600 active:scale-95"
-          >
-            <Ban className="h-4 w-4" />
-          </button>
-        )}
-      </div>
+      {!isVoided && (
+        <div className="flex gap-2">
+          {order.status === "In Kitchen" && (
+            <button
+              onClick={() => onAdvance("Ready")}
+              disabled={!allItemsReady}
+              title={allItemsReady ? undefined : "Tick off every item first"}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-teal-600 py-3 text-sm font-bold text-white active:scale-95 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-400"
+            >
+              <CheckCircle2 className="h-4 w-4" /> Mark Order Ready
+            </button>
+          )}
+          {order.status === "Wait List" && (
+            <button
+              onClick={() => onAdvance("In Kitchen")}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-amber-500 py-3 text-sm font-bold text-white active:scale-95"
+            >
+              Send to Kitchen
+            </button>
+          )}
+          {order.status === "Ready" && (
+            <button
+              onClick={() => onAdvance("Served")}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-neutral-800 py-3 text-sm font-bold text-white active:scale-95"
+            >
+              <CheckCircle2 className="h-4 w-4" /> Mark Served
+            </button>
+          )}
+          {order.status !== "Served" && (
+            <button
+              onClick={onVoid}
+              className="flex items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-3 text-rose-600 active:scale-95"
+            >
+              <Ban className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

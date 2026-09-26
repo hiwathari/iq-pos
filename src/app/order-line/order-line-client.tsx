@@ -43,12 +43,22 @@ import {
   ClipboardList,
   Armchair,
   Users,
+  Search,
+  RefreshCw,
+  XCircle,
+  History,
 } from "lucide-react";
 
 const QUEUE_TABS = ["All", "Dine in", "Wait List", "Take Away", "Delivery", "Served"] as const;
 type QueueTab = (typeof QUEUE_TABS)[number];
 
-type TillView = "order" | "tickets" | "tables";
+type TillView = "order" | "tickets" | "tables" | "history";
+
+// A ticket is flagged "Updated" once it's been edited after being sent, so staff notice a
+// change — cleared once it's done (Served/Voided), since it no longer needs a second look.
+function wasOrderUpdated(o: Order) {
+  return !!o.updatedAt && o.status !== "Served" && o.status !== "Voided";
+}
 
 const TABLE_AREAS = ["Ground Floor", "1st Floor", "Basement"] as const;
 
@@ -154,6 +164,7 @@ export function OrderLineClient({
   const [queueTab, setQueueTab] = useState<QueueTab>("All");
   const [tablesArea, setTablesArea] = useState<(typeof TABLE_AREAS)[number]>("Ground Floor");
   const [menuCategory, setMenuCategory] = useState<string>("all");
+  const [menuSearch, setMenuSearch] = useState("");
   const [donation, setDonation] = useState(true);
   const [noteEditorFor, setNoteEditorFor] = useState<string | null>(null);
   const [customItemModalOpen, setCustomItemModalOpen] = useState(false);
@@ -229,9 +240,18 @@ export function OrderLineClient({
   }, [orders, activeOrders]);
 
   const menuDishes = useMemo(() => {
-    if (menuCategory === "all") return dishes;
-    return dishes.filter((d) => d.categoryId === menuCategory);
-  }, [dishes, menuCategory]);
+    const query = menuSearch.trim().toLowerCase();
+    return dishes.filter((d) => {
+      if (query) return d.name.toLowerCase().includes(query);
+      return menuCategory === "all" || d.categoryId === menuCategory;
+    });
+  }, [dishes, menuCategory, menuSearch]);
+
+  // Fully wrapped-up orders (served+paid) and voided ones, most recent first, for the Till's
+  // History view — reviewing and reprinting past tickets without cluttering active views.
+  const historyOrders = useMemo(() => {
+    return orders.filter((o) => isOrderClosedOut(o) || o.status === "Voided").slice(0, 60);
+  }, [orders]);
 
   const priceFor = (dish: Dish) => {
     const key = cart.channel === "Third Party" ? cart.thirdPartyProvider : cart.channel;
@@ -483,15 +503,38 @@ export function OrderLineClient({
               label="Tables"
               onClick={() => setView("tables")}
             />
+            <TopViewTab
+              active={view === "history"}
+              icon={History}
+              label="History"
+              onClick={() => setView("history")}
+            />
           </div>
         </div>
 
         {view === "order" && (
           <>
             {/* Menu categories */}
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-neutral-900">Foodies Menu</h2>
-              <div className="hidden items-center gap-1.5 sm:flex">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 className="shrink-0 text-lg font-semibold text-neutral-900">Foodies Menu</h2>
+              <div className="relative w-full max-w-xs">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+                <input
+                  value={menuSearch}
+                  onChange={(e) => setMenuSearch(e.target.value)}
+                  placeholder="Search dishes…"
+                  className="w-full rounded-xl border border-neutral-200 bg-white py-2 pl-9 pr-8 text-sm outline-none focus:border-teal-500"
+                />
+                {menuSearch && (
+                  <button
+                    onClick={() => setMenuSearch("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              <div className="hidden shrink-0 items-center gap-1.5 sm:flex">
                 <button onClick={() => scroll(menuRef, -1)} className="rounded-full border border-neutral-200 p-1.5 hover:bg-neutral-50">
                   <ChevronLeft className="h-4 w-4 text-neutral-500" />
                 </button>
@@ -500,25 +543,32 @@ export function OrderLineClient({
                 </button>
               </div>
             </div>
-            <div ref={menuRef} className="mb-6 flex gap-3 overflow-x-auto pb-1 scroll-smooth">
-              <MenuTab
-                active={menuCategory === "all"}
-                icon="all"
-                label="All Menu"
-                count={dishes.length}
-                onClick={() => setMenuCategory("all")}
-              />
-              {categories.map((c) => (
+            {!menuSearch && (
+              <div ref={menuRef} className="mb-6 flex gap-3 overflow-x-auto pb-1 scroll-smooth">
                 <MenuTab
-                  key={c.id}
-                  active={menuCategory === c.id}
-                  icon={c.icon}
-                  label={c.name}
-                  count={dishes.filter((d) => d.categoryId === c.id).length}
-                  onClick={() => setMenuCategory(c.id)}
+                  active={menuCategory === "all"}
+                  icon="all"
+                  label="All Menu"
+                  count={dishes.length}
+                  onClick={() => setMenuCategory("all")}
                 />
-              ))}
-            </div>
+                {categories.map((c) => (
+                  <MenuTab
+                    key={c.id}
+                    active={menuCategory === c.id}
+                    icon={c.icon}
+                    label={c.name}
+                    count={dishes.filter((d) => d.categoryId === c.id).length}
+                    onClick={() => setMenuCategory(c.id)}
+                  />
+                ))}
+              </div>
+            )}
+            {menuSearch && (
+              <div className="mb-6 text-xs text-neutral-400">
+                {menuDishes.length} result{menuDishes.length === 1 ? "" : "s"} for &ldquo;{menuSearch}&rdquo;
+              </div>
+            )}
 
             {/* Dish grid */}
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
@@ -607,36 +657,12 @@ export function OrderLineClient({
             {/* Open tickets grid */}
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
               {filteredOrders.map((order) => (
-                <button
+                <OrderCard
                   key={order.id}
+                  order={order}
+                  selected={cart.editingOrderId === order.id}
                   onClick={() => loadOrderIntoCart(order)}
-                  className={`flex flex-col gap-2 rounded-2xl border p-4 text-left transition-shadow hover:shadow-md ${
-                    CARD_TINTS[order.status]
-                  } ${cart.editingOrderId === order.id ? "ring-2 ring-teal-500" : ""}`}
-                >
-                  <div className="flex items-center justify-between text-sm font-semibold text-neutral-800">
-                    <span>Order #{order.orderNumber}</span>
-                    <span className="flex items-center gap-1 text-neutral-500">
-                      {order.channel === "Delivery" && <Bike className="h-3.5 w-3.5 text-blue-500" />}
-                      {order.channel === "Take Away" && <ShoppingBag className="h-3.5 w-3.5 text-amber-500" />}
-                      {order.tableNumber ? `Table ${String(order.tableNumber).padStart(2, "0")}` : order.channel}
-                    </span>
-                  </div>
-                  <div className="text-sm text-neutral-500">Item: {order.items.reduce((s, i) => s + i.qty, 0)}X</div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-neutral-400">{order.createdLabel}</span>
-                    <div className="flex items-center gap-1.5">
-                      {!order.paymentMethod && order.status !== "Voided" && (
-                        <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">
-                          Unpaid
-                        </span>
-                      )}
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_STYLES[order.status]}`}>
-                        {order.status}
-                      </span>
-                    </div>
-                  </div>
-                </button>
+                />
               ))}
               {filteredOrders.length === 0 && (
                 <div className="col-span-full flex h-32 items-center justify-center text-sm text-neutral-400">
@@ -656,6 +682,29 @@ export function OrderLineClient({
             cartTableId={cart.tableId}
             onSelect={handleTableSelect}
           />
+        )}
+
+        {view === "history" && (
+          <>
+            <p className="mb-4 text-sm text-neutral-500">
+              Completed and voided orders, most recent first — tap one to review or reprint it.
+            </p>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
+              {historyOrders.map((order) => (
+                <OrderCard
+                  key={order.id}
+                  order={order}
+                  selected={cart.editingOrderId === order.id}
+                  onClick={() => loadOrderIntoCart(order)}
+                />
+              ))}
+              {historyOrders.length === 0 && (
+                <div className="col-span-full flex h-32 items-center justify-center text-sm text-neutral-400">
+                  No completed or voided orders yet.
+                </div>
+              )}
+            </div>
+          </>
         )}
       </div>
 
@@ -1309,6 +1358,56 @@ function CustomItemModal({
         </div>
       </div>
     </div>
+  );
+}
+
+function OrderCard({
+  order,
+  selected,
+  onClick,
+}: {
+  order: Order;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  const isVoided = order.status === "Voided";
+  const updated = wasOrderUpdated(order);
+  return (
+    <button
+      onClick={onClick}
+      className={`flex flex-col gap-2 rounded-2xl border p-4 text-left transition-shadow hover:shadow-md ${
+        CARD_TINTS[order.status]
+      } ${selected ? "ring-2 ring-teal-500" : ""} ${isVoided ? "opacity-75" : ""}`}
+    >
+      <div className="flex items-center justify-between text-sm font-semibold text-neutral-800">
+        <span className="flex items-center gap-1">
+          {isVoided && <XCircle className="h-3.5 w-3.5 shrink-0 text-rose-500" />}
+          <span className={isVoided ? "line-through decoration-rose-400" : undefined}>Order #{order.orderNumber}</span>
+        </span>
+        <span className="flex items-center gap-1 text-neutral-500">
+          {order.channel === "Delivery" && <Bike className="h-3.5 w-3.5 text-blue-500" />}
+          {order.channel === "Take Away" && <ShoppingBag className="h-3.5 w-3.5 text-amber-500" />}
+          {order.tableNumber ? `Table ${String(order.tableNumber).padStart(2, "0")}` : order.channel}
+        </span>
+      </div>
+      <div className="text-sm text-neutral-500">Item: {order.items.reduce((s, i) => s + i.qty, 0)}X</div>
+      {updated && (
+        <span className="flex w-fit items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+          <RefreshCw className="h-3 w-3" /> Updated
+        </span>
+      )}
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-neutral-400">{order.createdLabel}</span>
+        <div className="flex items-center gap-1.5">
+          {!order.paymentMethod && !isVoided && (
+            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">Unpaid</span>
+          )}
+          <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_STYLES[order.status]}`}>
+            {order.status}
+          </span>
+        </div>
+      </div>
+    </button>
   );
 }
 
