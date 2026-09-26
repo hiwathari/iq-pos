@@ -299,7 +299,7 @@ export function OrderLineClient({
   const changeDue = cashLine && cashReceivedAmount > cashLine.amount ? cashReceivedAmount - cashLine.amount : 0;
 
   function handlePlaceOrder() {
-    if (cart.items.length === 0 || !isFullyPaid) return;
+    if (cart.items.length === 0) return;
     startTransition(async () => {
       await placeOrderAction({
         editingOrderId: cart.editingOrderId,
@@ -479,9 +479,16 @@ export function OrderLineClient({
                 <div className="text-sm text-neutral-500">Item: {order.items.reduce((s, i) => s + i.qty, 0)}X</div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-neutral-400">{order.createdLabel}</span>
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_STYLES[order.status]}`}>
-                    {order.status}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {!order.paymentMethod && order.status !== "Voided" && (
+                      <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                        Unpaid
+                      </span>
+                    )}
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_STYLES[order.status]}`}>
+                      {order.status}
+                    </span>
+                  </div>
                 </div>
               </button>
             ))}
@@ -893,7 +900,7 @@ function CartPanel({
 
       <div>
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-neutral-900">Ordered Items</h3>
+          <h3 className="text-sm font-semibold text-neutral-900">Order Tray</h3>
           <div className="flex items-center gap-2">
             <button
               onClick={onAddCustomItem}
@@ -1088,11 +1095,16 @@ function CartPanel({
         <div className="flex gap-2 border-t border-neutral-100 pt-4">
           <button
             onClick={handlePlaceOrder}
-            disabled={cart.items.length === 0 || !isFullyPaid}
-            title={!isFullyPaid ? "Payments must add up to the total before placing the order" : undefined}
+            disabled={cart.items.length === 0}
+            title={
+              !isFullyPaid && cart.payments.length === 0
+                ? "No payment taken yet — order will be sent to the kitchen and can be settled later"
+                : undefined
+            }
             className="flex-1 rounded-xl bg-teal-600 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {cart.editingOrderId ? "Update Order" : "Place Order"} · {formatMoney(total, currencySymbol)}
+            {cart.editingOrderId ? "Update Order" : isFullyPaid ? "Place Order" : "Send to Kitchen"} ·{" "}
+            {formatMoney(total, currencySymbol)}
           </button>
           {editingOrder && editingOrder.status !== "Voided" && editingOrder.status !== "Served" && (
             <button
