@@ -40,10 +40,24 @@ import {
   MessageSquarePlus,
   Bell,
   CheckCircle2,
+  ClipboardList,
+  Armchair,
+  Users,
 } from "lucide-react";
 
 const QUEUE_TABS = ["All", "Dine in", "Wait List", "Take Away", "Delivery", "Served"] as const;
 type QueueTab = (typeof QUEUE_TABS)[number];
+
+type TillView = "order" | "tickets" | "tables";
+
+const TABLE_AREAS = ["Ground Floor", "1st Floor", "Basement"] as const;
+
+// An order is fully wrapped up once it's been served AND paid — at that point it no longer
+// needs attention from the Till, so it drops out of the active ticket views (still visible
+// under the "Served" filter, and in Reports).
+function isOrderClosedOut(o: Order) {
+  return o.status === "Served" && !!o.paymentMethod;
+}
 
 const STATUS_STYLES: Record<Order["status"], string> = {
   "In Kitchen": "bg-teal-100 text-teal-700",
@@ -136,7 +150,9 @@ export function OrderLineClient({
     return emptyCart;
   });
 
+  const [view, setView] = useState<TillView>("order");
   const [queueTab, setQueueTab] = useState<QueueTab>("All");
+  const [tablesArea, setTablesArea] = useState<(typeof TABLE_AREAS)[number]>("Ground Floor");
   const [menuCategory, setMenuCategory] = useState<string>("all");
   const [donation, setDonation] = useState(true);
   const [noteEditorFor, setNoteEditorFor] = useState<string | null>(null);
@@ -148,7 +164,6 @@ export function OrderLineClient({
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
   const [voidModalOpen, setVoidModalOpen] = useState(false);
 
-  const queueRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Poll for changes made elsewhere (kitchen marking an order ready, another till voiding
@@ -189,26 +204,29 @@ export function OrderLineClient({
 
   const filteredOrders = useMemo(() => {
     return orders.filter((o) => {
+      if (queueTab === "Served") return o.status === "Served";
+      if (isOrderClosedOut(o)) return false;
       if (queueTab === "All") return true;
       if (queueTab === "Dine in") return o.channel === "Dine in";
       if (queueTab === "Wait List") return o.status === "Wait List";
       if (queueTab === "Take Away") return o.channel === "Take Away";
       if (queueTab === "Delivery") return o.channel === "Delivery" || o.channel === "Third Party";
-      if (queueTab === "Served") return o.status === "Served";
       return true;
     });
   }, [orders, queueTab]);
 
+  const activeOrders = useMemo(() => orders.filter((o) => !isOrderClosedOut(o)), [orders]);
+
   const queueCounts = useMemo(() => {
     return {
-      All: orders.length,
-      "Dine in": orders.filter((o) => o.channel === "Dine in").length,
-      "Wait List": orders.filter((o) => o.status === "Wait List").length,
-      "Take Away": orders.filter((o) => o.channel === "Take Away").length,
-      Delivery: orders.filter((o) => o.channel === "Delivery" || o.channel === "Third Party").length,
+      All: activeOrders.length,
+      "Dine in": activeOrders.filter((o) => o.channel === "Dine in").length,
+      "Wait List": activeOrders.filter((o) => o.status === "Wait List").length,
+      "Take Away": activeOrders.filter((o) => o.channel === "Take Away").length,
+      Delivery: activeOrders.filter((o) => o.channel === "Delivery" || o.channel === "Third Party").length,
       Served: orders.filter((o) => o.status === "Served").length,
     } satisfies Record<QueueTab, number>;
-  }, [orders]);
+  }, [orders, activeOrders]);
 
   const menuDishes = useMemo(() => {
     if (menuCategory === "all") return dishes;
@@ -289,6 +307,23 @@ export function OrderLineClient({
     setDonation((order.donation ?? 0) > 0);
     setTableEditorOpen(false);
     setMobileCartOpen(true);
+    setView("order");
+  }
+
+  function activeOrderForTable(tableId: string) {
+    return orders.find((o) => o.tableId === tableId && o.status !== "Voided" && !isOrderClosedOut(o));
+  }
+
+  function handleTableSelect(table: RestaurantTable) {
+    const existing = activeOrderForTable(table.id);
+    if (existing) {
+      loadOrderIntoCart(existing);
+      return;
+    }
+    setCart({ ...emptyCart, tableId: table.id, tableNumber: table.number, channel: "Dine in" });
+    setTableEditorOpen(false);
+    setMobileCartOpen(true);
+    setView("order");
   }
 
   const paymentsTotal = cart.payments.reduce((sum, p) => sum + p.amount, 0);
@@ -426,170 +461,202 @@ export function OrderLineClient({
 
       {/* Main column */}
       <div className="flex-1 overflow-y-auto p-6 pb-24 lg:pb-6">
-        <h1 className="mb-4 text-xl font-semibold text-neutral-900">Till</h1>
-
-        {/* Queue tabs */}
-        <div className="mb-5 flex flex-wrap items-center gap-2">
-          {QUEUE_TABS.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setQueueTab(tab)}
-              className={`flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
-                queueTab === tab
-                  ? "border-teal-600 bg-teal-600 text-white"
-                  : "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
-              }`}
-            >
-              {tab}
-              <span
-                className={`flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-xs font-semibold ${
-                  queueTab === tab ? "bg-white/20 text-white" : "bg-neutral-100 text-neutral-500"
-                }`}
-              >
-                {queueCounts[tab]}
-              </span>
-            </button>
-          ))}
+        <div className="mb-5 flex items-center justify-between">
+          <h1 className="text-xl font-semibold text-neutral-900">Till</h1>
+          <div className="flex items-center gap-1 rounded-2xl border border-neutral-200 bg-white p-1">
+            <TopViewTab
+              active={view === "order"}
+              icon={ShoppingBag}
+              label="Order"
+              onClick={() => setView("order")}
+            />
+            <TopViewTab
+              active={view === "tickets"}
+              icon={ClipboardList}
+              label="Open Tickets"
+              count={queueCounts.All}
+              onClick={() => setView("tickets")}
+            />
+            <TopViewTab
+              active={view === "tables"}
+              icon={LayoutGrid}
+              label="Tables"
+              onClick={() => setView("tables")}
+            />
+          </div>
         </div>
 
-        {/* Order queue row */}
-        <div className="relative mb-8">
-          <div ref={queueRef} className="flex gap-4 overflow-x-auto pb-1 scroll-smooth">
-            {filteredOrders.length === 0 && (
-              <div className="flex h-24 flex-1 items-center justify-center text-sm text-neutral-400">
-                No orders in this view.
+        {view === "order" && (
+          <>
+            {/* Menu categories */}
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-neutral-900">Foodies Menu</h2>
+              <div className="hidden items-center gap-1.5 sm:flex">
+                <button onClick={() => scroll(menuRef, -1)} className="rounded-full border border-neutral-200 p-1.5 hover:bg-neutral-50">
+                  <ChevronLeft className="h-4 w-4 text-neutral-500" />
+                </button>
+                <button onClick={() => scroll(menuRef, 1)} className="rounded-full border border-neutral-200 p-1.5 hover:bg-neutral-50">
+                  <ChevronRight className="h-4 w-4 text-neutral-500" />
+                </button>
               </div>
-            )}
-            {filteredOrders.map((order) => (
-              <button
-                key={order.id}
-                onClick={() => loadOrderIntoCart(order)}
-                className={`flex w-56 shrink-0 flex-col gap-2 rounded-2xl border p-4 text-left transition-shadow hover:shadow-md ${
-                  CARD_TINTS[order.status]
-                } ${cart.editingOrderId === order.id ? "ring-2 ring-teal-500" : ""}`}
-              >
-                <div className="flex items-center justify-between text-sm font-semibold text-neutral-800">
-                  <span>Order #{order.orderNumber}</span>
-                  <span className="flex items-center gap-1 text-neutral-500">
-                    {order.channel === "Delivery" && <Bike className="h-3.5 w-3.5 text-blue-500" />}
-                    {order.channel === "Take Away" && <ShoppingBag className="h-3.5 w-3.5 text-amber-500" />}
-                    {order.tableNumber ? `Table ${String(order.tableNumber).padStart(2, "0")}` : order.channel}
-                  </span>
-                </div>
-                <div className="text-sm text-neutral-500">Item: {order.items.reduce((s, i) => s + i.qty, 0)}X</div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-neutral-400">{order.createdLabel}</span>
-                  <div className="flex items-center gap-1.5">
-                    {!order.paymentMethod && order.status !== "Voided" && (
-                      <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">
-                        Unpaid
-                      </span>
+            </div>
+            <div ref={menuRef} className="mb-6 flex gap-3 overflow-x-auto pb-1 scroll-smooth">
+              <MenuTab
+                active={menuCategory === "all"}
+                icon="all"
+                label="All Menu"
+                count={dishes.length}
+                onClick={() => setMenuCategory("all")}
+              />
+              {categories.map((c) => (
+                <MenuTab
+                  key={c.id}
+                  active={menuCategory === c.id}
+                  icon={c.icon}
+                  label={c.name}
+                  count={dishes.filter((d) => d.categoryId === c.id).length}
+                  onClick={() => setMenuCategory(c.id)}
+                />
+              ))}
+            </div>
+
+            {/* Dish grid */}
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
+              {menuDishes.map((dish) => {
+                const qty = qtyFor(dish.id);
+                const price = priceFor(dish);
+                return (
+                  <div
+                    key={dish.id}
+                    className={`flex flex-col rounded-2xl border bg-white p-4 transition-shadow hover:shadow-md ${
+                      qty > 0 ? "border-teal-400 ring-1 ring-teal-100" : "border-neutral-200"
+                    }`}
+                  >
+                    {dish.imageUrl ? (
+                      <img src={dish.imageUrl} alt={dish.name} className="mb-3 h-14 w-14 rounded-xl object-cover" />
+                    ) : (
+                      <div
+                        className="mb-3 flex h-14 w-14 items-center justify-center rounded-full text-2xl"
+                        style={{ backgroundColor: dish.color }}
+                      >
+                        {dish.emoji}
+                      </div>
                     )}
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_STYLES[order.status]}`}>
-                      {order.status}
+                    <div className="text-xs text-neutral-400">
+                      {categories.find((c) => c.id === dish.categoryId)?.name}
+                    </div>
+                    <div className="mb-2 line-clamp-1 font-semibold text-neutral-900">{dish.name}</div>
+                    <div className="mt-auto flex items-center justify-between">
+                      <span className="font-semibold text-neutral-800">
+                        {formatMoney(price, currencySymbol)}
+                        {price !== dish.price && <span className="ml-1 text-[10px] font-normal text-teal-600">({cart.channel})</span>}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => decrementCartItem(dish.id)}
+                          disabled={qty === 0}
+                          className="flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 text-neutral-500 hover:bg-neutral-50 disabled:opacity-30"
+                        >
+                          <Minus className="h-3.5 w-3.5" />
+                        </button>
+                        <span className="w-4 text-center text-sm font-semibold text-neutral-800">{qty}</span>
+                        <button
+                          onClick={() => addToCart(dish)}
+                          className="flex h-7 w-7 items-center justify-center rounded-full bg-teal-600 text-white hover:bg-teal-700"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {menuDishes.length === 0 && (
+                <div className="col-span-full py-16 text-center text-sm text-neutral-400">No dishes in this category.</div>
+              )}
+            </div>
+          </>
+        )}
+
+        {view === "tickets" && (
+          <>
+            {/* Channel/status filter chips */}
+            <div className="mb-5 flex flex-wrap items-center gap-2">
+              {QUEUE_TABS.map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setQueueTab(tab)}
+                  className={`flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
+                    queueTab === tab
+                      ? "border-teal-600 bg-teal-600 text-white"
+                      : "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
+                  }`}
+                >
+                  {tab}
+                  <span
+                    className={`flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-xs font-semibold ${
+                      queueTab === tab ? "bg-white/20 text-white" : "bg-neutral-100 text-neutral-500"
+                    }`}
+                  >
+                    {queueCounts[tab]}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* Open tickets grid */}
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
+              {filteredOrders.map((order) => (
+                <button
+                  key={order.id}
+                  onClick={() => loadOrderIntoCart(order)}
+                  className={`flex flex-col gap-2 rounded-2xl border p-4 text-left transition-shadow hover:shadow-md ${
+                    CARD_TINTS[order.status]
+                  } ${cart.editingOrderId === order.id ? "ring-2 ring-teal-500" : ""}`}
+                >
+                  <div className="flex items-center justify-between text-sm font-semibold text-neutral-800">
+                    <span>Order #{order.orderNumber}</span>
+                    <span className="flex items-center gap-1 text-neutral-500">
+                      {order.channel === "Delivery" && <Bike className="h-3.5 w-3.5 text-blue-500" />}
+                      {order.channel === "Take Away" && <ShoppingBag className="h-3.5 w-3.5 text-amber-500" />}
+                      {order.tableNumber ? `Table ${String(order.tableNumber).padStart(2, "0")}` : order.channel}
                     </span>
                   </div>
+                  <div className="text-sm text-neutral-500">Item: {order.items.reduce((s, i) => s + i.qty, 0)}X</div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-neutral-400">{order.createdLabel}</span>
+                    <div className="flex items-center gap-1.5">
+                      {!order.paymentMethod && order.status !== "Voided" && (
+                        <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                          Unpaid
+                        </span>
+                      )}
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_STYLES[order.status]}`}>
+                        {order.status}
+                      </span>
+                    </div>
+                  </div>
+                </button>
+              ))}
+              {filteredOrders.length === 0 && (
+                <div className="col-span-full flex h-32 items-center justify-center text-sm text-neutral-400">
+                  No open tickets in this view.
                 </div>
-              </button>
-            ))}
-          </div>
-          {filteredOrders.length > 3 && (
-            <button
-              onClick={() => scroll(queueRef, 1)}
-              className="absolute -right-3 top-1/2 hidden -translate-y-1/2 rounded-full border border-neutral-200 bg-white p-1.5 shadow-md lg:flex"
-            >
-              <ChevronRight className="h-4 w-4 text-neutral-500" />
-            </button>
-          )}
-        </div>
+              )}
+            </div>
+          </>
+        )}
 
-        {/* Menu categories */}
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-neutral-900">Foodies Menu</h2>
-          <div className="hidden items-center gap-1.5 sm:flex">
-            <button onClick={() => scroll(menuRef, -1)} className="rounded-full border border-neutral-200 p-1.5 hover:bg-neutral-50">
-              <ChevronLeft className="h-4 w-4 text-neutral-500" />
-            </button>
-            <button onClick={() => scroll(menuRef, 1)} className="rounded-full border border-neutral-200 p-1.5 hover:bg-neutral-50">
-              <ChevronRight className="h-4 w-4 text-neutral-500" />
-            </button>
-          </div>
-        </div>
-        <div ref={menuRef} className="mb-6 flex gap-3 overflow-x-auto pb-1 scroll-smooth">
-          <MenuTab
-            active={menuCategory === "all"}
-            icon="all"
-            label="All Menu"
-            count={dishes.length}
-            onClick={() => setMenuCategory("all")}
+        {view === "tables" && (
+          <TablesOverview
+            tables={tables}
+            orders={orders}
+            area={tablesArea}
+            setArea={setTablesArea}
+            cartTableId={cart.tableId}
+            onSelect={handleTableSelect}
           />
-          {categories.map((c) => (
-            <MenuTab
-              key={c.id}
-              active={menuCategory === c.id}
-              icon={c.icon}
-              label={c.name}
-              count={dishes.filter((d) => d.categoryId === c.id).length}
-              onClick={() => setMenuCategory(c.id)}
-            />
-          ))}
-        </div>
-
-        {/* Dish grid */}
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
-          {menuDishes.map((dish) => {
-            const qty = qtyFor(dish.id);
-            const price = priceFor(dish);
-            return (
-              <div
-                key={dish.id}
-                className={`flex flex-col rounded-2xl border bg-white p-4 transition-shadow hover:shadow-md ${
-                  qty > 0 ? "border-teal-400 ring-1 ring-teal-100" : "border-neutral-200"
-                }`}
-              >
-                {dish.imageUrl ? (
-                  <img src={dish.imageUrl} alt={dish.name} className="mb-3 h-14 w-14 rounded-xl object-cover" />
-                ) : (
-                  <div
-                    className="mb-3 flex h-14 w-14 items-center justify-center rounded-full text-2xl"
-                    style={{ backgroundColor: dish.color }}
-                  >
-                    {dish.emoji}
-                  </div>
-                )}
-                <div className="text-xs text-neutral-400">
-                  {categories.find((c) => c.id === dish.categoryId)?.name}
-                </div>
-                <div className="mb-2 line-clamp-1 font-semibold text-neutral-900">{dish.name}</div>
-                <div className="mt-auto flex items-center justify-between">
-                  <span className="font-semibold text-neutral-800">
-                    {formatMoney(price, currencySymbol)}
-                    {price !== dish.price && <span className="ml-1 text-[10px] font-normal text-teal-600">({cart.channel})</span>}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => decrementCartItem(dish.id)}
-                      disabled={qty === 0}
-                      className="flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 text-neutral-500 hover:bg-neutral-50 disabled:opacity-30"
-                    >
-                      <Minus className="h-3.5 w-3.5" />
-                    </button>
-                    <span className="w-4 text-center text-sm font-semibold text-neutral-800">{qty}</span>
-                    <button
-                      onClick={() => addToCart(dish)}
-                      className="flex h-7 w-7 items-center justify-center rounded-full bg-teal-600 text-white hover:bg-teal-700"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-          {menuDishes.length === 0 && (
-            <div className="col-span-full py-16 text-center text-sm text-neutral-400">No dishes in this category.</div>
-          )}
-        </div>
+        )}
       </div>
 
       {/* Desktop cart panel */}
@@ -1105,8 +1172,14 @@ function CartPanel({
             }
             className="flex-1 rounded-xl bg-teal-600 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {cart.editingOrderId ? "Update Order" : isFullyPaid ? "Place Order" : "Send to Kitchen"} ·{" "}
-            {formatMoney(total, currencySymbol)}
+            {cart.editingOrderId
+              ? isFullyPaid
+                ? "Confirm Payment"
+                : "Update Order"
+              : isFullyPaid
+                ? "Place Order"
+                : "Send to Kitchen"}{" "}
+            · {formatMoney(total, currencySymbol)}
           </button>
           {editingOrder && editingOrder.status !== "Voided" && editingOrder.status !== "Served" && (
             <button
@@ -1234,6 +1307,139 @@ function CustomItemModal({
             Add to Order
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function TopViewTab({
+  active,
+  icon: Icon,
+  label,
+  count,
+  onClick,
+}: {
+  active: boolean;
+  icon: typeof ShoppingBag;
+  label: string;
+  count?: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-colors ${
+        active ? "bg-teal-600 text-white" : "text-neutral-500 hover:bg-neutral-50"
+      }`}
+    >
+      <Icon className="h-4 w-4" />
+      {label}
+      {typeof count === "number" && (
+        <span
+          className={`flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-xs font-semibold ${
+            active ? "bg-white/20 text-white" : "bg-neutral-100 text-neutral-500"
+          }`}
+        >
+          {count}
+        </span>
+      )}
+    </button>
+  );
+}
+
+const TABLE_STATUS_DOT: Record<RestaurantTable["status"], string> = {
+  available: "bg-indigo-400",
+  reserved: "bg-orange-400",
+  "on-dine": "bg-teal-500",
+};
+
+const TABLE_STATUS_CARD: Record<RestaurantTable["status"], string> = {
+  available: "bg-indigo-50 border-indigo-200 hover:border-indigo-400",
+  reserved: "bg-orange-50 border-orange-200 hover:border-orange-400",
+  "on-dine": "bg-teal-50 border-teal-200 hover:border-teal-400",
+};
+
+function TablesOverview({
+  tables,
+  orders,
+  area,
+  setArea,
+  cartTableId,
+  onSelect,
+}: {
+  tables: RestaurantTable[];
+  orders: Order[];
+  area: (typeof TABLE_AREAS)[number];
+  setArea: (a: (typeof TABLE_AREAS)[number]) => void;
+  cartTableId: string | null;
+  onSelect: (table: RestaurantTable) => void;
+}) {
+  const areaTables = tables.filter((t) => t.area === area);
+
+  return (
+    <div>
+      <div className="mb-4 flex items-center gap-2 rounded-xl border border-neutral-200 bg-white p-1">
+        {TABLE_AREAS.map((a) => (
+          <button
+            key={a}
+            onClick={() => setArea(a)}
+            className={`flex-1 rounded-lg py-2 text-sm font-medium transition-colors ${
+              area === a ? "bg-teal-600 text-white" : "text-neutral-500 hover:bg-neutral-50"
+            }`}
+          >
+            {a}
+          </button>
+        ))}
+      </div>
+
+      <div className="mb-4 flex items-center gap-5 text-xs text-neutral-500">
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-indigo-400" /> Available
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-orange-400" /> Reserved
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-teal-500" /> On Dine
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
+        {areaTables.map((table) => {
+          const order = orders.find(
+            (o) => o.tableId === table.id && o.status !== "Voided" && !isOrderClosedOut(o)
+          );
+          return (
+            <button
+              key={table.id}
+              onClick={() => onSelect(table)}
+              className={`flex flex-col items-center justify-center gap-1 rounded-2xl border-2 p-4 transition-transform hover:scale-[1.02] ${
+                TABLE_STATUS_CARD[table.status]
+              } ${table.id === cartTableId ? "ring-2 ring-teal-500" : ""}`}
+            >
+              <span className="flex items-center gap-1.5 text-sm font-semibold text-neutral-800">
+                <span className={`h-2 w-2 rounded-full ${TABLE_STATUS_DOT[table.status]}`} />
+                Table #{table.number}
+              </span>
+              <span className="flex items-center gap-1 text-xs text-neutral-500">
+                <Armchair className="h-3 w-3" /> {table.capacity}
+                {table.status === "on-dine" && (
+                  <span className="ml-1 flex items-center gap-0.5">
+                    <Users className="h-3 w-3" /> {table.seated}
+                  </span>
+                )}
+              </span>
+              {order && (
+                <span className={`mt-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[order.status]}`}>
+                  #{order.orderNumber} · {order.status}
+                </span>
+              )}
+            </button>
+          );
+        })}
+        {areaTables.length === 0 && (
+          <div className="col-span-full py-16 text-center text-sm text-neutral-400">No tables in this area.</div>
+        )}
       </div>
     </div>
   );
