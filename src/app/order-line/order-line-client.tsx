@@ -696,15 +696,6 @@ function CartPanel({
   onClose,
   showClose,
 }: CartPanelProps) {
-  function addPaymentLine(method: string) {
-    setCart((prev) => {
-      if (prev.payments.some((p) => p.method === method)) return prev;
-      const applied = prev.payments.reduce((s, p) => s + p.amount, 0);
-      const remaining = Math.max(0, Math.round((total - applied) * 100) / 100);
-      return { ...prev, payments: [...prev.payments, { method, amount: remaining }] };
-    });
-  }
-
   function updatePaymentAmount(method: string, amount: number) {
     setCart((prev) => ({
       ...prev,
@@ -714,6 +705,17 @@ function CartPanel({
 
   function removePaymentLine(method: string) {
     setCart((prev) => ({ ...prev, payments: prev.payments.filter((p) => p.method !== method) }));
+  }
+
+  function togglePaymentLine(method: string) {
+    setCart((prev) => {
+      if (prev.payments.some((p) => p.method === method)) {
+        return { ...prev, payments: prev.payments.filter((p) => p.method !== method) };
+      }
+      const applied = prev.payments.reduce((s, p) => s + p.amount, 0);
+      const remaining = Math.max(0, Math.round((total - applied) * 100) / 100);
+      return { ...prev, payments: [...prev.payments, { method, amount: remaining }] };
+    });
   }
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -994,14 +996,14 @@ function CartPanel({
         <div className="mt-4">
           <h3 className="mb-2 text-sm font-semibold text-neutral-900">Payment Method</h3>
           <p className="mb-2 text-xs text-neutral-400">
-            Tap a method to apply it — tap more than one to split the bill across them.
+            Tap a method to apply it, tap again to cancel it — tap more than one to split the bill across them.
           </p>
           <div className="grid grid-cols-3 gap-2">
             <PaymentButton
               icon={Wallet}
               label="Cash"
               active={cart.payments.some((p) => p.method === "Cash")}
-              onClick={() => addPaymentLine("Cash")}
+              onClick={() => togglePaymentLine("Cash")}
             />
             {paymentTerminals.map((t) => (
               <PaymentButton
@@ -1009,7 +1011,7 @@ function CartPanel({
                 icon={CreditCard}
                 label={t.name}
                 active={cart.payments.some((p) => p.method === t.name)}
-                onClick={() => addPaymentLine(t.name)}
+                onClick={() => togglePaymentLine(t.name)}
               />
             ))}
           </div>
