@@ -131,3 +131,33 @@ export async function clearTillPinAction(userId: string) {
     .where(and(eq(users.id, userId), eq(users.restaurantId, restaurantId)));
   revalidatePath("/settings");
 }
+
+// Kitchen Display PINs are looked up with no restaurant context (the kitchen-login screen
+// only has a 6-digit code to go on), so they must be unique across the whole platform.
+export async function generateKitchenPinAction(userId: string) {
+  const { session, restaurantId } = await requireRestaurantContext();
+  assertAdmin(session);
+
+  let pin = generatePin();
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.kitchenPin, pin)).limit(1);
+    if (!existing) break;
+    pin = generatePin();
+  }
+
+  await db
+    .update(users)
+    .set({ kitchenPin: pin })
+    .where(and(eq(users.id, userId), eq(users.restaurantId, restaurantId)));
+  revalidatePath("/settings");
+}
+
+export async function clearKitchenPinAction(userId: string) {
+  const { session, restaurantId } = await requireRestaurantContext();
+  assertAdmin(session);
+  await db
+    .update(users)
+    .set({ kitchenPin: null })
+    .where(and(eq(users.id, userId), eq(users.restaurantId, restaurantId)));
+  revalidatePath("/settings");
+}

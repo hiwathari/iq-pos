@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef, useState, useTransition } from "reac
 import { KeyRound, Pencil, Plus, X } from "lucide-react";
 import {
   createStaffAction,
+  generateKitchenPinAction,
   generateTillPinAction,
   toggleStaffActiveAction,
   updateStaffCredentialsAction,
@@ -19,6 +20,7 @@ interface StaffRow {
   role: Role;
   active: boolean;
   tillPin: string | null;
+  kitchenPin: string | null;
 }
 
 const initialState: CreateStaffState = {};
@@ -35,9 +37,15 @@ export function StaffClient({ staff }: { staff: StaffRow[] }) {
     });
   }
 
-  function handleGeneratePin(userId: string) {
+  function handleGenerateTillPin(userId: string) {
     startTransition(async () => {
       await generateTillPinAction(userId);
+    });
+  }
+
+  function handleGenerateKitchenPin(userId: string) {
+    startTransition(async () => {
+      await generateKitchenPinAction(userId);
     });
   }
 
@@ -47,8 +55,10 @@ export function StaffClient({ staff }: { staff: StaffRow[] }) {
         <div>
           <h2 className="text-lg font-semibold text-neutral-900">Team</h2>
           <p className="text-sm text-neutral-500">
-            Give a staff member a Till PIN so they can unlock the Till on a shared device at{" "}
-            <span className="font-mono text-neutral-700">/till-login</span> without a full sign-in.
+            Give a staff member a Till PIN and a Kitchen PIN so they can unlock the Till (
+            <span className="font-mono text-neutral-700">/till-login</span>) or the Kitchen Display (
+            <span className="font-mono text-neutral-700">/kitchen-login</span>) on a shared device without a full
+            sign-in.
           </p>
         </div>
         <button
@@ -68,6 +78,7 @@ export function StaffClient({ staff }: { staff: StaffRow[] }) {
               <th className="px-5 py-3">Role</th>
               <th className="px-5 py-3">Status</th>
               <th className="px-5 py-3">Till PIN</th>
+              <th className="px-5 py-3">Kitchen PIN</th>
               <th className="px-5 py-3 text-right">Actions</th>
             </tr>
           </thead>
@@ -93,8 +104,15 @@ export function StaffClient({ staff }: { staff: StaffRow[] }) {
                     <span className="text-xs text-neutral-400">Not set</span>
                   )}
                 </td>
+                <td className="px-5 py-3">
+                  {s.kitchenPin ? (
+                    <span className="font-mono text-sm font-semibold tracking-widest text-neutral-800">{s.kitchenPin}</span>
+                  ) : (
+                    <span className="text-xs text-neutral-400">Not set</span>
+                  )}
+                </td>
                 <td className="px-5 py-3 text-right">
-                  <div className="flex justify-end gap-2">
+                  <div className="flex flex-wrap justify-end gap-2">
                     <button
                       onClick={() => setEditingStaff(s)}
                       className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
@@ -102,10 +120,16 @@ export function StaffClient({ staff }: { staff: StaffRow[] }) {
                       <Pencil className="h-3.5 w-3.5" /> Edit
                     </button>
                     <button
-                      onClick={() => handleGeneratePin(s.id)}
+                      onClick={() => handleGenerateTillPin(s.id)}
                       className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
                     >
-                      <KeyRound className="h-3.5 w-3.5" /> {s.tillPin ? "Regenerate" : "Generate PIN"}
+                      <KeyRound className="h-3.5 w-3.5" /> {s.tillPin ? "Regen Till" : "Till PIN"}
+                    </button>
+                    <button
+                      onClick={() => handleGenerateKitchenPin(s.id)}
+                      className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
+                    >
+                      <KeyRound className="h-3.5 w-3.5" /> {s.kitchenPin ? "Regen Kitchen" : "Kitchen PIN"}
                     </button>
                     <button
                       onClick={() => handleToggle(s.id, !s.active)}
@@ -119,7 +143,7 @@ export function StaffClient({ staff }: { staff: StaffRow[] }) {
             ))}
             {staff.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-5 py-10 text-center text-neutral-400">
+                <td colSpan={7} className="px-5 py-10 text-center text-neutral-400">
                   No staff accounts yet.
                 </td>
               </tr>

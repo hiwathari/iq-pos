@@ -34,8 +34,8 @@ const CREDENTIALS = {
     name: "Ajnas",
     password: "#NLLKpFc@f5Xg7",
     tillPin: "891906",
+    kitchenPin: "934236",
   },
-  kitchenPin: "934236",
 };
 
 async function wipeAllData() {
@@ -73,7 +73,6 @@ async function main() {
     id: restaurantId,
     name: CREDENTIALS.restaurant.name,
     slug: CREDENTIALS.restaurant.slug,
-    kitchenPin: CREDENTIALS.kitchenPin,
   });
 
   await db.insert(schema.users).values([
@@ -93,6 +92,7 @@ async function main() {
       role: "staff",
       restaurantId,
       tillPin: CREDENTIALS.staff.tillPin,
+      kitchenPin: CREDENTIALS.staff.kitchenPin,
     },
   ]);
 
@@ -131,8 +131,8 @@ async function main() {
   console.log(`  Restaurant Admin ${CREDENTIALS.admin.email} / ${CREDENTIALS.admin.password}`);
   console.log(`  Staff            ${CREDENTIALS.staff.email} / ${CREDENTIALS.staff.password}`);
   console.log(`\nDevice PINs (enter at /till-login or /kitchen-login, no email/password needed):`);
-  console.log(`  Till PIN (${CREDENTIALS.staff.name})   ${CREDENTIALS.staff.tillPin}`);
-  console.log(`  Kitchen Display PIN     ${CREDENTIALS.kitchenPin}`);
+  console.log(`  Till PIN (${CREDENTIALS.staff.name})    ${CREDENTIALS.staff.tillPin}`);
+  console.log(`  Kitchen PIN (${CREDENTIALS.staff.name})  ${CREDENTIALS.staff.kitchenPin}`);
 }
 
 main()

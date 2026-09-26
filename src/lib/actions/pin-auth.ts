@@ -53,16 +53,19 @@ export async function kitchenPinLoginAction(
   const pin = readPin(formData);
   if (!pin) return { error: "Enter the 6-digit code." };
 
-  const [restaurant] = await db.select().from(restaurants).where(eq(restaurants.kitchenPin, pin)).limit(1);
+  const [staff] = await db.select().from(users).where(eq(users.kitchenPin, pin)).limit(1);
+  if (!staff || !staff.active || !staff.restaurantId) return { error: "Incorrect code." };
+
+  const [restaurant] = await db.select().from(restaurants).where(eq(restaurants.id, staff.restaurantId)).limit(1);
   if (!restaurant || !restaurant.active) return { error: "Incorrect code." };
 
   await createSession(
     {
-      userId: `kitchen:${restaurant.id}`,
-      email: "",
-      name: "Kitchen Display",
+      userId: staff.id,
+      email: staff.email,
+      name: staff.name,
       role: "kitchen_display",
-      restaurantId: restaurant.id,
+      restaurantId: staff.restaurantId,
     },
     DEVICE_SESSION_SECONDS
   );

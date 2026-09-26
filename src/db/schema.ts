@@ -3,29 +3,23 @@ import { int, sqliteTable, text, real, uniqueIndex } from "drizzle-orm/sqlite-co
 const id = (name = "id") => text(name).primaryKey().$defaultFn(() => crypto.randomUUID());
 const timestamp = (name: string) => int(name).notNull().$defaultFn(() => Date.now());
 
-export const restaurants = sqliteTable(
-  "restaurants",
-  {
-    id: id(),
-    name: text("name").notNull(),
-    slug: text("slug").notNull().unique(),
-    active: int("active", { mode: "boolean" }).notNull().default(true),
-    currencySymbol: text("currency_symbol").notNull().default("£"),
-    // 6-digit code that unlocks the Kitchen Display on a shared device via /kitchen-login, no staff login required.
-    kitchenPin: text("kitchen_pin"),
-    // Minutes an order can sit before its Kitchen Display timer reads fully "red". Color bands
-    // (green/yellow/orange/red) are computed as fractions of this value — see kitchen-client.tsx.
-    kitchenTimerLimitMinutes: int("kitchen_timer_limit_minutes").notNull().default(30),
-    // Printed on the invoice/ticket header — all optional, editable in Settings.
-    invoiceAddress: text("invoice_address"),
-    invoicePhone: text("invoice_phone"),
-    invoiceWebsite: text("invoice_website"),
-    invoiceLogoUrl: text("invoice_logo_url"),
-    invoiceFooterText: text("invoice_footer_text").notNull().default("Thank you for dining with us!"),
-    createdAt: timestamp("created_at"),
-  },
-  (table) => [uniqueIndex("restaurants_kitchen_pin_idx").on(table.kitchenPin)]
-);
+export const restaurants = sqliteTable("restaurants", {
+  id: id(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  active: int("active", { mode: "boolean" }).notNull().default(true),
+  currencySymbol: text("currency_symbol").notNull().default("£"),
+  // Minutes an order can sit before its Kitchen Display timer reads fully "red". Color bands
+  // (green/yellow/orange/red) are computed as fractions of this value — see kitchen-client.tsx.
+  kitchenTimerLimitMinutes: int("kitchen_timer_limit_minutes").notNull().default(30),
+  // Printed on the invoice/ticket header — all optional, editable in Settings.
+  invoiceAddress: text("invoice_address"),
+  invoicePhone: text("invoice_phone"),
+  invoiceWebsite: text("invoice_website"),
+  invoiceLogoUrl: text("invoice_logo_url"),
+  invoiceFooterText: text("invoice_footer_text").notNull().default("Thank you for dining with us!"),
+  createdAt: timestamp("created_at"),
+});
 
 export const users = sqliteTable(
   "users",
@@ -39,9 +33,16 @@ export const users = sqliteTable(
     active: int("active", { mode: "boolean" }).notNull().default(true),
     // 6-digit code, set by the restaurant admin, that logs this staff member straight into the Till via /till-login.
     tillPin: text("till_pin"),
+    // 6-digit code, set by the restaurant admin, that logs this staff member straight into the
+    // Kitchen Display via /kitchen-login — each staff member gets their own, like the Till PIN.
+    kitchenPin: text("kitchen_pin"),
     createdAt: timestamp("created_at"),
   },
-  (table) => [uniqueIndex("users_email_idx").on(table.email), uniqueIndex("users_till_pin_idx").on(table.tillPin)]
+  (table) => [
+    uniqueIndex("users_email_idx").on(table.email),
+    uniqueIndex("users_till_pin_idx").on(table.tillPin),
+    uniqueIndex("users_kitchen_pin_idx").on(table.kitchenPin),
+  ]
 );
 
 export const categories = sqliteTable("categories", {

@@ -6,7 +6,6 @@ import { redirect } from "next/navigation";
 import { db } from "@/db/client";
 import { categories, paymentTerminals, printers, restaurants, users } from "@/db/schema";
 import { hashPassword, setImpersonatedRestaurant } from "@/lib/auth";
-import { generatePin } from "@/lib/pin";
 import { assertAdmin, requireRestaurantContext, requireSession } from "@/lib/scope";
 
 function slugify(name: string) {
@@ -95,23 +94,6 @@ export async function updateRestaurantCurrencyAction(currencySymbol: string) {
   revalidatePath("/pricing");
   revalidatePath("/reports");
   revalidatePath("/dashboard");
-}
-
-// The Kitchen Display PIN is looked up with no restaurant context (the kitchen-login
-// screen only has a 6-digit code to go on), so it must be unique across the platform.
-export async function generateKitchenPinAction() {
-  const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
-
-  let pin = generatePin();
-  for (let attempt = 0; attempt < 10; attempt++) {
-    const [existing] = await db.select({ id: restaurants.id }).from(restaurants).where(eq(restaurants.kitchenPin, pin)).limit(1);
-    if (!existing) break;
-    pin = generatePin();
-  }
-
-  await db.update(restaurants).set({ kitchenPin: pin }).where(eq(restaurants.id, restaurantId));
-  revalidatePath("/settings");
 }
 
 export async function updateKitchenTimerLimitAction(minutes: number) {

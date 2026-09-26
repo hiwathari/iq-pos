@@ -8,7 +8,6 @@ import { PrintersClient } from "./printers-client";
 import { PaymentTerminalsClient } from "./payment-terminals-client";
 import { IntegrationsClient } from "./integrations-client";
 import { RestaurantClient } from "./restaurant-client";
-import { KitchenAccessClient } from "./kitchen-access-client";
 import { InvoiceDetailsClient } from "./invoice-details-client";
 
 export default async function SettingsPage() {
@@ -46,9 +45,6 @@ export default async function SettingsPage() {
         </div>
         <div className="border-t border-neutral-100 pt-8">
           <StaffClient staff={staff} />
-        </div>
-        <div className="border-t border-neutral-100 pt-8">
-          <KitchenAccessClient kitchenPin={restaurant?.kitchenPin ?? null} />
         </div>
         <div className="border-t border-neutral-100 pt-8">
           <PrintersClient printers={printers} />
