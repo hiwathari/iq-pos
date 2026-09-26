@@ -3,8 +3,8 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Order, OrderStatus } from "@/lib/types";
-import { setOrderStatusAction, toggleOrderItemReadyAction, voidOrderAction } from "@/lib/actions/orders";
-import { Ban, Bike, Check, CheckCircle2, ChefHat, Clock, MapPin, Phone, ShoppingBag, X } from "lucide-react";
+import { markAllItemsReadyAction, setOrderStatusAction, toggleOrderItemReadyAction, voidOrderAction } from "@/lib/actions/orders";
+import { Ban, Bike, Check, CheckCheck, CheckCircle2, ChefHat, Clock, MapPin, Phone, ShoppingBag, X } from "lucide-react";
 
 const COLUMNS: { statuses: OrderStatus[]; label: string; accent: string; showTimer: boolean }[] = [
   { statuses: ["Wait List", "In Kitchen"], label: "Pending", accent: "border-t-amber-400", showTimer: true },
@@ -33,6 +33,13 @@ export function KitchenClient({ orders, timerLimitMinutes }: { orders: Order[]; 
   function toggleItem(orderId: string, dishId: string, ready: boolean) {
     startTransition(async () => {
       await toggleOrderItemReadyAction(orderId, dishId, ready);
+      router.refresh();
+    });
+  }
+
+  function markAllReady(orderId: string) {
+    startTransition(async () => {
+      await markAllItemsReadyAction(orderId);
       router.refresh();
     });
   }
@@ -85,6 +92,7 @@ export function KitchenClient({ orders, timerLimitMinutes }: { orders: Order[]; 
                     timerLimitMinutes={timerLimitMinutes}
                     onAdvance={(status) => advance(order.id, status)}
                     onToggleItem={(dishId, ready) => toggleItem(order.id, dishId, ready)}
+                    onMarkAllReady={() => markAllReady(order.id)}
                     onVoid={() => setVoidTarget(order)}
                   />
                 ))}
@@ -127,6 +135,7 @@ function OrderTicket({
   timerLimitMinutes,
   onAdvance,
   onToggleItem,
+  onMarkAllReady,
   onVoid,
 }: {
   order: Order;
@@ -134,6 +143,7 @@ function OrderTicket({
   timerLimitMinutes: number;
   onAdvance: (status: OrderStatus) => void;
   onToggleItem: (dishId: string, ready: boolean) => void;
+  onMarkAllReady: () => void;
   onVoid: () => void;
 }) {
   const elapsedMs = now !== null ? now - order.createdAt : null;
@@ -192,6 +202,15 @@ function OrderTicket({
         </div>
       )}
 
+      {itemsCheckable && !allItemsReady && order.items.length > 1 && (
+        <button
+          onClick={onMarkAllReady}
+          className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-teal-300 py-1.5 text-xs font-semibold text-teal-600 hover:bg-teal-50"
+        >
+          <CheckCheck className="h-3.5 w-3.5" /> Mark all items ready
+        </button>
+      )}
+
       <ul className="mb-3 space-y-1">
         {order.items.map((item) =>
           itemsCheckable ? (
@@ -247,7 +266,7 @@ function OrderTicket({
             onClick={() => onAdvance("Served")}
             className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-neutral-800 py-3 text-sm font-bold text-white active:scale-95"
           >
-            <CheckCircle2 className="h-4 w-4" /> Complete
+            <CheckCircle2 className="h-4 w-4" /> Mark Served
           </button>
         )}
         {order.status !== "Served" && (

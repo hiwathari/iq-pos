@@ -1,5 +1,7 @@
 "use client";
 
+import QRCode from "qrcode";
+
 export interface TicketData {
   orderNumber: string;
   tableNumber: number | null;
@@ -16,14 +18,20 @@ export interface TicketData {
   payments?: { method: string; amount: number }[];
   cashReceived?: number;
   changeDue?: number;
+  restaurantName: string;
+  invoiceAddress?: string;
+  invoicePhone?: string;
+  invoiceWebsite?: string;
+  invoiceLogoUrl?: string;
+  invoiceFooterText: string;
 }
 
-// Opens a small formatted ticket in a new window and triggers the browser's print dialog.
+// Opens a small formatted invoice in a new window and triggers the browser's print dialog.
 // This prints to whatever printer is registered at the OS level (including Bluetooth/
 // network/WiFi thermal printers paired outside the browser) — a web page cannot pair
 // hardware itself, but it can print to anything the OS already knows about.
-export function printTicket(ticket: TicketData) {
-  const win = window.open("", "_blank", "width=380,height=600");
+export async function printTicket(ticket: TicketData) {
+  const win = window.open("", "_blank", "width=380,height=700");
   if (!win) return;
 
   const money = (amount: number) => `${ticket.currencySymbol}${amount.toFixed(2)}`;
@@ -39,14 +47,25 @@ export function printTicket(ticket: TicketData) {
     ?.map((p) => `<tr><td>Paid — ${escapeHtml(p.method)}</td><td class="right">${money(p.amount)}</td></tr>`)
     .join("");
 
+  // QR points at the restaurant's website when one is set, otherwise falls back to a plain
+  // vCard-style contact block so scanning the invoice is still useful without a website.
+  const qrTarget =
+    ticket.invoiceWebsite ||
+    (ticket.invoicePhone ? `TEL:${ticket.invoicePhone}` : null);
+  const qrDataUrl = qrTarget
+    ? await QRCode.toDataURL(qrTarget, { margin: 1, width: 120 }).catch(() => null)
+    : null;
+
   win.document.write(`<!DOCTYPE html>
 <html>
 <head>
-<title>Order #${escapeHtml(ticket.orderNumber)}</title>
+<title>Invoice #${escapeHtml(ticket.orderNumber)}</title>
 <style>
   * { box-sizing: border-box; }
   body { font-family: 'Courier New', monospace; width: 300px; margin: 0 auto; padding: 16px; color: #111; }
+  .logo { display: block; max-width: 140px; max-height: 70px; margin: 0 auto 8px; }
   h1 { font-size: 16px; text-align: center; margin: 0 0 4px; }
+  .restaurant-meta { text-align: center; font-size: 11px; color: #555; line-height: 1.5; margin-bottom: 10px; }
   .meta { text-align: center; font-size: 12px; color: #555; margin-bottom: 12px; }
   .customer { text-align: center; font-size: 12px; color: #333; margin-bottom: 10px; line-height: 1.4; }
   .note { font-size: 11px; font-style: italic; color: #555; }
@@ -55,12 +74,24 @@ export function printTicket(ticket: TicketData) {
   .right { text-align: right; }
   hr { border: none; border-top: 1px dashed #999; margin: 8px 0; }
   .total { font-weight: bold; font-size: 15px; }
-  .footer { text-align: center; font-size: 11px; color: #777; margin-top: 12px; }
+  .qr-wrap { text-align: center; margin-top: 14px; }
+  .qr-wrap img { width: 100px; height: 100px; }
+  .footer { text-align: center; font-size: 11px; color: #777; margin-top: 10px; white-space: pre-wrap; }
 </style>
 </head>
 <body>
-  <h1>IQ POS</h1>
-  <div class="meta">Order #${escapeHtml(ticket.orderNumber)} &middot; ${escapeHtml(ticket.channel)}${
+  ${ticket.invoiceLogoUrl ? `<img class="logo" src="${escapeHtml(ticket.invoiceLogoUrl)}" alt="" />` : ""}
+  <h1>${escapeHtml(ticket.restaurantName)}</h1>
+  ${
+    ticket.invoiceAddress || ticket.invoicePhone || ticket.invoiceWebsite
+      ? `<div class="restaurant-meta">
+          ${ticket.invoiceAddress ? `<div>${escapeHtml(ticket.invoiceAddress)}</div>` : ""}
+          ${ticket.invoicePhone ? `<div>${escapeHtml(ticket.invoicePhone)}</div>` : ""}
+          ${ticket.invoiceWebsite ? `<div>${escapeHtml(ticket.invoiceWebsite)}</div>` : ""}
+        </div>`
+      : ""
+  }
+  <div class="meta">Invoice #${escapeHtml(ticket.orderNumber)} &middot; ${escapeHtml(ticket.channel)}${
     ticket.tableNumber ? ` &middot; Table ${ticket.tableNumber}` : ""
   }</div>
   ${
@@ -94,7 +125,8 @@ export function printTicket(ticket: TicketData) {
         </table>`
       : ""
   }
-  <div class="footer">Thank you!</div>
+  ${qrDataUrl ? `<div class="qr-wrap"><img src="${qrDataUrl}" alt="QR code" /></div>` : ""}
+  <div class="footer">${escapeHtml(ticket.invoiceFooterText)}</div>
   <script>window.onload = () => { window.print(); }<\/script>
 </body>
 </html>`);

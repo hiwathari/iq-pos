@@ -28,6 +28,12 @@ export default async function OrderLinePage() {
         orders={orders}
         paymentTerminals={paymentTerminals.filter((t) => t.active)}
         currencySymbol={restaurant?.currencySymbol ?? "£"}
+        restaurantName={restaurant?.name ?? "IQ POS"}
+        invoiceAddress={restaurant?.invoiceAddress ?? undefined}
+        invoicePhone={restaurant?.invoicePhone ?? undefined}
+        invoiceWebsite={restaurant?.invoiceWebsite ?? undefined}
+        invoiceLogoUrl={restaurant?.invoiceLogoUrl ?? undefined}
+        invoiceFooterText={restaurant?.invoiceFooterText ?? "Thank you for dining with us!"}
       />
     </AppShell>
   );

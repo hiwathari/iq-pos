@@ -123,6 +123,31 @@ export async function updateKitchenTimerLimitAction(minutes: number) {
   revalidatePath("/kitchen");
 }
 
+export interface InvoiceDetailsInput {
+  invoiceAddress: string;
+  invoicePhone: string;
+  invoiceWebsite: string;
+  invoiceLogoUrl: string;
+  invoiceFooterText: string;
+}
+
+export async function updateInvoiceDetailsAction(input: InvoiceDetailsInput) {
+  const { session, restaurantId } = await requireRestaurantContext();
+  assertAdmin(session);
+  await db
+    .update(restaurants)
+    .set({
+      invoiceAddress: input.invoiceAddress.trim() || null,
+      invoicePhone: input.invoicePhone.trim() || null,
+      invoiceWebsite: input.invoiceWebsite.trim() || null,
+      invoiceLogoUrl: input.invoiceLogoUrl.trim() || null,
+      invoiceFooterText: input.invoiceFooterText.trim() || "Thank you for dining with us!",
+    })
+    .where(eq(restaurants.id, restaurantId));
+  revalidatePath("/settings");
+  revalidatePath("/order-line");
+}
+
 export async function toggleRestaurantActiveAction(restaurantId: string, active: boolean) {
   const session = await requireSession();
   if (session.role !== "super_admin") throw new Error("Forbidden");

@@ -124,6 +124,23 @@ export async function toggleOrderItemReadyAction(orderId: string, dishId: string
   revalidatePath("/order-line");
 }
 
+// Shortcut for the Kitchen Display's "Mark all ready" — ticks every item on the order in one
+// write, as an alternative to checking them off one by one.
+export async function markAllItemsReadyAction(orderId: string) {
+  const { restaurantId } = await requireRestaurantContext();
+  const [order] = await db
+    .select()
+    .from(orders)
+    .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)))
+    .limit(1);
+  if (!order) return;
+
+  const items = order.items.map((i) => ({ ...i, ready: true }));
+  await db.update(orders).set({ items }).where(eq(orders.id, orderId));
+  revalidatePath("/kitchen");
+  revalidatePath("/order-line");
+}
+
 export async function setOrderStatusAction(orderId: string, status: OrderStatus) {
   const { restaurantId } = await requireRestaurantContext();
   await db

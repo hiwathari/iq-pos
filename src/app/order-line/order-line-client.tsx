@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CategoryIconView } from "@/components/category-icon";
 import type {
@@ -38,6 +38,8 @@ import {
   Phone,
   User,
   MessageSquarePlus,
+  Bell,
+  CheckCircle2,
 } from "lucide-react";
 
 const QUEUE_TABS = ["All", "Dine in", "Wait List", "Take Away", "Delivery", "Served"] as const;
@@ -101,6 +103,12 @@ export function OrderLineClient({
   orders,
   paymentTerminals,
   currencySymbol,
+  restaurantName,
+  invoiceAddress,
+  invoicePhone,
+  invoiceWebsite,
+  invoiceLogoUrl,
+  invoiceFooterText,
 }: {
   categories: Category[];
   dishes: Dish[];
@@ -108,6 +116,12 @@ export function OrderLineClient({
   orders: Order[];
   paymentTerminals: PaymentTerminal[];
   currencySymbol: string;
+  restaurantName: string;
+  invoiceAddress?: string;
+  invoicePhone?: string;
+  invoiceWebsite?: string;
+  invoiceLogoUrl?: string;
+  invoiceFooterText: string;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -136,6 +150,42 @@ export function OrderLineClient({
 
   const queueRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Poll for changes made elsewhere (kitchen marking an order ready, another till voiding
+  // one, etc.) so status notifications below stay current without a manual refresh.
+  useEffect(() => {
+    const id = setInterval(() => router.refresh(), 8000);
+    return () => clearInterval(id);
+  }, [router]);
+
+  const [notifications, setNotifications] = useState<{ id: string; text: string; status: OrderStatus }[]>([]);
+  const knownStatusRef = useRef<Map<string, OrderStatus> | null>(null);
+
+  useEffect(() => {
+    const known = knownStatusRef.current;
+    if (known) {
+      const newlyChanged: { id: string; text: string; status: OrderStatus }[] = [];
+      for (const order of orders) {
+        const prevStatus = known.get(order.id);
+        if (prevStatus && prevStatus !== order.status) {
+          const where = order.tableNumber ? `Table ${String(order.tableNumber).padStart(2, "0")}` : order.channel;
+          newlyChanged.push({
+            id: `${order.id}-${order.status}-${Date.now()}`,
+            text: `Order #${order.orderNumber} · ${where} is now ${order.status}`,
+            status: order.status,
+          });
+        }
+      }
+      if (newlyChanged.length > 0) {
+        // Deferred a tick so this doesn't set state synchronously within the effect body.
+        setTimeout(() => setNotifications((prev) => [...newlyChanged, ...prev].slice(0, 5)), 0);
+        newlyChanged.forEach((n) => {
+          setTimeout(() => setNotifications((prev) => prev.filter((x) => x.id !== n.id)), 7000);
+        });
+      }
+    }
+    knownStatusRef.current = new Map(orders.map((o) => [o.id, o.status]));
+  }, [orders]);
 
   const filteredOrders = useMemo(() => {
     return orders.filter((o) => {
@@ -311,6 +361,12 @@ export function OrderLineClient({
       payments: cart.payments.length > 1 ? cart.payments : undefined,
       cashReceived: cashLine ? cashReceivedAmount || undefined : undefined,
       changeDue: changeDue || undefined,
+      restaurantName,
+      invoiceAddress,
+      invoicePhone,
+      invoiceWebsite,
+      invoiceLogoUrl,
+      invoiceFooterText,
     });
   }
 
@@ -349,6 +405,25 @@ export function OrderLineClient({
 
   return (
     <div className="flex h-full min-h-0">
+      {/* Order status notifications */}
+      {notifications.length > 0 && (
+        <div className="pointer-events-none fixed right-4 top-4 z-[60] flex w-72 flex-col gap-2">
+          {notifications.map((n) => (
+            <div
+              key={n.id}
+              className={`pointer-events-auto flex items-start gap-2 rounded-xl border px-3.5 py-3 text-sm shadow-lg ${CARD_TINTS[n.status]}`}
+            >
+              {n.status === "Served" ? (
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-neutral-500" />
+              ) : (
+                <Bell className="mt-0.5 h-4 w-4 shrink-0 text-neutral-500" />
+              )}
+              <span className="text-neutral-700">{n.text}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Main column */}
       <div className="flex-1 overflow-y-auto p-6 pb-24 lg:pb-6">
         <h1 className="mb-4 text-xl font-semibold text-neutral-900">Till</h1>

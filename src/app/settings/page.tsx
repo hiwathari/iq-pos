@@ -9,6 +9,7 @@ import { PaymentTerminalsClient } from "./payment-terminals-client";
 import { IntegrationsClient } from "./integrations-client";
 import { RestaurantClient } from "./restaurant-client";
 import { KitchenAccessClient } from "./kitchen-access-client";
+import { InvoiceDetailsClient } from "./invoice-details-client";
 
 export default async function SettingsPage() {
   const { session, restaurantId } = await requireRestaurantContext();
@@ -34,6 +35,15 @@ export default async function SettingsPage() {
           currencySymbol={restaurant?.currencySymbol ?? "£"}
           kitchenTimerLimitMinutes={restaurant?.kitchenTimerLimitMinutes ?? 30}
         />
+        <div className="border-t border-neutral-100 pt-8">
+          <InvoiceDetailsClient
+            invoiceAddress={restaurant?.invoiceAddress ?? ""}
+            invoicePhone={restaurant?.invoicePhone ?? ""}
+            invoiceWebsite={restaurant?.invoiceWebsite ?? ""}
+            invoiceLogoUrl={restaurant?.invoiceLogoUrl ?? ""}
+            invoiceFooterText={restaurant?.invoiceFooterText ?? "Thank you for dining with us!"}
+          />
+        </div>
         <div className="border-t border-neutral-100 pt-8">
           <StaffClient staff={staff} />
         </div>

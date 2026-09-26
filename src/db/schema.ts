@@ -16,6 +16,12 @@ export const restaurants = sqliteTable(
     // Minutes an order can sit before its Kitchen Display timer reads fully "red". Color bands
     // (green/yellow/orange/red) are computed as fractions of this value — see kitchen-client.tsx.
     kitchenTimerLimitMinutes: int("kitchen_timer_limit_minutes").notNull().default(30),
+    // Printed on the invoice/ticket header — all optional, editable in Settings.
+    invoiceAddress: text("invoice_address"),
+    invoicePhone: text("invoice_phone"),
+    invoiceWebsite: text("invoice_website"),
+    invoiceLogoUrl: text("invoice_logo_url"),
+    invoiceFooterText: text("invoice_footer_text").notNull().default("Thank you for dining with us!"),
     createdAt: timestamp("created_at"),
   },
   (table) => [uniqueIndex("restaurants_kitchen_pin_idx").on(table.kitchenPin)]
