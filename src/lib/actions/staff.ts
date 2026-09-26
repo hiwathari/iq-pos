@@ -46,6 +46,52 @@ export async function createStaffAction(
   return {};
 }
 
+export interface UpdateStaffState {
+  error?: string;
+  success?: boolean;
+}
+
+// Lets an admin change a staff member's login name/email/password (e.g. after they change
+// their name or lose access to their old email) without needing raw database access.
+export async function updateStaffCredentialsAction(
+  _prevState: UpdateStaffState | undefined,
+  formData: FormData
+): Promise<UpdateStaffState> {
+  const { session, restaurantId } = await requireRestaurantContext();
+  assertAdmin(session);
+
+  const userId = String(formData.get("userId") || "");
+  const name = String(formData.get("name") || "").trim();
+  const email = String(formData.get("email") || "")
+    .trim()
+    .toLowerCase();
+  const password = String(formData.get("password") || "");
+
+  if (!userId || !name || !email) return { error: "Name and email are required." };
+  if (password && password.length < 8) return { error: "Password must be at least 8 characters." };
+
+  const [target] = await db
+    .select()
+    .from(users)
+    .where(and(eq(users.id, userId), eq(users.restaurantId, restaurantId)))
+    .limit(1);
+  if (!target) return { error: "Staff member not found." };
+
+  const [emailTaken] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  if (emailTaken && emailTaken.id !== userId) return { error: "That email is already in use." };
+
+  const updates: { name: string; email: string; passwordHash?: string } = { name, email };
+  if (password) updates.passwordHash = await hashPassword(password);
+
+  await db
+    .update(users)
+    .set(updates)
+    .where(and(eq(users.id, userId), eq(users.restaurantId, restaurantId)));
+
+  revalidatePath("/settings");
+  return { success: true };
+}
+
 export async function toggleStaffActiveAction(userId: string, active: boolean) {
   const { session, restaurantId } = await requireRestaurantContext();
   assertAdmin(session);

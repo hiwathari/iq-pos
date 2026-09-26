@@ -1,12 +1,14 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
-import { KeyRound, Plus, X } from "lucide-react";
+import { KeyRound, Pencil, Plus, X } from "lucide-react";
 import {
   createStaffAction,
   generateTillPinAction,
   toggleStaffActiveAction,
+  updateStaffCredentialsAction,
   type CreateStaffState,
+  type UpdateStaffState,
 } from "@/lib/actions/staff";
 import type { Role } from "@/lib/session";
 
@@ -20,10 +22,12 @@ interface StaffRow {
 }
 
 const initialState: CreateStaffState = {};
+const initialEditState: UpdateStaffState = {};
 
 export function StaffClient({ staff }: { staff: StaffRow[] }) {
   const [, startTransition] = useTransition();
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingStaff, setEditingStaff] = useState<StaffRow | null>(null);
 
   function handleToggle(userId: string, active: boolean) {
     startTransition(async () => {
@@ -92,6 +96,12 @@ export function StaffClient({ staff }: { staff: StaffRow[] }) {
                 <td className="px-5 py-3 text-right">
                   <div className="flex justify-end gap-2">
                     <button
+                      onClick={() => setEditingStaff(s)}
+                      className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
+                    >
+                      <Pencil className="h-3.5 w-3.5" /> Edit
+                    </button>
+                    <button
                       onClick={() => handleGeneratePin(s.id)}
                       className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
                     >
@@ -119,6 +129,7 @@ export function StaffClient({ staff }: { staff: StaffRow[] }) {
       </div>
 
       {modalOpen && <AddStaffModal onClose={() => setModalOpen(false)} />}
+      {editingStaff && <EditStaffModal staff={editingStaff} onClose={() => setEditingStaff(null)} />}
     </div>
   );
 }
@@ -193,6 +204,73 @@ function AddStaffModal({ onClose }: { onClose: () => void }) {
             className="w-full rounded-xl bg-teal-600 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {pending ? "Creating…" : "Create Account"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function EditStaffModal({ staff, onClose }: { staff: StaffRow; onClose: () => void }) {
+  const [state, formAction, pending] = useActionState(updateStaffCredentialsAction, initialEditState);
+  const wasPending = useRef(false);
+
+  useEffect(() => {
+    if (wasPending.current && !pending && state?.success) {
+      onClose();
+    }
+    wasPending.current = pending;
+  }, [pending, state, onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-neutral-900">Edit Staff Account</h2>
+          <button onClick={onClose} className="rounded-full p-1 text-neutral-400 hover:bg-neutral-100">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <form action={formAction} className="space-y-4">
+          <input type="hidden" name="userId" value={staff.id} />
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-neutral-500">Full Name</label>
+            <input
+              name="name"
+              required
+              defaultValue={staff.name}
+              className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-neutral-500">Login Email</label>
+            <input
+              name="email"
+              type="email"
+              required
+              defaultValue={staff.email}
+              className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-neutral-500">New Password</label>
+            <input
+              name="password"
+              type="password"
+              minLength={8}
+              placeholder="Leave blank to keep current password"
+              className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+            />
+          </div>
+
+          {state?.error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-600">{state.error}</p>}
+
+          <button
+            type="submit"
+            disabled={pending}
+            className="w-full rounded-xl bg-teal-600 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {pending ? "Saving…" : "Save Changes"}
           </button>
         </form>
       </div>
