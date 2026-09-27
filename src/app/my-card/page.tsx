@@ -38,11 +38,14 @@ export default async function MyCardPage() {
           <Logo />
         </div>
 
-        <div className="rounded-2xl border border-neutral-200 bg-white p-6 text-center shadow-sm">
-          <p className="text-sm text-neutral-500">{restaurant.name} Loyalty Card</p>
-          <h1 className="mt-1 text-lg font-semibold text-neutral-900">{member.name || member.contactValue}</h1>
-          <MyCardQr code={member.code} />
-          <div className="mt-3 font-mono text-xl font-bold tracking-wide text-neutral-900">{member.code}</div>
+        <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white text-center shadow-sm">
+          <div className="h-2 bg-[var(--brand)]" />
+          <div className="p-6">
+            <p className="text-sm font-medium text-[var(--brand-dark)]">{restaurant.name} Loyalty Card</p>
+            <h1 className="mt-1 text-lg font-semibold text-neutral-900">{member.name || member.contactValue}</h1>
+            <MyCardQr code={member.code} />
+            <div className="mt-3 font-mono text-xl font-bold tracking-wide text-[var(--brand-dark)]">{member.code}</div>
+          </div>
         </div>
 
         <div className="mt-6 rounded-2xl border border-neutral-200 bg-white p-5">

@@ -1,14 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import type { LoyaltyMember } from "@/lib/types";
 import { loyaltyQrDataUrl } from "@/lib/loyalty-qr";
 import { CreditCard, Mail, Phone, QrCode, X, Link as LinkIcon, Check } from "lucide-react";
 
+const noSubscription = () => () => {};
+
 export function LoyaltyClient({ members, restaurantSlug }: { members: LoyaltyMember[]; restaurantSlug: string }) {
   const [qrFor, setQrFor] = useState<LoyaltyMember | null>(null);
   const [copied, setCopied] = useState(false);
-  const loginUrl = restaurantSlug && typeof window !== "undefined" ? `${window.location.origin}/my-card/${restaurantSlug}/login` : "";
+  // The origin is only known in the browser — useSyncExternalStore reads it safely without the
+  // server/client mismatch a plain `typeof window` check in render would cause, since it returns
+  // the server snapshot ("") for the initial client render too, then updates after hydration.
+  const loginUrl = useSyncExternalStore(
+    noSubscription,
+    () => (restaurantSlug ? `${window.location.origin}/my-card/${restaurantSlug}/login` : ""),
+    () => ""
+  );
 
   function copyLoginUrl() {
     if (!loginUrl) return;
