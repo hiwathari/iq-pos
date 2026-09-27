@@ -23,7 +23,7 @@ export async function proxy(request: NextRequest) {
   if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
-    /\.(svg|png|jpg|jpeg|ico|webp)$/.test(pathname)
+    /\.(svg|png|jpg|jpeg|ico|webp|webmanifest)$/.test(pathname)
   ) {
     return NextResponse.next();
   }

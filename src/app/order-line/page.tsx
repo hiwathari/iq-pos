@@ -1,3 +1,4 @@
+import type { Metadata, Viewport } from "next";
 import { AppShell } from "@/components/app-shell";
 import { requireRestaurantContext } from "@/lib/scope";
 import { listCategories, listDishes } from "@/lib/data/menu";
@@ -6,6 +7,15 @@ import { listOrders } from "@/lib/data/orders";
 import { listPaymentTerminals } from "@/lib/data/printers";
 import { getRestaurant } from "@/lib/data/restaurants";
 import { OrderLineClient } from "./order-line-client";
+
+export const metadata: Metadata = {
+  title: "Till",
+  manifest: "/till-manifest.webmanifest",
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Till" },
+  icons: { apple: "/api/pwa-icon/till?size=180" },
+};
+
+export const viewport: Viewport = { themeColor: "#0d9488" };
 
 export default async function OrderLinePage() {
   const { restaurantId } = await requireRestaurantContext();
