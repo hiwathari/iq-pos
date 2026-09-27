@@ -3,6 +3,7 @@ import { AppShell } from "@/components/app-shell";
 import { requireRestaurantContext } from "@/lib/scope";
 import { listOrders } from "@/lib/data/orders";
 import { listCategories, listDishes } from "@/lib/data/menu";
+import { listPrinters } from "@/lib/data/printers";
 import { getRestaurant } from "@/lib/data/restaurants";
 import { KitchenClient } from "./kitchen-client";
 
@@ -17,10 +18,11 @@ export const viewport: Viewport = { themeColor: "#d97706" };
 
 export default async function KitchenPage() {
   const { restaurantId } = await requireRestaurantContext();
-  const [orders, categories, dishes, restaurant] = await Promise.all([
+  const [orders, categories, dishes, printers, restaurant] = await Promise.all([
     listOrders(restaurantId),
     listCategories(restaurantId),
     listDishes(restaurantId),
+    listPrinters(restaurantId),
     getRestaurant(restaurantId),
   ]);
 
@@ -30,6 +32,7 @@ export default async function KitchenPage() {
         orders={orders}
         categories={categories}
         dishes={dishes}
+        printers={printers}
         timerLimitMinutes={restaurant?.kitchenTimerLimitMinutes ?? 30}
       />
     </AppShell>

@@ -1,8 +1,18 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { formatOrderTimestamp, orderSequence, type Category, type Dish, type Order, type OrderStatus } from "@/lib/types";
+import {
+  formatOrderTimestamp,
+  orderSequence,
+  type Category,
+  type Dish,
+  type Order,
+  type OrderItem,
+  type OrderStatus,
+  type Printer,
+  type PrinterStation,
+} from "@/lib/types";
 import { setOrderStatusAction, toggleOrderItemReadyAction, voidOrderAction } from "@/lib/actions/orders";
 import { setDishStockAction } from "@/lib/actions/menu";
 import {
@@ -21,7 +31,12 @@ import {
   X,
   XCircle,
   PackageX,
+  Radio,
 } from "lucide-react";
+
+// The canonical station order the selector and any station badges are shown in.
+const STATION_ORDER: PrinterStation[] = ["Kitchen", "Bar", "Expo", "Receipt"];
+const STATION_KEY = "kds-station";
 
 // Served and voided tickets share one "Completed" column (green for served, red for voided)
 // and each only needs a brief moment there for staff to double-check — 30 seconds after being
@@ -49,11 +64,13 @@ export function KitchenClient({
   orders,
   categories,
   dishes,
+  printers,
   timerLimitMinutes,
 }: {
   orders: Order[];
   categories: Category[];
   dishes: Dish[];
+  printers: Printer[];
   timerLimitMinutes: number;
 }) {
   const router = useRouter();
@@ -62,6 +79,34 @@ export function KitchenClient({
   const [now, setNow] = useState(() => Date.now());
   const [fontScaleIndex, setFontScaleIndex] = useState(DEFAULT_FONT_SCALE_INDEX);
   const [stockModalOpen, setStockModalOpen] = useState(false);
+  const [station, setStation] = useState<PrinterStation | "All">("All");
+
+  // Which stations this restaurant actually has printers for — a restaurant running a single
+  // Kitchen printer never sees a selector at all, since there's nothing to route between yet.
+  const availableStations = useMemo(
+    () => STATION_ORDER.filter((s) => printers.some((p) => p.station === s)),
+    [printers]
+  );
+
+  const dishesById = useMemo(() => new Map(dishes.map((d) => [d.id, d])), [dishes]);
+  const categoriesById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
+  const printersById = useMemo(() => new Map(printers.map((p) => [p.id, p])), [printers]);
+
+  // Resolves the physical station an item routes to — per-dish printer, falling back to its
+  // category's printer, same precedence as everywhere else this pairing is used (Till, Manage
+  // Dishes). A custom/unlisted item resolves to null and is treated as unrouted, never hidden.
+  function resolveItemStation(item: OrderItem): PrinterStation | null {
+    const dish = dishesById.get(item.dishId);
+    const printerId = dish?.printerId ?? (dish ? categoriesById.get(dish.categoryId)?.printerId : undefined);
+    if (!printerId) return null;
+    return printersById.get(printerId)?.station ?? null;
+  }
+
+  function itemMatchesStation(item: OrderItem) {
+    if (station === "All") return true;
+    const itemStation = resolveItemStation(item);
+    return itemStation === null || itemStation === station;
+  }
 
   useEffect(() => {
     try {
@@ -74,6 +119,26 @@ export function KitchenClient({
       // Storage unavailable (private mode, locked-down kiosk browser) — just use the default.
     }
   }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STATION_KEY);
+      if (raw && (raw === "All" || STATION_ORDER.includes(raw as PrinterStation))) {
+        setTimeout(() => setStation(raw as PrinterStation | "All"), 0);
+      }
+    } catch {
+      // Storage unavailable — this screen just shows every station, same as before.
+    }
+  }, []);
+
+  function selectStation(next: PrinterStation | "All") {
+    setStation(next);
+    try {
+      localStorage.setItem(STATION_KEY, next);
+    } catch {
+      // Ignore — the selection still applies for this session even if it can't be remembered.
+    }
+  }
 
   function adjustFontScale(delta: 1 | -1) {
     setFontScaleIndex((prev) => {
@@ -136,8 +201,35 @@ export function KitchenClient({
       <div className="mb-4 flex items-center justify-between">
         <h1 className="flex items-center gap-2 text-xl font-bold text-neutral-900">
           <ChefHat className="h-6 w-6 text-teal-600" /> Kitchen Display
+          {station !== "All" && (
+            <span className="rounded-full bg-teal-100 px-2.5 py-0.5 text-xs font-bold text-teal-700">{station}</span>
+          )}
         </h1>
         <div className="flex items-center gap-3">
+          {availableStations.length > 0 && (
+            <div className="flex items-center gap-1 rounded-xl border border-neutral-200 bg-white p-1" title="This screen's station — remembered on this device">
+              <Radio className="ml-1.5 h-4 w-4 text-neutral-400" />
+              <button
+                onClick={() => selectStation("All")}
+                className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
+                  station === "All" ? "bg-teal-600 text-white" : "text-neutral-500 hover:bg-neutral-50"
+                }`}
+              >
+                All
+              </button>
+              {availableStations.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => selectStation(s)}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
+                    station === s ? "bg-teal-600 text-white" : "text-neutral-500 hover:bg-neutral-50"
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
           <button
             onClick={() => setStockModalOpen(true)}
             className={`flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-sm font-semibold ${
@@ -180,6 +272,11 @@ export function KitchenClient({
               .filter((o) => now - doneAt(o) < DONE_RETENTION_MS)
               .sort((a, b) => doneAt(b) - doneAt(a));
           }
+          // A ticket only belongs on this station's screen if it has at least one item that
+          // routes here (or is unrouted) — an all-drinks order never shows up on the Kitchen screen.
+          if (station !== "All") {
+            columnOrders = columnOrders.filter((o) => o.items.some(itemMatchesStation));
+          }
           return (
             <div key={col.label} className="flex min-h-0 flex-col rounded-2xl bg-white">
               <div className={`flex items-center justify-between border-t-4 ${col.accent} rounded-t-2xl px-4 py-3`}>
@@ -198,6 +295,8 @@ export function KitchenClient({
                     order={order}
                     now={col.showTimer ? now : null}
                     timerLimitMinutes={timerLimitMinutes}
+                    station={station}
+                    itemMatchesStation={itemMatchesStation}
                     onAdvance={(status) => advance(order.id, status)}
                     onToggleItem={(dishId, ready) => toggleItem(order.id, dishId, ready)}
                     onVoid={() => setVoidTarget(order)}
@@ -302,6 +401,8 @@ function OrderTicket({
   order,
   now,
   timerLimitMinutes,
+  station,
+  itemMatchesStation,
   onAdvance,
   onToggleItem,
   onVoid,
@@ -309,6 +410,8 @@ function OrderTicket({
   order: Order;
   now: number | null;
   timerLimitMinutes: number;
+  station: PrinterStation | "All";
+  itemMatchesStation: (item: OrderItem) => boolean;
   onAdvance: (status: OrderStatus) => void;
   onToggleItem: (dishId: string, ready: boolean) => void;
   onVoid: () => void;
@@ -322,6 +425,12 @@ function OrderTicket({
   // Flags a ticket that was edited (items/table/etc. changed) after being sent, so kitchen
   // notices the change — cleared once it's done (Served/Voided), since it no longer matters.
   const wasUpdated = !!order.updatedAt && order.status !== "Served" && order.status !== "Voided";
+  // On a single station's screen, only that station's items show — the rest of the ticket
+  // belongs to another screen. Whole-ticket actions (void, advance) stay in the "All" view only,
+  // since a bar screen shouldn't be the one deciding a whole dine-in order is void or served.
+  const visibleItems = station === "All" ? order.items : order.items.filter(itemMatchesStation);
+  const hiddenItemCount = order.items.length - visibleItems.length;
+  const showTicketActions = station === "All";
 
   return (
     <div
@@ -409,7 +518,7 @@ function OrderTicket({
       )}
 
       <ul className="mb-3 space-y-1">
-        {order.items.map((item) =>
+        {visibleItems.map((item) =>
           itemsCheckable ? (
             <li key={item.dishId}>
               <button
@@ -439,7 +548,12 @@ function OrderTicket({
           )
         )}
       </ul>
-      {!isVoided && (
+      {hiddenItemCount > 0 && (
+        <div className="mb-3 text-xs italic text-neutral-400">
+          +{hiddenItemCount} more item{hiddenItemCount === 1 ? "" : "s"} on another station
+        </div>
+      )}
+      {!isVoided && showTicketActions && (
         <div className="flex gap-2">
           {order.status === "In Kitchen" && (
             <button

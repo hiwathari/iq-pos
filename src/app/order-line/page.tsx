@@ -6,7 +6,7 @@ import { listTables } from "@/lib/data/tables";
 import { listOrders } from "@/lib/data/orders";
 import { listPaymentTerminals } from "@/lib/data/printers";
 import { getRestaurant } from "@/lib/data/restaurants";
-import { OrderLineClient } from "./order-line-client";
+import { TillModeSwitcher } from "./till-mode-switcher";
 
 export const metadata: Metadata = {
   title: "Till",
@@ -29,16 +29,19 @@ export default async function OrderLinePage() {
     getRestaurant(restaurantId),
   ]);
 
+  const currencySymbol = restaurant?.currencySymbol ?? "£";
+  const restaurantName = restaurant?.name ?? "IQ POS";
+
   return (
     <AppShell title="Till">
-      <OrderLineClient
+      <TillModeSwitcher
         categories={categories}
         dishes={dishes}
         tables={tables}
         orders={orders}
         paymentTerminals={paymentTerminals.filter((t) => t.active)}
-        currencySymbol={restaurant?.currencySymbol ?? "£"}
-        restaurantName={restaurant?.name ?? "IQ POS"}
+        currencySymbol={currencySymbol}
+        restaurantName={restaurantName}
         invoiceAddress={restaurant?.invoiceAddress ?? undefined}
         invoicePhone={restaurant?.invoicePhone ?? undefined}
         invoiceWebsite={restaurant?.invoiceWebsite ?? undefined}
