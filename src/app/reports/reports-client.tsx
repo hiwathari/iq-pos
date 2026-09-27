@@ -3,9 +3,25 @@
 import { useState } from "react";
 import { formatMoney } from "@/lib/types";
 import type { ReportData } from "@/lib/data/reports";
-import { Users, Package, Wallet, CreditCard, QrCode, DollarSign, Ban, LayoutGrid, UserCircle } from "lucide-react";
+import { RevenueBarChart, RevenueLineChart, RevenuePieChart } from "@/components/charts";
+import {
+  Users,
+  Package,
+  Wallet,
+  CreditCard,
+  QrCode,
+  DollarSign,
+  Ban,
+  LayoutGrid,
+  UserCircle,
+  Receipt,
+  PiggyBank,
+  TrendingUp,
+  Utensils,
+  Tag,
+} from "lucide-react";
 
-const TABS = ["Overview", "By Channel", "By Payment Method", "By Staff"] as const;
+const TABS = ["Overview", "Trends", "By Channel", "By Payment Method", "By Category", "By Staff"] as const;
 type Tab = (typeof TABS)[number];
 
 export function ReportsClient({ report, currencySymbol }: { report: ReportData; currencySymbol: string }) {
@@ -13,7 +29,7 @@ export function ReportsClient({ report, currencySymbol }: { report: ReportData; 
 
   return (
     <div>
-      <div className="mb-6 flex items-center gap-2 rounded-xl border border-neutral-200 bg-white p-1">
+      <div className="mb-6 flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200 bg-white p-1">
         {TABS.map((t) => (
           <button
             key={t}
@@ -28,8 +44,10 @@ export function ReportsClient({ report, currencySymbol }: { report: ReportData; 
       </div>
 
       {tab === "Overview" && <OverviewTab report={report} currencySymbol={currencySymbol} />}
+      {tab === "Trends" && <TrendsTab report={report} currencySymbol={currencySymbol} />}
       {tab === "By Channel" && <ChannelTab report={report} currencySymbol={currencySymbol} />}
       {tab === "By Payment Method" && <PaymentMethodTab report={report} currencySymbol={currencySymbol} />}
+      {tab === "By Category" && <CategoryTab report={report} currencySymbol={currencySymbol} />}
       {tab === "By Staff" && <StaffTab report={report} currencySymbol={currencySymbol} />}
     </div>
   );
@@ -52,39 +70,98 @@ function OverviewTab({ report, currencySymbol }: { report: ReportData; currencyS
           tint="bg-rose-50 text-rose-600"
         />
         <StatCard icon={Package} label="Orders Counted" value={String(report.orderCount)} tint="bg-neutral-100 text-neutral-600" />
+        <StatCard icon={TrendingUp} label="Average Order Value" value={formatMoney(report.averageOrderValue, currencySymbol)} tint="bg-purple-50 text-purple-600" />
+        <StatCard icon={Utensils} label="Average Party Size" value={report.averagePartySize.toFixed(1)} tint="bg-cyan-50 text-cyan-600" />
+        <StatCard icon={Users} label="Total Guests Served" value={String(report.totalGuests)} tint="bg-indigo-50 text-indigo-600" />
+        <StatCard icon={Receipt} label="Tax Collected" value={formatMoney(report.totalTax, currencySymbol)} tint="bg-amber-50 text-amber-600" />
+        <StatCard icon={PiggyBank} label="Donations" value={formatMoney(report.totalDonations, currencySymbol)} tint="bg-emerald-50 text-emerald-600" />
       </div>
 
-      <div className="rounded-2xl border border-neutral-200 bg-white p-5">
-        <h2 className="mb-4 text-sm font-semibold text-neutral-900">Item-wise Sold Quantity</h2>
-        {report.itemWiseSoldQty.length === 0 ? (
-          <p className="text-sm text-neutral-400">No sales recorded yet.</p>
-        ) : (
-          <div className="overflow-hidden rounded-xl border border-neutral-100">
-            <table className="w-full text-sm">
-              <thead className="bg-neutral-50 text-left text-xs font-medium uppercase tracking-wide text-neutral-400">
-                <tr>
-                  <th className="px-4 py-2.5">Item</th>
-                  <th className="px-4 py-2.5 text-right">Qty Sold</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-100">
-                {report.itemWiseSoldQty.map((item) => (
-                  <tr key={item.name}>
-                    <td className="px-4 py-2.5 text-neutral-700">{item.name}</td>
-                    <td className="px-4 py-2.5 text-right font-semibold text-neutral-900">{item.qty}</td>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+          <h2 className="mb-4 text-sm font-semibold text-neutral-900">Item-wise Sold Quantity</h2>
+          {report.itemWiseSoldQty.length === 0 ? (
+            <p className="text-sm text-neutral-400">No sales recorded yet.</p>
+          ) : (
+            <div className="max-h-80 overflow-y-auto rounded-xl border border-neutral-100">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-neutral-50 text-left text-xs font-medium uppercase tracking-wide text-neutral-400">
+                  <tr>
+                    <th className="px-4 py-2.5">Item</th>
+                    <th className="px-4 py-2.5 text-right">Qty Sold</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody className="divide-y divide-neutral-100">
+                  {report.itemWiseSoldQty.map((item) => (
+                    <tr key={item.name}>
+                      <td className="px-4 py-2.5 text-neutral-700">{item.name}</td>
+                      <td className="px-4 py-2.5 text-right font-semibold text-neutral-900">{item.qty}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+          <h2 className="mb-4 text-sm font-semibold text-neutral-900">Item-wise Revenue</h2>
+          {report.itemWiseRevenue.length === 0 ? (
+            <p className="text-sm text-neutral-400">No sales recorded yet.</p>
+          ) : (
+            <div className="max-h-80 overflow-y-auto rounded-xl border border-neutral-100">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-neutral-50 text-left text-xs font-medium uppercase tracking-wide text-neutral-400">
+                  <tr>
+                    <th className="px-4 py-2.5">Item</th>
+                    <th className="px-4 py-2.5 text-right">Revenue</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100">
+                  {report.itemWiseRevenue.map((item) => (
+                    <tr key={item.name}>
+                      <td className="px-4 py-2.5 text-neutral-700">{item.name}</td>
+                      <td className="px-4 py-2.5 text-right font-semibold text-neutral-900">
+                        {formatMoney(item.revenue, currencySymbol)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </>
   );
 }
 
+function TrendsTab({ report, currencySymbol }: { report: ReportData; currencySymbol: string }) {
+  const dailyData = report.dailySales.map((d) => ({ label: d.date.slice(5), value: d.revenue }));
+  const hourlyData = report.hourlySales.map((h) => ({ label: `${h.hour}:00`, value: h.revenue }));
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+        <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold text-neutral-900">
+          <TrendingUp className="h-4 w-4 text-teal-600" /> Daily Sales (Last 30 Days)
+        </h2>
+        <p className="mb-4 text-xs text-neutral-400">Total revenue recorded per day.</p>
+        <RevenueLineChart data={dailyData} currencySymbol={currencySymbol} height={280} />
+      </div>
+
+      <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+        <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold text-neutral-900">
+          <TrendingUp className="h-4 w-4 text-teal-600" /> Sales by Hour of Day
+        </h2>
+        <p className="mb-4 text-xs text-neutral-400">Which hours bring in the most revenue, across all recorded orders.</p>
+        <RevenueBarChart data={hourlyData} currencySymbol={currencySymbol} height={280} />
+      </div>
+    </div>
+  );
+}
+
 function ChannelTab({ report, currencySymbol }: { report: ReportData; currencySymbol: string }) {
-  const maxRevenue = Math.max(1, ...report.byChannel.map((c) => c.revenue));
+  const chartData = report.byChannel.map((c) => ({ label: c.channel, value: c.revenue }));
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white p-5">
       <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold text-neutral-900">
@@ -94,28 +171,26 @@ function ChannelTab({ report, currencySymbol }: { report: ReportData; currencySy
       {report.byChannel.length === 0 ? (
         <p className="text-sm text-neutral-400">No sales recorded yet.</p>
       ) : (
-        <div className="space-y-3">
-          {report.byChannel.map((c) => (
-            <div key={c.channel}>
-              <div className="mb-1 flex items-center justify-between text-sm">
+        <>
+          <RevenueBarChart data={chartData} currencySymbol={currencySymbol} />
+          <div className="mt-4 divide-y divide-neutral-100 border-t border-neutral-100">
+            {report.byChannel.map((c) => (
+              <div key={c.channel} className="flex items-center justify-between py-2 text-sm">
                 <span className="font-medium text-neutral-700">{c.channel}</span>
                 <span className="text-neutral-500">
                   {formatMoney(c.revenue, currencySymbol)} · {c.count} order{c.count === 1 ? "" : "s"}
                 </span>
               </div>
-              <div className="h-2 overflow-hidden rounded-full bg-neutral-100">
-                <div className="h-full rounded-full bg-teal-500" style={{ width: `${(c.revenue / maxRevenue) * 100}%` }} />
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
 }
 
 function PaymentMethodTab({ report, currencySymbol }: { report: ReportData; currencySymbol: string }) {
-  const maxRevenue = Math.max(1, ...report.byPaymentMethod.map((p) => p.revenue));
+  const chartData = report.byPaymentMethod.map((p) => ({ label: p.method, value: p.revenue }));
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white p-5">
       <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold text-neutral-900">
@@ -127,25 +202,55 @@ function PaymentMethodTab({ report, currencySymbol }: { report: ReportData; curr
       {report.byPaymentMethod.length === 0 ? (
         <p className="text-sm text-neutral-400">No sales recorded yet.</p>
       ) : (
-        <div className="space-y-3">
-          {report.byPaymentMethod.map((p) => (
-            <div key={p.method}>
-              <div className="mb-1 flex items-center justify-between text-sm">
-                <span className="font-medium text-neutral-700">{p.method}</span>
-                <span className="text-neutral-500">{formatMoney(p.revenue, currencySymbol)}</span>
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-neutral-100">
-                <div className="h-full rounded-full bg-blue-500" style={{ width: `${(p.revenue / maxRevenue) * 100}%` }} />
-              </div>
-            </div>
-          ))}
-        </div>
+        <RevenuePieChart data={chartData} currencySymbol={currencySymbol} height={300} />
+      )}
+    </div>
+  );
+}
+
+function CategoryTab({ report, currencySymbol }: { report: ReportData; currencySymbol: string }) {
+  const chartData = report.byCategory.map((c) => ({ label: c.category, value: c.revenue }));
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+      <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold text-neutral-900">
+        <Tag className="h-4 w-4 text-teal-600" /> Sales by Menu Category
+      </h2>
+      <p className="mb-4 text-xs text-neutral-400">Revenue and quantity sold, grouped by each dish&apos;s category.</p>
+      {report.byCategory.length === 0 ? (
+        <p className="text-sm text-neutral-400">No sales recorded yet.</p>
+      ) : (
+        <>
+          <RevenueBarChart data={chartData} currencySymbol={currencySymbol} color="#6366f1" />
+          <div className="mt-4 overflow-hidden rounded-xl border border-neutral-100">
+            <table className="w-full text-sm">
+              <thead className="bg-neutral-50 text-left text-xs font-medium uppercase tracking-wide text-neutral-400">
+                <tr>
+                  <th className="px-4 py-2.5">Category</th>
+                  <th className="px-4 py-2.5 text-right">Qty Sold</th>
+                  <th className="px-4 py-2.5 text-right">Revenue</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-100">
+                {report.byCategory.map((c) => (
+                  <tr key={c.category}>
+                    <td className="px-4 py-2.5 text-neutral-700">{c.category}</td>
+                    <td className="px-4 py-2.5 text-right text-neutral-500">{c.qty}</td>
+                    <td className="px-4 py-2.5 text-right font-semibold text-neutral-900">
+                      {formatMoney(c.revenue, currencySymbol)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );
 }
 
 function StaffTab({ report, currencySymbol }: { report: ReportData; currencySymbol: string }) {
+  const chartData = report.byStaff.map((s) => ({ label: s.name, value: s.revenue }));
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white p-5">
       <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold text-neutral-900">
@@ -155,28 +260,31 @@ function StaffTab({ report, currencySymbol }: { report: ReportData; currencySymb
       {report.byStaff.length === 0 ? (
         <p className="text-sm text-neutral-400">No sales recorded yet.</p>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-neutral-100">
-          <table className="w-full text-sm">
-            <thead className="bg-neutral-50 text-left text-xs font-medium uppercase tracking-wide text-neutral-400">
-              <tr>
-                <th className="px-4 py-2.5">Staff</th>
-                <th className="px-4 py-2.5 text-right">Orders</th>
-                <th className="px-4 py-2.5 text-right">Revenue</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100">
-              {report.byStaff.map((s) => (
-                <tr key={s.name}>
-                  <td className="px-4 py-2.5 text-neutral-700">{s.name}</td>
-                  <td className="px-4 py-2.5 text-right text-neutral-500">{s.count}</td>
-                  <td className="px-4 py-2.5 text-right font-semibold text-neutral-900">
-                    {formatMoney(s.revenue, currencySymbol)}
-                  </td>
+        <>
+          <RevenueBarChart data={chartData} currencySymbol={currencySymbol} color="#f59e0b" />
+          <div className="mt-4 overflow-hidden rounded-xl border border-neutral-100">
+            <table className="w-full text-sm">
+              <thead className="bg-neutral-50 text-left text-xs font-medium uppercase tracking-wide text-neutral-400">
+                <tr>
+                  <th className="px-4 py-2.5">Staff</th>
+                  <th className="px-4 py-2.5 text-right">Orders</th>
+                  <th className="px-4 py-2.5 text-right">Revenue</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-neutral-100">
+                {report.byStaff.map((s) => (
+                  <tr key={s.name}>
+                    <td className="px-4 py-2.5 text-neutral-700">{s.name}</td>
+                    <td className="px-4 py-2.5 text-right text-neutral-500">{s.count}</td>
+                    <td className="px-4 py-2.5 text-right font-semibold text-neutral-900">
+                      {formatMoney(s.revenue, currencySymbol)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );

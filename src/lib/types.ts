@@ -69,6 +69,15 @@ export function orderTotal(order: Pick<Order, "items" | "donation">) {
   return subtotal + tax + (order.donation ?? 0);
 }
 
+// Table occupied-time display (hours/minutes, not seconds — meals run long) for the Till's
+// Tables view, distinct from Kitchen Display's mm:ss prep timer.
+export function formatOccupiedTime(ms: number) {
+  const totalMinutes = Math.max(0, Math.floor(ms / 60_000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+}
+
 export function formatMoney(amount: number, currencySymbol: string) {
   return `${currencySymbol}${amount.toFixed(2)}`;
 }

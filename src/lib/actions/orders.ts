@@ -15,6 +15,13 @@ function encodeOrderNumber(counter: number) {
   return counter.toString(36).toUpperCase().padStart(5, "0");
 }
 
+// An order is "closed out" once it's both served and paid — matches the Till's own
+// definition (see isOrderClosedOut in order-line-client.tsx). closedOutAt records the moment
+// that first became true so the table can be auto-freed a minute after it happens.
+function isClosedOut(status: OrderStatus, paymentMethod: string | null) {
+  return status === "Served" && !!paymentMethod;
+}
+
 async function nextOrderNumber(restaurantId: string) {
   const [existing] = await db.select().from(orderCounters).where(eq(orderCounters.restaurantId, restaurantId)).limit(1);
   const next = (existing?.value ?? 30) + 1;
@@ -52,6 +59,17 @@ export async function placeOrderAction(input: PlaceOrderInput) {
   const payments = input.payments.length > 1 ? input.payments : null;
 
   if (input.editingOrderId) {
+    const [existing] = await db
+      .select()
+      .from(orders)
+      .where(and(eq(orders.id, input.editingOrderId), eq(orders.restaurantId, restaurantId)))
+      .limit(1);
+    const closedOutAt = existing
+      ? isClosedOut(existing.status, paymentMethod)
+        ? (existing.closedOutAt ?? Date.now())
+        : null
+      : null;
+
     await db
       .update(orders)
       .set({
@@ -69,6 +87,7 @@ export async function placeOrderAction(input: PlaceOrderInput) {
         customerPhone: hasCustomerInfo ? input.customerPhone || null : null,
         customerAddress: input.channel === "Delivery" ? input.customerAddress || null : null,
         updatedAt: Date.now(),
+        closedOutAt,
       })
       .where(and(eq(orders.id, input.editingOrderId), eq(orders.restaurantId, restaurantId)));
   } else {
@@ -99,7 +118,7 @@ export async function placeOrderAction(input: PlaceOrderInput) {
     if (input.tableId) {
       await db
         .update(tables)
-        .set({ status: "on-dine", seated: input.guests })
+        .set({ status: "on-dine", seated: input.guests, seatedAt: Date.now() })
         .where(and(eq(tables.id, input.tableId), eq(tables.restaurantId, restaurantId)));
     }
   }
@@ -133,9 +152,20 @@ export async function toggleOrderItemReadyAction(orderId: string, dishId: string
 
 export async function setOrderStatusAction(orderId: string, status: OrderStatus) {
   const { restaurantId } = await requireRestaurantContext();
+  const [order] = await db
+    .select()
+    .from(orders)
+    .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)))
+    .limit(1);
+  const closedOutAt = order
+    ? isClosedOut(status, order.paymentMethod)
+      ? (order.closedOutAt ?? Date.now())
+      : null
+    : null;
+
   await db
     .update(orders)
-    .set({ status, servedAt: status === "Served" ? Date.now() : undefined })
+    .set({ status, servedAt: status === "Served" ? Date.now() : undefined, closedOutAt })
     .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)));
   revalidatePath("/order-line");
   revalidatePath("/dashboard");
@@ -146,7 +176,7 @@ export async function voidOrderAction(orderId: string, reason: string) {
   const { restaurantId } = await requireRestaurantContext();
   await db
     .update(orders)
-    .set({ status: "Voided", voidReason: reason || "No reason given" })
+    .set({ status: "Voided", voidReason: reason || "No reason given", voidedAt: Date.now() })
     .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)));
   revalidatePath("/order-line");
   revalidatePath("/dashboard");
@@ -200,12 +230,12 @@ export async function swapOrderTableAction(orderId: string, newTableId: string):
     .returning();
   await db
     .update(tables)
-    .set({ status: "on-dine", seated: order.guests })
+    .set({ status: "on-dine", seated: order.guests, seatedAt: Date.now() })
     .where(and(eq(tables.id, newTable.id), eq(tables.restaurantId, restaurantId)));
   if (oldTableId) {
     await db
       .update(tables)
-      .set({ status: "available", seated: 0 })
+      .set({ status: "available", seated: 0, seatedAt: null })
       .where(and(eq(tables.id, oldTableId), eq(tables.restaurantId, restaurantId)));
   }
 
@@ -255,7 +285,11 @@ export async function mergeTableIntoOrderAction(primaryOrderId: string, secondar
 
     await db
       .update(orders)
-      .set({ status: "Voided", voidReason: `Merged into Table ${primary.tableNumber ?? primary.orderNumber}` })
+      .set({
+        status: "Voided",
+        voidReason: `Merged into Table ${primary.tableNumber ?? primary.orderNumber}`,
+        voidedAt: Date.now(),
+      })
       .where(eq(orders.id, secondaryOrder.id));
   }
 
@@ -268,7 +302,7 @@ export async function mergeTableIntoOrderAction(primaryOrderId: string, secondar
     .returning();
   await db
     .update(tables)
-    .set({ status: "on-dine" })
+    .set({ status: "on-dine", seatedAt: Date.now() })
     .where(and(eq(tables.id, secondaryTable.id), eq(tables.restaurantId, restaurantId)));
 
   revalidatePath("/order-line");

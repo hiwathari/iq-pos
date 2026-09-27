@@ -6,9 +6,15 @@ import { formatOrderTimestamp, orderSequence, type Order, type OrderStatus } fro
 import { setOrderStatusAction, toggleOrderItemReadyAction, voidOrderAction } from "@/lib/actions/orders";
 import { Ban, Bike, Check, CheckCircle2, ChefHat, Clock, MapPin, Minus, Phone, Plus, RefreshCw, ShoppingBag, X, XCircle } from "lucide-react";
 
-// A completed ticket stays visible for a minute after being served so staff can double-check
-// it, then drops off the board on its own so Completed doesn't pile up with old tickets.
-const COMPLETED_RETENTION_MS = 60_000;
+// Served and voided tickets share one "Completed" column (green for served, red for voided)
+// and each only needs a brief moment there for staff to double-check — 30 seconds after being
+// done, a ticket drops off on its own so the column doesn't pile up with old tickets. The
+// Till's history keeps the full audit trail indefinitely regardless.
+const DONE_RETENTION_MS = 30_000;
+
+function doneAt(order: Order) {
+  return order.status === "Voided" ? (order.voidedAt ?? order.createdAt) : (order.servedAt ?? order.createdAt);
+}
 
 // How much bigger/smaller the whole board renders — a per-device preference (not tied to the
 // restaurant), since it depends on that screen's size and how far staff stand from it.
@@ -19,8 +25,7 @@ const DEFAULT_FONT_SCALE_INDEX = 1;
 const COLUMNS: { statuses: OrderStatus[]; label: string; accent: string; showTimer: boolean }[] = [
   { statuses: ["Wait List", "In Kitchen"], label: "Pending", accent: "border-t-amber-400", showTimer: true },
   { statuses: ["Ready"], label: "Ready", accent: "border-t-teal-500", showTimer: true },
-  { statuses: ["Served"], label: "Completed", accent: "border-t-neutral-300", showTimer: false },
-  { statuses: ["Voided"], label: "Voided", accent: "border-t-rose-400", showTimer: false },
+  { statuses: ["Served", "Voided"], label: "Completed", accent: "border-t-neutral-300", showTimer: false },
 ];
 
 export function KitchenClient({ orders, timerLimitMinutes }: { orders: Order[]; timerLimitMinutes: number }) {
@@ -118,11 +123,13 @@ export function KitchenClient({ orders, timerLimitMinutes }: { orders: Order[]; 
         </div>
       </div>
 
-      <div className="grid flex-1 grid-cols-1 gap-4 overflow-hidden md:grid-cols-4">
+      <div className="grid flex-1 grid-cols-1 gap-4 overflow-hidden md:grid-cols-3">
         {COLUMNS.map((col) => {
           let columnOrders = orders.filter((o) => col.statuses.includes(o.status));
           if (col.label === "Completed") {
-            columnOrders = columnOrders.filter((o) => now - (o.servedAt ?? o.createdAt) < COMPLETED_RETENTION_MS);
+            columnOrders = columnOrders
+              .filter((o) => now - doneAt(o) < DONE_RETENTION_MS)
+              .sort((a, b) => doneAt(b) - doneAt(a));
           }
           return (
             <div key={col.label} className="flex min-h-0 flex-col rounded-2xl bg-white">
@@ -200,6 +207,7 @@ function OrderTicket({
   const itemsCheckable = order.status === "In Kitchen";
   const allItemsReady = order.items.every((i) => i.ready);
   const isVoided = order.status === "Voided";
+  const isDone = order.status === "Served";
   // Flags a ticket that was edited (items/table/etc. changed) after being sent, so kitchen
   // notices the change — cleared once it's done (Served/Voided), since it no longer matters.
   const wasUpdated = !!order.updatedAt && order.status !== "Served" && order.status !== "Voided";
@@ -209,9 +217,11 @@ function OrderTicket({
       className={`rounded-xl border p-3.5 shadow-sm ${
         isVoided
           ? "border-rose-200 bg-rose-50/60 opacity-75"
-          : order.channel === "Delivery"
-            ? "border-blue-200 bg-blue-50/40"
-            : "border-neutral-200"
+          : isDone
+            ? "border-emerald-200 bg-emerald-50/50"
+            : order.channel === "Delivery"
+              ? "border-blue-200 bg-blue-50/40"
+              : "border-neutral-200"
       }`}
     >
       <div className="mb-2 flex items-center justify-between">
@@ -222,6 +232,10 @@ function OrderTicket({
         {isVoided ? (
           <span className="flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">
             <Ban className="h-3.5 w-3.5" /> Voided
+          </span>
+        ) : isDone ? (
+          <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">
+            <CheckCircle2 className="h-3.5 w-3.5" /> Completed
           </span>
         ) : elapsedMs !== null && band ? (
           <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold ${TIMER_STYLES[band]}`}>

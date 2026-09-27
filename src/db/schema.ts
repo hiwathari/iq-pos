@@ -94,6 +94,9 @@ export const tables = sqliteTable(
       .notNull()
       .default("available"),
     seated: int("seated").notNull().default(0),
+    // When this table became occupied (status turned "on-dine") — drives the occupied-time
+    // timer shown on the Till's Tables view. Cleared back to null once the table is freed.
+    seatedAt: int("seated_at"),
   },
   (table) => [uniqueIndex("tables_restaurant_number_idx").on(table.restaurantId, table.number)]
 );
@@ -164,6 +167,13 @@ export const orders = sqliteTable("orders", {
   // Extra table numbers folded into this order via a table merge (e.g. a party spanning two
   // physical tables billed as one ticket) — shown as "Table 03 + 04". Null for the normal case.
   mergedTableNumbers: text("merged_table_numbers", { mode: "json" }).$type<number[]>(),
+  // When the order first became fully closed out (Served + paid) — set the moment both
+  // conditions are true, cleared if either stops being true. A minute after this, the Till
+  // auto-frees the order's table so staff don't have to remember to clear it by hand.
+  closedOutAt: int("closed_out_at"),
+  // When the order was voided — the Kitchen Display drops a voided ticket off its board about
+  // 30 seconds after this (it stays visible on the Till's history for the full audit trail).
+  voidedAt: int("voided_at"),
 });
 
 export const printers = sqliteTable("printers", {

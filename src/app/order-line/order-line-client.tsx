@@ -15,7 +15,7 @@ import type {
   RestaurantTable,
   ThirdPartyProvider,
 } from "@/lib/types";
-import { formatMoney, formatOrderTimestamp, orderSequence } from "@/lib/types";
+import { formatMoney, formatOccupiedTime, formatOrderTimestamp, orderSequence } from "@/lib/types";
 import {
   mergeTableIntoOrderAction,
   placeOrderAction,
@@ -23,6 +23,7 @@ import {
   swapOrderTableAction,
   voidOrderAction,
 } from "@/lib/actions/orders";
+import { setTableStatusAction } from "@/lib/actions/tables";
 import { printTicket } from "@/lib/print-ticket";
 import { TableLayoutPicker } from "@/components/table-layout-picker";
 import {
@@ -49,6 +50,7 @@ import {
   ClipboardList,
   Armchair,
   Users,
+  Clock,
   Search,
   RefreshCw,
   XCircle,
@@ -347,6 +349,16 @@ export function OrderLineClient({
         o.status !== "Voided" &&
         !isOrderClosedOut(o)
     );
+  }
+
+  // Frees a table straight from the Tables view — for a walk-in seated but who left before
+  // ordering (or a table left occupied after its only order was voided), so staff don't have
+  // to jump to Manage Table just to release it.
+  function handleClearTable(table: RestaurantTable) {
+    startTransition(async () => {
+      await setTableStatusAction(table.id, "available", 0);
+      router.refresh();
+    });
   }
 
   function handleTableSelect(table: RestaurantTable) {
@@ -731,6 +743,7 @@ export function OrderLineClient({
             setArea={setTablesArea}
             cartTableId={cart.tableId}
             onSelect={handleTableSelect}
+            onClear={handleClearTable}
           />
         )}
 
@@ -1585,6 +1598,7 @@ function TablesOverview({
   setArea,
   cartTableId,
   onSelect,
+  onClear,
 }: {
   tables: RestaurantTable[];
   orders: Order[];
@@ -1592,8 +1606,15 @@ function TablesOverview({
   setArea: (a: (typeof TABLE_AREAS)[number]) => void;
   cartTableId: string | null;
   onSelect: (table: RestaurantTable) => void;
+  onClear: (table: RestaurantTable) => void;
 }) {
   const areaTables = tables.filter((t) => t.area === area);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(id);
+  }, []);
 
   return (
     <div>
@@ -1632,32 +1653,54 @@ function TablesOverview({
               !isOrderClosedOut(o)
           );
           const isMergedIn = order && order.tableId !== table.id;
+          // A table can be occupied with nothing to show for it — a walk-in seated then left,
+          // or its only order got voided — so staff can free it here instead of via Manage Table.
+          const canClear = table.status === "on-dine" && !order;
           return (
-            <button
-              key={table.id}
-              onClick={() => onSelect(table)}
-              className={`flex flex-col items-center justify-center gap-1 rounded-2xl border-2 p-4 transition-transform hover:scale-[1.02] ${
-                TABLE_STATUS_CARD[table.status]
-              } ${table.id === cartTableId ? "ring-2 ring-teal-500" : ""}`}
-            >
-              <span className="flex items-center gap-1.5 text-sm font-semibold text-neutral-800">
-                <span className={`h-2 w-2 rounded-full ${TABLE_STATUS_DOT[table.status]}`} />
-                Table #{table.number}
-              </span>
-              <span className="flex items-center gap-1 text-xs text-neutral-500">
-                <Armchair className="h-3 w-3" /> {table.capacity}
-                {table.status === "on-dine" && (
-                  <span className="ml-1 flex items-center gap-0.5">
-                    <Users className="h-3 w-3" /> {table.seated}
+            <div key={table.id} className="relative">
+              <button
+                onClick={() => onSelect(table)}
+                className={`flex w-full flex-col items-center justify-center gap-1 rounded-2xl border-2 p-4 transition-transform hover:scale-[1.02] ${
+                  TABLE_STATUS_CARD[table.status]
+                } ${table.id === cartTableId ? "ring-2 ring-teal-500" : ""}`}
+              >
+                <span className="flex items-center gap-1.5 text-sm font-semibold text-neutral-800">
+                  <span className={`h-2 w-2 rounded-full ${TABLE_STATUS_DOT[table.status]}`} />
+                  Table #{table.number}
+                </span>
+                <span className="flex items-center gap-1 text-xs text-neutral-500">
+                  <Armchair className="h-3 w-3" /> {table.capacity}
+                  {table.status === "on-dine" && (
+                    <span className="ml-1 flex items-center gap-0.5">
+                      <Users className="h-3 w-3" /> {table.seated}
+                    </span>
+                  )}
+                </span>
+                {table.status === "on-dine" && table.seatedAt && (
+                  <span className="flex items-center gap-1 text-[11px] font-semibold text-teal-700">
+                    <Clock className="h-3 w-3" /> {formatOccupiedTime(now - table.seatedAt)}
                   </span>
                 )}
-              </span>
-              {order && (
-                <span className={`mt-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[order.status]}`}>
-                  {isMergedIn ? `Merged → #${order.tableNumber}` : `#${order.orderNumber} · ${order.status}`}
-                </span>
+                {order && (
+                  <span className={`mt-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[order.status]}`}>
+                    {isMergedIn ? `Merged → #${order.tableNumber}` : `#${order.orderNumber} · ${order.status}`}
+                  </span>
+                )}
+                {canClear && <span className="mt-1 text-[10px] font-medium text-neutral-400">No order yet</span>}
+              </button>
+              {canClear && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClear(table);
+                  }}
+                  title="Customer left — clear this table"
+                  className="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-rose-500 text-white shadow-sm hover:bg-rose-600"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
               )}
-            </button>
+            </div>
           );
         })}
         {areaTables.length === 0 && (

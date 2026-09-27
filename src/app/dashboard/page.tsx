@@ -3,16 +3,19 @@ import { requireRestaurantContext } from "@/lib/scope";
 import { listTables, listReservations } from "@/lib/data/tables";
 import { listOrders } from "@/lib/data/orders";
 import { getRestaurant } from "@/lib/data/restaurants";
+import { getReportData } from "@/lib/data/reports";
 import { formatMoney } from "@/lib/types";
+import { DashboardCharts } from "./dashboard-charts";
 import { DollarSign, ClipboardList, Table2, Users } from "lucide-react";
 
 export default async function DashboardPage() {
   const { restaurantId } = await requireRestaurantContext();
-  const [orders, tables, reservations, restaurant] = await Promise.all([
+  const [orders, tables, reservations, restaurant, report] = await Promise.all([
     listOrders(restaurantId),
     listTables(restaurantId),
     listReservations(restaurantId),
     getRestaurant(restaurantId),
+    getReportData(restaurantId),
   ]);
   const currencySymbol = restaurant?.currencySymbol ?? "£";
 
@@ -69,6 +72,9 @@ export default async function DashboardPage() {
             </div>
           </div>
         </div>
+
+        <h2 className="mb-4 mt-8 text-base font-semibold text-neutral-900">Reports & Insights</h2>
+        <DashboardCharts report={report} currencySymbol={currencySymbol} />
       </div>
     </AppShell>
   );
