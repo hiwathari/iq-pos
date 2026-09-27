@@ -1,4 +1,4 @@
-import type { categories, coupons, dishes, integrations, orders, paymentTerminals, printers, reservations, restaurants, shifts, tables } from "@/db/schema";
+import type { categories, coupons, dishes, integrations, loyaltyMembers, orders, paymentTerminals, printers, reservations, restaurants, shifts, tables } from "@/db/schema";
 
 export type CategoryIcon =
   | "all"
@@ -28,6 +28,8 @@ export type PaymentTerminal = typeof paymentTerminals.$inferSelect;
 export type Shift = typeof shifts.$inferSelect;
 export type Coupon = typeof coupons.$inferSelect;
 export type CouponType = "percent" | "fixed";
+export type LoyaltyMember = typeof loyaltyMembers.$inferSelect;
+export type LoyaltyContactType = "phone" | "email";
 
 export interface OrderItem {
   dishId: string;

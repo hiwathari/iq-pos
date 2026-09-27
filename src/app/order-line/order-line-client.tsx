@@ -23,6 +23,8 @@ import {
   voidOrderAction,
 } from "@/lib/actions/orders";
 import { validateCouponAction } from "@/lib/actions/coupons";
+import { lookupOrCreateLoyaltyMemberAction } from "@/lib/actions/loyalty";
+import type { LoyaltyContactType } from "@/lib/types";
 import { setTableStatusAction } from "@/lib/actions/tables";
 import { setDishStockAction } from "@/lib/actions/menu";
 import { printTicket } from "@/lib/print-ticket";
@@ -117,6 +119,8 @@ interface CartState {
   extraDiscount: string;
   couponCode: string;
   appliedCoupon: { code: string; discount: number } | null;
+  loyaltyContact: string;
+  loyaltyMember: { id: string; code: string; name: string | null } | null;
 }
 
 const emptyCart: CartState = {
@@ -135,6 +139,8 @@ const emptyCart: CartState = {
   extraDiscount: "",
   couponCode: "",
   appliedCoupon: null,
+  loyaltyContact: "",
+  loyaltyMember: null,
 };
 
 export function OrderLineClient({
@@ -194,6 +200,7 @@ export function OrderLineClient({
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
   const [voidModalOpen, setVoidModalOpen] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
+  const [loyaltyError, setLoyaltyError] = useState<string | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -309,6 +316,33 @@ export function OrderLineClient({
     setCart((prev) => ({ ...prev, couponCode: "", appliedCoupon: null }));
   }
 
+  function findOrEnrollLoyalty() {
+    const contact = cart.loyaltyContact.trim();
+    if (!contact) return;
+    const contactType: LoyaltyContactType = contact.includes("@") ? "email" : "phone";
+    setLoyaltyError(null);
+    startTransition(async () => {
+      const result = await lookupOrCreateLoyaltyMemberAction({
+        contactType,
+        contactValue: contact,
+        name: cart.customerName.trim() || undefined,
+      });
+      if (result.error || !result.member) {
+        setLoyaltyError(result.error ?? "Couldn't look up that customer.");
+        return;
+      }
+      setCart((prev) => ({
+        ...prev,
+        loyaltyMember: { id: result.member!.id, code: result.member!.code, name: result.member!.name },
+      }));
+    });
+  }
+
+  function removeLoyalty() {
+    setLoyaltyError(null);
+    setCart((prev) => ({ ...prev, loyaltyContact: "", loyaltyMember: null }));
+  }
+
   const editingOrder = cart.editingOrderId ? orders.find((o) => o.id === cart.editingOrderId) : null;
 
   function scroll(ref: React.RefObject<HTMLDivElement | null>, dir: 1 | -1) {
@@ -372,9 +406,12 @@ export function OrderLineClient({
       extraDiscount: order.extraDiscount ? String(order.extraDiscount) : "",
       couponCode: order.couponCode ?? "",
       appliedCoupon: order.couponCode ? { code: order.couponCode, discount: order.couponDiscount ?? 0 } : null,
+      loyaltyContact: "",
+      loyaltyMember: order.loyaltyMemberId ? { id: order.loyaltyMemberId, code: "", name: null } : null,
     });
     setDonation((order.donation ?? 0) > 0);
     setCouponError(null);
+    setLoyaltyError(null);
     setTableEditorOpen(false);
     setMobileCartOpen(true);
     setView("order");
@@ -443,6 +480,7 @@ export function OrderLineClient({
         donation: donationAmount,
         extraDiscount: extraDiscountAmount || undefined,
         couponCode: cart.appliedCoupon?.code,
+        loyaltyMemberId: cart.loyaltyMember?.id,
         customerName: cart.customerName.trim() || undefined,
         customerPhone: cart.customerPhone.trim() || undefined,
         customerAddress: cart.customerAddress.trim() || undefined,
@@ -450,6 +488,7 @@ export function OrderLineClient({
       setCart(emptyCart);
       setDonation(true);
       setCouponError(null);
+      setLoyaltyError(null);
       setTableEditorOpen(true);
       setMobileCartOpen(false);
       router.refresh();
@@ -551,6 +590,9 @@ export function OrderLineClient({
     couponError,
     applyCoupon,
     removeCoupon,
+    loyaltyError,
+    findOrEnrollLoyalty,
+    removeLoyalty,
     total,
     paymentsTotal,
     paymentsRemaining,
@@ -933,6 +975,9 @@ interface CartPanelProps {
   couponError: string | null;
   applyCoupon: () => void;
   removeCoupon: () => void;
+  loyaltyError: string | null;
+  findOrEnrollLoyalty: () => void;
+  removeLoyalty: () => void;
   total: number;
   paymentsTotal: number;
   paymentsRemaining: number;
@@ -974,6 +1019,9 @@ function CartPanel({
   couponError,
   applyCoupon,
   removeCoupon,
+  loyaltyError,
+  findOrEnrollLoyalty,
+  removeLoyalty,
   total,
   paymentsTotal,
   paymentsRemaining,
@@ -1298,6 +1346,40 @@ function CartPanel({
             </div>
           ))}
         </div>
+      </div>
+
+      <div className="space-y-2 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+        <h3 className="flex items-center gap-1.5 text-sm font-semibold text-neutral-900">
+          <CreditCard className="h-4 w-4 text-neutral-400" /> Loyalty Card
+        </h3>
+        {cart.loyaltyMember ? (
+          <div className="flex items-center justify-between rounded-lg bg-white px-3 py-2">
+            <div>
+              <div className="font-mono text-sm font-semibold text-neutral-800">{cart.loyaltyMember.code || "Attached"}</div>
+              {cart.loyaltyMember.name && <div className="text-xs text-neutral-500">{cart.loyaltyMember.name}</div>}
+            </div>
+            <button onClick={removeLoyalty} className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-500 hover:bg-neutral-50">
+              Remove
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <input
+              value={cart.loyaltyContact}
+              onChange={(e) => setCart((prev) => ({ ...prev, loyaltyContact: e.target.value }))}
+              placeholder="Phone or email"
+              className="flex-1 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm outline-none focus:border-teal-500"
+            />
+            <button
+              onClick={findOrEnrollLoyalty}
+              disabled={!cart.loyaltyContact.trim()}
+              className="shrink-0 rounded-lg bg-[var(--brand)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--brand-dark)] disabled:opacity-50"
+            >
+              Find / Enroll
+            </button>
+          </div>
+        )}
+        {loyaltyError && <p className="text-xs font-medium text-rose-600">{loyaltyError}</p>}
       </div>
 
       <div>

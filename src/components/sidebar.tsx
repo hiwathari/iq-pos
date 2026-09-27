@@ -16,6 +16,7 @@ import {
   BarChart3,
   Tags,
   TicketPercent,
+  CreditCard,
 } from "lucide-react";
 import { Logo } from "./logo";
 import clsx from "clsx";
@@ -30,6 +31,7 @@ const NAV = [
   { href: "/manage-dishes", label: "Manage Dishes", icon: ChefHat, roles: ["admin"] as Role[] },
   { href: "/pricing", label: "Channel Pricing", icon: Tags, roles: ["admin"] as Role[] },
   { href: "/coupons", label: "Coupons", icon: TicketPercent, roles: ["admin"] as Role[] },
+  { href: "/loyalty", label: "Loyalty Cards", icon: CreditCard, roles: ["admin"] as Role[] },
   { href: "/customers", label: "Customers", icon: Users, roles: ["admin", "staff"] as Role[] },
   { href: "/reports", label: "Reports", icon: BarChart3, roles: ["admin"] as Role[] },
   { href: "/settings", label: "Settings", icon: Settings, roles: ["admin"] as Role[] },

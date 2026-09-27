@@ -192,8 +192,32 @@ export const orders = sqliteTable("orders", {
   couponDiscount: real("coupon_discount").notNull().default(0),
   // Loyalty member this order is attached to, if the customer was looked up or enrolled at
   // checkout — set null (not deleted) if the member is ever removed.
-  loyaltyMemberId: text("loyalty_member_id"),
+  loyaltyMemberId: text("loyalty_member_id").references(() => loyaltyMembers.id, { onDelete: "set null" }),
 });
+
+// A loyalty/ordering card enrolled against a customer's phone or email. `code` is the
+// 7-character value printed/QR-encoded on the card itself (this restaurant's first 2 letters +
+// 5 random alphanumeric characters, e.g. "AL3F9K2") — see src/lib/loyalty-code.ts.
+export const loyaltyMembers = sqliteTable(
+  "loyalty_members",
+  {
+    id: id(),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    contactType: text("contact_type", { enum: ["phone", "email"] }).notNull(),
+    // Normalized (trimmed, lowercased for email) so a repeat visit always matches the same
+    // member instead of creating a duplicate card.
+    contactValue: text("contact_value").notNull(),
+    name: text("name"),
+    code: text("code").notNull(),
+    createdAt: timestamp("created_at"),
+  },
+  (table) => [
+    uniqueIndex("loyalty_members_restaurant_contact_idx").on(table.restaurantId, table.contactValue),
+    uniqueIndex("loyalty_members_code_idx").on(table.code),
+  ]
+);
 
 export const coupons = sqliteTable(
   "coupons",

@@ -8,6 +8,7 @@ import type { Order, OrderChannel, OrderItem, OrderStatus, PaymentLine, ThirdPar
 import { resolveCouponDiscount } from "@/lib/types";
 import { requireRestaurantContext } from "@/lib/scope";
 import { findActiveCoupon } from "@/lib/data/coupons";
+import { findLoyaltyMemberById } from "@/lib/data/loyalty";
 
 // 5-character order codes, base36-encoded from a per-restaurant counter. Deliberately not a
 // plain incrementing decimal (so it doesn't read as "order #31 of the day"), but zero-padded
@@ -48,6 +49,7 @@ export interface PlaceOrderInput {
   donation: number;
   extraDiscount?: number;
   couponCode?: string;
+  loyaltyMemberId?: string;
   customerName?: string;
   customerPhone?: string;
   customerAddress?: string;
@@ -77,6 +79,11 @@ export async function placeOrderAction(input: PlaceOrderInput) {
     }
   }
 
+  // Confirm the loyalty member actually belongs to this restaurant before attaching it — the
+  // Till only ever hands back an ID it just resolved itself, but never trust a client ID as-is.
+  const loyaltyMember = input.loyaltyMemberId ? await findLoyaltyMemberById(restaurantId, input.loyaltyMemberId) : null;
+  const loyaltyMemberId = loyaltyMember?.id ?? null;
+
   if (input.editingOrderId) {
     const [existing] = await db
       .select()
@@ -105,6 +112,7 @@ export async function placeOrderAction(input: PlaceOrderInput) {
         extraDiscount,
         couponCode,
         couponDiscount,
+        loyaltyMemberId,
         customerName: hasCustomerInfo ? input.customerName || null : null,
         customerPhone: hasCustomerInfo ? input.customerPhone || null : null,
         customerAddress: input.channel === "Delivery" ? input.customerAddress || null : null,
@@ -132,6 +140,7 @@ export async function placeOrderAction(input: PlaceOrderInput) {
       extraDiscount,
       couponCode,
       couponDiscount,
+      loyaltyMemberId,
       customerName: hasCustomerInfo ? input.customerName || null : null,
       customerPhone: hasCustomerInfo ? input.customerPhone || null : null,
       customerAddress: input.channel === "Delivery" ? input.customerAddress || null : null,
