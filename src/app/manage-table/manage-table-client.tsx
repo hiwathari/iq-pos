@@ -23,7 +23,9 @@ import {
   Trash2,
   X,
   Globe,
+  QrCode,
 } from "lucide-react";
+import { tableOrderQrDataUrl } from "@/lib/table-qr";
 
 const AREAS: TableArea[] = ["Ground Floor", "1st Floor", "Basement"];
 
@@ -41,8 +43,19 @@ const RES_STATUS_META: Record<string, { label: string; className: string }> = {
   available: { label: "Free", className: "bg-neutral-100 text-neutral-500" },
 };
 
-export function ManageTableClient({ tables, reservations }: { tables: RestaurantTable[]; reservations: Reservation[] }) {
+export function ManageTableClient({
+  tables,
+  reservations,
+  restaurantSlug,
+  qrTableOrderingEnabled,
+}: {
+  tables: RestaurantTable[];
+  reservations: Reservation[];
+  restaurantSlug: string;
+  qrTableOrderingEnabled: boolean;
+}) {
   const router = useRouter();
+  const [qrForTable, setQrForTable] = useState<RestaurantTable | null>(null);
   const [, startTransition] = useTransition();
 
   const [area, setArea] = useState<TableArea>("Ground Floor");
@@ -279,6 +292,18 @@ export function ManageTableClient({ tables, reservations }: { tables: Restaurant
                       >
                         Start Order →
                       </button>
+                      {qrTableOrderingEnabled && (
+                        <button
+                          onClick={() => {
+                            setQrForTable(table);
+                            setOpenTableId(null);
+                          }}
+                          title="Table QR code for online ordering"
+                          className="flex items-center justify-center rounded-lg border border-neutral-200 px-2.5 text-neutral-500 hover:bg-neutral-50"
+                        >
+                          <QrCode className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                       <button
                         onClick={() => handleDeleteTable(table.id)}
                         title="Delete table"
@@ -299,6 +324,40 @@ export function ManageTableClient({ tables, reservations }: { tables: Restaurant
         <AddReservationModal onClose={() => setReservationModalOpen(false)} tables={tables} onSave={handleAddReservation} />
       )}
       {addTableModalOpen && <AddTableModal onClose={() => setAddTableModalOpen(false)} defaultArea={area} />}
+      {qrForTable && <TableQrModal table={qrForTable} restaurantSlug={restaurantSlug} onClose={() => setQrForTable(null)} />}
+    </div>
+  );
+}
+
+function TableQrModal({ table, restaurantSlug, onClose }: { table: RestaurantTable; restaurantSlug: string; onClose: () => void }) {
+  const [dataUrl, setDataUrl] = useState<string | null>(null);
+  const url = typeof window !== "undefined" ? `${window.location.origin}/order/${restaurantSlug}?table=${table.number}` : "";
+
+  useEffect(() => {
+    let cancelled = false;
+    if (url) tableOrderQrDataUrl(url).then((v) => !cancelled && setDataUrl(v));
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
+      <div className="w-full max-w-xs rounded-2xl bg-white p-6 text-center shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-neutral-900">Table {table.number} QR</h2>
+          <button onClick={onClose} className="rounded-full p-1 text-neutral-400 hover:bg-neutral-100">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        {dataUrl ? (
+          <img src={dataUrl} alt={`Table ${table.number} order QR`} className="mx-auto mb-4 h-48 w-48" />
+        ) : (
+          <div className="mx-auto mb-4 flex h-48 w-48 items-center justify-center text-sm text-neutral-400">Generating…</div>
+        )}
+        <p className="break-all text-xs text-neutral-400">{url}</p>
+        <p className="mt-2 text-xs text-neutral-400">Print this and stick it on the table — scanning it opens the menu with this table pre-selected.</p>
+      </div>
     </div>
   );
 }

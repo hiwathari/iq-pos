@@ -32,6 +32,7 @@ import {
   XCircle,
   PackageX,
   Radio,
+  Globe,
 } from "lucide-react";
 
 // The canonical station order the selector and any station badges are shown in.
@@ -206,6 +207,13 @@ export function KitchenClient({
           )}
         </h1>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => window.location.reload()}
+            title="Refresh — reloads the page and clears any cached data"
+            className="flex items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3.5 py-2 text-sm font-semibold text-neutral-500 hover:bg-neutral-50"
+          >
+            <RefreshCw className="h-4 w-4" /> Refresh
+          </button>
           {availableStations.length > 0 && (
             <div className="flex items-center gap-1 rounded-xl border border-neutral-200 bg-white p-1" title="This screen's station — remembered on this device">
               <Radio className="ml-1.5 h-4 w-4 text-neutral-400" />
@@ -489,6 +497,11 @@ function OrderTicket({
       {order.channel === "Take Away" && (
         <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700">
           <ShoppingBag className="h-3.5 w-3.5" /> TAKEAWAY
+        </div>
+      )}
+      {order.placedVia !== "staff" && (
+        <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-indigo-100 px-2.5 py-1 text-xs font-bold text-indigo-700">
+          <Globe className="h-3.5 w-3.5" /> {order.placedVia === "kiosk" ? "KIOSK ORDER" : "ONLINE ORDER"}
         </div>
       )}
 

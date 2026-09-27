@@ -39,6 +39,13 @@ export async function getRestaurantBySlug(slug: string) {
   return row ?? null;
 }
 
+// Used by proxy.ts to map a request's Host header to a tenant when it isn't the platform's own
+// domain — i.e. a restaurant's custom ordering domain/subdomain.
+export async function getRestaurantByCustomDomain(domain: string) {
+  const [row] = await db.select().from(restaurants).where(eq(restaurants.customDomain, domain)).limit(1);
+  return row ?? null;
+}
+
 export async function platformTotals() {
   const [[{ restaurantCount }], [{ userCount }], [{ orderCount }]] = await Promise.all([
     db.select({ restaurantCount: sql<number>`count(*)` }).from(restaurants),

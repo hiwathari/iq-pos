@@ -62,6 +62,7 @@ import {
   Combine,
   QrCode,
   FileClock,
+  Globe,
 } from "lucide-react";
 
 const QUEUE_TABS = ["All", "Dine in", "Wait List", "Take Away", "Delivery", "Served"] as const;
@@ -645,32 +646,41 @@ export function OrderLineClient({
       <div className="flex-1 overflow-y-auto p-6 pb-24 lg:pb-6">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-xl font-semibold text-neutral-900">Till</h1>
-          <div className="flex items-center gap-1 rounded-2xl border border-neutral-200 bg-white p-1">
-            <TopViewTab
-              active={view === "order"}
-              icon={ShoppingBag}
-              label="Order"
-              onClick={() => setView("order")}
-            />
-            <TopViewTab
-              active={view === "tickets"}
-              icon={ClipboardList}
-              label="Open Tickets"
-              count={queueCounts.All}
-              onClick={() => setView("tickets")}
-            />
-            <TopViewTab
-              active={view === "tables"}
-              icon={LayoutGrid}
-              label="Tables"
-              onClick={() => setView("tables")}
-            />
-            <TopViewTab
-              active={view === "history"}
-              icon={History}
-              label="History"
-              onClick={() => setView("history")}
-            />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => window.location.reload()}
+              title="Refresh — reloads the page and clears any cached data"
+              className="flex items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-500 hover:bg-neutral-50"
+            >
+              <RefreshCw className="h-4 w-4" /> Refresh
+            </button>
+            <div className="flex items-center gap-1 rounded-2xl border border-neutral-200 bg-white p-1">
+              <TopViewTab
+                active={view === "order"}
+                icon={ShoppingBag}
+                label="Order"
+                onClick={() => setView("order")}
+              />
+              <TopViewTab
+                active={view === "tickets"}
+                icon={ClipboardList}
+                label="Open Tickets"
+                count={queueCounts.All}
+                onClick={() => setView("tickets")}
+              />
+              <TopViewTab
+                active={view === "tables"}
+                icon={LayoutGrid}
+                label="Tables"
+                onClick={() => setView("tables")}
+              />
+              <TopViewTab
+                active={view === "history"}
+                icon={History}
+                label="History"
+                onClick={() => setView("history")}
+              />
+            </div>
           </div>
         </div>
 
@@ -1762,6 +1772,11 @@ function OrderCard({
       {updated && (
         <span className="flex w-fit items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
           <RefreshCw className="h-3 w-3" /> Updated
+        </span>
+      )}
+      {order.placedVia !== "staff" && (
+        <span className="flex w-fit items-center gap-1 rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
+          <Globe className="h-3 w-3" /> {order.placedVia === "kiosk" ? "Kiosk" : "Online"}
         </span>
       )}
       <div className="flex items-center justify-between">

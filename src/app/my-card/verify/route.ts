@@ -29,7 +29,13 @@ export async function GET(request: NextRequest) {
     code: member.code,
   });
 
-  const response = NextResponse.redirect(new URL("/my-card", request.url));
+  // redirectTo is always server-set at request time (never a client-supplied query param), but
+  // still checked defensively — it must stay a relative in-app path.
+  const destination =
+    link.redirectTo && link.redirectTo.startsWith("/") && !link.redirectTo.startsWith("//") && !link.redirectTo.includes("\\")
+      ? link.redirectTo
+      : "/my-card";
+  const response = NextResponse.redirect(new URL(destination, request.url));
   response.cookies.set(LOYALTY_SESSION_COOKIE_NAME, sessionToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",

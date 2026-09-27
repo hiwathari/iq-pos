@@ -10,9 +10,13 @@ function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
 }
 
-export async function sendLoyaltyMagicLinkEmail(input: { to: string; restaurantName: string; link: string }) {
+// `code` is optional so the admin-facing loyalty-lookup login (my-card) and the customer
+// ordering sign-in can share one email template — both ways sign in to the same account.
+export async function sendLoyaltyMagicLinkEmail(input: { to: string; restaurantName: string; link: string; code?: string }) {
   if (!resend) {
-    console.log(`[magic-link] RESEND_API_KEY not set — sign-in link for ${input.to}: ${input.link}`);
+    console.log(
+      `[magic-link] RESEND_API_KEY not set — sign-in for ${input.to}: link=${input.link}${input.code ? ` code=${input.code}` : ""}`
+    );
     return;
   }
 
@@ -22,9 +26,14 @@ export async function sendLoyaltyMagicLinkEmail(input: { to: string; restaurantN
     to: input.to,
     subject: `Sign in to ${input.restaurantName}`,
     html: `
-      <p>Tap the link below to sign in to your ${escapeHtml(input.restaurantName)} loyalty account:</p>
+      <p>Tap the link below to sign in to your ${escapeHtml(input.restaurantName)} account:</p>
       <p><a href="${input.link}">${input.link}</a></p>
-      <p style="color:#888;font-size:13px">This link expires in 15 minutes. If you didn't request this, you can ignore this email.</p>
+      ${
+        input.code
+          ? `<p>Or enter this code on the sign-in page: <strong style="font-size:20px;letter-spacing:2px">${escapeHtml(input.code)}</strong></p>`
+          : ""
+      }
+      <p style="color:#888;font-size:13px">This expires in 15 minutes. If you didn't request this, you can ignore this email.</p>
     `,
   });
 }

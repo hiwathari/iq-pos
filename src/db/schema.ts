@@ -22,8 +22,22 @@ export const restaurants = sqliteTable("restaurants", {
   // variable to the key surfaces of this tenant's Till/Kitchen/Dashboard (buttons, active states,
   // accents). Null falls back to IQ POS's default teal everywhere, unchanged from today.
   brandColor: text("brand_color"),
+  // Master switch for this restaurant's public customer-facing ordering link (/order/<slug>) —
+  // Super Admin only. Off by default so a restaurant never gets a live public order page it
+  // didn't ask for.
+  onlineOrderingEnabled: int("online_ordering_enabled", { mode: "boolean" }).notNull().default(false),
+  // Sub-features of online ordering, each independently toggleable by Super Admin. Both require
+  // onlineOrderingEnabled to actually take effect.
+  qrTableOrderingEnabled: int("qr_table_ordering_enabled", { mode: "boolean" }).notNull().default(false),
+  kioskOrderingEnabled: int("kiosk_ordering_enabled", { mode: "boolean" }).notNull().default(false),
+  // Optional branded domain/subdomain for this restaurant's ordering link (e.g. "order.alzayt.com").
+  // Set by Super Admin; the app still serves /order/<slug> on the platform's own domain regardless
+  // — this only adds a nicer alias once its DNS record points here and it's attached in Vercel.
+  customDomain: text("custom_domain"),
   createdAt: timestamp("created_at"),
-});
+},
+  (table) => [uniqueIndex("restaurants_custom_domain_idx").on(table.customDomain)]
+);
 
 export const users = sqliteTable(
   "users",
@@ -198,6 +212,10 @@ export const orders = sqliteTable("orders", {
   // Loyalty member this order is attached to, if the customer was looked up or enrolled at
   // checkout — set null (not deleted) if the member is ever removed.
   loyaltyMemberId: text("loyalty_member_id").references(() => loyaltyMembers.id, { onDelete: "set null" }),
+  // How this order was placed — lets Kitchen/Till/Reports flag self-service tickets distinctly
+  // from ones a staff member rang up. "online" = signed-in QR/table ordering, "kiosk" = walk-up
+  // kiosk device.
+  placedVia: text("placed_via", { enum: ["staff", "online", "kiosk"] }).notNull().default("staff"),
 });
 
 // A loyalty/ordering card enrolled against a customer's phone or email. `code` is the
@@ -224,9 +242,10 @@ export const loyaltyMembers = sqliteTable(
   ]
 );
 
-// A one-time magic-link sign-in token for a loyalty member. Only a SHA-256 hash of the token is
-// stored — the raw token exists solely in the emailed URL — so a database read can never be
-// used to sign in as a member. Consumed (usedAt set) the moment it's verified once.
+// A one-time sign-in request for a loyalty member, deliverable two ways from the same emailed
+// message: a clicked link (tokenHash) or a typed 6-digit code (codeHash) — verifying either one
+// consumes this same row. Only hashes are stored, never the raw token/code, so a database read
+// can never be used to sign in as a member.
 export const loyaltyMagicLinks = sqliteTable(
   "loyalty_magic_links",
   {
@@ -235,11 +254,19 @@ export const loyaltyMagicLinks = sqliteTable(
       .notNull()
       .references(() => loyaltyMembers.id, { onDelete: "cascade" }),
     tokenHash: text("token_hash").notNull(),
+    codeHash: text("code_hash"),
+    // Where to send the browser after a successful verify (e.g. "/order/al-zayt?table=4"). Always
+    // a relative in-app path — validated again at verify time so it can never become an open
+    // redirect even if this value were somehow tampered with.
+    redirectTo: text("redirect_to"),
     expiresAt: int("expires_at").notNull(),
     usedAt: int("used_at"),
     createdAt: timestamp("created_at"),
   },
-  (table) => [uniqueIndex("loyalty_magic_links_token_hash_idx").on(table.tokenHash)]
+  (table) => [
+    uniqueIndex("loyalty_magic_links_token_hash_idx").on(table.tokenHash),
+    uniqueIndex("loyalty_magic_links_code_hash_idx").on(table.codeHash),
+  ]
 );
 
 export const coupons = sqliteTable(

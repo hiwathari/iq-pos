@@ -164,6 +164,54 @@ export async function updateRestaurantBrandingAction(
   return {};
 }
 
+export interface OnlineOrderingSettingsInput {
+  onlineOrderingEnabled: boolean;
+  qrTableOrderingEnabled: boolean;
+  kioskOrderingEnabled: boolean;
+  customDomain: string;
+}
+
+export interface UpdateOnlineOrderingState {
+  error?: string;
+}
+
+const DOMAIN_RE = /^(?!-)[a-z0-9-]+(\.[a-z0-9-]+)+$/;
+
+// Platform-managed, like branding — Super Admin decides which restaurants get a public ordering
+// surface at all, since it opens a new, unauthenticated entry point into the restaurant's orders.
+export async function updateRestaurantOnlineOrderingAction(
+  restaurantId: string,
+  input: OnlineOrderingSettingsInput
+): Promise<UpdateOnlineOrderingState> {
+  const session = await requireSession();
+  if (session.role !== "super_admin") return { error: "Forbidden." };
+
+  let customDomain: string | null = input.customDomain.trim().toLowerCase();
+  customDomain = customDomain.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  if (!customDomain) customDomain = null;
+  if (customDomain && !DOMAIN_RE.test(customDomain)) {
+    return { error: "Enter a valid domain, e.g. order.yourrestaurant.com" };
+  }
+
+  if (customDomain) {
+    const [clash] = await db.select({ id: restaurants.id }).from(restaurants).where(eq(restaurants.customDomain, customDomain));
+    if (clash && clash.id !== restaurantId) return { error: "That domain is already in use by another restaurant." };
+  }
+
+  await db
+    .update(restaurants)
+    .set({
+      onlineOrderingEnabled: input.onlineOrderingEnabled,
+      qrTableOrderingEnabled: input.qrTableOrderingEnabled,
+      kioskOrderingEnabled: input.kioskOrderingEnabled,
+      customDomain,
+    })
+    .where(eq(restaurants.id, restaurantId));
+
+  revalidatePath("/super-admin");
+  return {};
+}
+
 export async function toggleRestaurantActiveAction(restaurantId: string, active: boolean) {
   const session = await requireSession();
   if (session.role !== "super_admin") throw new Error("Forbidden");
