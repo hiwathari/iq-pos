@@ -17,6 +17,7 @@ import {
   Tags,
   TicketPercent,
   CreditCard,
+  Package,
 } from "lucide-react";
 import { Logo } from "./logo";
 import clsx from "clsx";
@@ -32,6 +33,7 @@ const NAV = [
   { href: "/pricing", label: "Channel Pricing", icon: Tags, roles: ["admin"] as Role[] },
   { href: "/coupons", label: "Coupons", icon: TicketPercent, roles: ["admin"] as Role[] },
   { href: "/loyalty", label: "Loyalty Cards", icon: CreditCard, roles: ["admin"] as Role[] },
+  { href: "/inventory", label: "Inventory", icon: Package, roles: ["admin"] as Role[] },
   { href: "/customers", label: "Customers", icon: Users, roles: ["admin", "staff"] as Role[] },
   { href: "/reports", label: "Reports", icon: BarChart3, roles: ["admin"] as Role[] },
   { href: "/settings", label: "Settings", icon: Settings, roles: ["admin"] as Role[] },

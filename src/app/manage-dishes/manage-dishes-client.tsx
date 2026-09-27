@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CategoryIconView } from "@/components/category-icon";
 import { DishModal } from "@/components/dish-modal";
-import type { Category, Dish, Printer } from "@/lib/types";
+import type { Category, Dish, InventoryItem, Printer } from "@/lib/types";
 import { formatMoney } from "@/lib/types";
 import {
   createCategoryAction,
@@ -21,11 +21,13 @@ export function ManageDishesClient({
   categories,
   dishes,
   printers,
+  inventoryItems,
   currencySymbol,
 }: {
   categories: Category[];
   dishes: Dish[];
   printers: Printer[];
+  inventoryItems: InventoryItem[];
   currencySymbol: string;
 }) {
   const router = useRouter();
@@ -296,6 +298,7 @@ export function ManageDishesClient({
           onSave={handleSaveDish}
           categories={categories}
           printers={printers}
+          inventoryItems={inventoryItems}
           defaultCategoryId={selectedCategory}
           initial={editingDish}
           currencySymbol={currencySymbol}

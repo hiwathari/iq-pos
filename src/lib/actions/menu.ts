@@ -36,6 +36,8 @@ export interface DishInput {
   description: string;
   imageUrl?: string;
   printerId?: string | null;
+  inventoryItemId?: string | null;
+  inventoryUsagePerOrder?: number | null;
 }
 
 export async function createDishAction(input: DishInput) {
@@ -52,6 +54,8 @@ export async function createDishAction(input: DishInput) {
     description: input.description || null,
     imageUrl: input.imageUrl?.trim() || null,
     printerId: input.printerId ?? null,
+    inventoryItemId: input.inventoryItemId || null,
+    inventoryUsagePerOrder: input.inventoryItemId ? input.inventoryUsagePerOrder || null : null,
   });
   revalidatePath("/manage-dishes");
   revalidatePath("/order-line");
@@ -70,6 +74,8 @@ export async function updateDishAction(dishId: string, input: DishInput) {
       description: input.description || null,
       imageUrl: input.imageUrl?.trim() || null,
       printerId: input.printerId ?? null,
+      inventoryItemId: input.inventoryItemId || null,
+      inventoryUsagePerOrder: input.inventoryItemId ? input.inventoryUsagePerOrder || null : null,
     })
     .where(and(eq(dishes.id, dishId), eq(dishes.restaurantId, restaurantId)));
   revalidatePath("/manage-dishes");

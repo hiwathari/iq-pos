@@ -86,6 +86,11 @@ export const dishes = sqliteTable("dishes", {
   // taking new orders for it and the Kitchen Display can flip it back on the moment it's
   // restocked, without touching Manage Dishes at all.
   outOfStock: int("out_of_stock", { mode: "boolean" }).notNull().default(false),
+  // Optional single-ingredient link to inventory: selling one of this dish consumes
+  // `inventoryUsagePerOrder` units of `inventoryItemId` — set automatically on the new order in
+  // placeOrderAction. Null/null for a dish with no tracked ingredient (the common case).
+  inventoryItemId: text("inventory_item_id").references(() => inventoryItems.id, { onDelete: "set null" }),
+  inventoryUsagePerOrder: real("inventory_usage_per_order"),
 });
 
 export const tables = sqliteTable(
@@ -321,3 +326,22 @@ export const shifts = sqliteTable("shifts", {
   cashCounted: real("cash_counted").notNull().default(0),
   notes: text("notes"),
 });
+
+// A tracked stock item (an ingredient/supply, not necessarily a sellable dish). `quantity` is
+// adjusted manually from /inventory and automatically when a dish linked via
+// dishes.inventoryItemId is sold — see decrementInventoryForOrder in lib/actions/orders.ts.
+export const inventoryItems = sqliteTable(
+  "inventory_items",
+  {
+    id: id(),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    unit: text("unit").notNull().default("pcs"),
+    quantity: real("quantity").notNull().default(0),
+    lowStockThreshold: real("low_stock_threshold").notNull().default(0),
+    createdAt: timestamp("created_at"),
+  },
+  (table) => [uniqueIndex("inventory_items_restaurant_name_idx").on(table.restaurantId, table.name)]
+);

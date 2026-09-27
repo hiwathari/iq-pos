@@ -6,20 +6,22 @@ import { listOrders } from "@/lib/data/orders";
 import { getRestaurant } from "@/lib/data/restaurants";
 import { getReportData } from "@/lib/data/reports";
 import { listShifts } from "@/lib/data/shifts";
+import { listLowStockItems } from "@/lib/data/inventory";
 import { formatMoney, formatOrderTimestamp } from "@/lib/types";
 import { DashboardCharts } from "./dashboard-charts";
 import { EndShiftButton } from "./end-shift-button";
-import { DollarSign, ClipboardList, Table2, Users, TrendingUp, TrendingDown, Receipt, FileText } from "lucide-react";
+import { DollarSign, ClipboardList, Table2, Users, TrendingUp, TrendingDown, Receipt, FileText, AlertTriangle } from "lucide-react";
 
 export default async function DashboardPage() {
   const { session, restaurantId } = await requireRestaurantContext();
-  const [orders, tables, reservations, restaurant, report, shifts] = await Promise.all([
+  const [orders, tables, reservations, restaurant, report, shifts, lowStockItems] = await Promise.all([
     listOrders(restaurantId),
     listTables(restaurantId),
     listReservations(restaurantId),
     getRestaurant(restaurantId),
     getReportData(restaurantId),
     listShifts(restaurantId),
+    listLowStockItems(restaurantId),
   ]);
   const currencySymbol = restaurant?.currencySymbol ?? "£";
 
@@ -148,6 +150,29 @@ export default async function DashboardPage() {
             </div>
           </div>
         </div>
+
+        {lowStockItems.length > 0 && (
+          <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+            <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-amber-800">
+              <AlertTriangle className="h-4 w-4" /> Low Stock
+            </h2>
+            <div className="space-y-2">
+              {lowStockItems.map((i) => (
+                <div key={i.id} className="flex items-center justify-between text-sm">
+                  <span className="text-amber-800">{i.name}</span>
+                  <span className="font-semibold text-amber-900">
+                    {i.quantity} {i.unit} left
+                  </span>
+                </div>
+              ))}
+            </div>
+            {session.role !== "staff" && (
+              <Link href="/inventory" className="mt-3 inline-block text-xs font-semibold text-amber-700 hover:underline">
+                Manage inventory →
+              </Link>
+            )}
+          </div>
+        )}
 
         <h2 className="mb-4 mt-8 text-base font-semibold text-neutral-900">Reports & Insights</h2>
         <DashboardCharts report={report} currencySymbol={currencySymbol} />

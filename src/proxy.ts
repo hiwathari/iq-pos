@@ -8,7 +8,7 @@ const PUBLIC_PATHS = ["/login", "/till-login", "/kitchen-login"];
 const CUSTOMER_FACING_PREFIX = "/my-card";
 
 // Pages only an admin (or an impersonating super admin) may reach — staff are blocked.
-const ADMIN_ONLY_PREFIXES = ["/manage-dishes", "/settings", "/reports", "/pricing", "/shift-report", "/coupons", "/loyalty"];
+const ADMIN_ONLY_PREFIXES = ["/manage-dishes", "/settings", "/reports", "/pricing", "/shift-report", "/coupons", "/loyalty", "/inventory"];
 
 function isPublic(pathname: string) {
   return PUBLIC_PATHS.some((p) => pathname === p);

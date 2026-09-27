@@ -1,14 +1,43 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
-import { orderCounters, orders, tables } from "@/db/schema";
+import { dishes, inventoryItems, orderCounters, orders, tables } from "@/db/schema";
 import type { Order, OrderChannel, OrderItem, OrderStatus, PaymentLine, ThirdPartyProvider } from "@/lib/types";
 import { resolveCouponDiscount } from "@/lib/types";
 import { requireRestaurantContext } from "@/lib/scope";
 import { findActiveCoupon } from "@/lib/data/coupons";
 import { findLoyaltyMemberById } from "@/lib/data/loyalty";
+
+// Decrements stock for any dish in this order that's linked to a tracked inventory item — only
+// called for brand-new orders (not edits), so an order's ingredients are consumed exactly once
+// rather than needing delta-tracking across edits. Clamped at 0 via SQL MAX so a race between
+// concurrent orders can't push a quantity negative.
+async function decrementInventoryForOrder(restaurantId: string, items: OrderItem[]) {
+  const dishIds = [...new Set(items.map((i) => i.dishId))].filter((id) => !id.startsWith("custom:"));
+  if (dishIds.length === 0) return;
+
+  const linkedDishes = await db
+    .select({ id: dishes.id, inventoryItemId: dishes.inventoryItemId, inventoryUsagePerOrder: dishes.inventoryUsagePerOrder })
+    .from(dishes)
+    .where(and(eq(dishes.restaurantId, restaurantId), inArray(dishes.id, dishIds)));
+
+  const usageByInventoryItem = new Map<string, number>();
+  for (const item of items) {
+    const dish = linkedDishes.find((d) => d.id === item.dishId);
+    if (!dish?.inventoryItemId || !dish.inventoryUsagePerOrder) continue;
+    const amount = dish.inventoryUsagePerOrder * item.qty;
+    usageByInventoryItem.set(dish.inventoryItemId, (usageByInventoryItem.get(dish.inventoryItemId) ?? 0) + amount);
+  }
+
+  for (const [inventoryItemId, amount] of usageByInventoryItem) {
+    await db
+      .update(inventoryItems)
+      .set({ quantity: sql`max(${inventoryItems.quantity} - ${amount}, 0)` })
+      .where(and(eq(inventoryItems.id, inventoryItemId), eq(inventoryItems.restaurantId, restaurantId)));
+  }
+}
 
 // 5-character order codes, base36-encoded from a per-restaurant counter. Deliberately not a
 // plain incrementing decimal (so it doesn't read as "order #31 of the day"), but zero-padded
@@ -155,6 +184,8 @@ export async function placeOrderAction(input: PlaceOrderInput) {
         .set({ status: "on-dine", seated: input.guests, seatedAt: Date.now() })
         .where(and(eq(tables.id, input.tableId), eq(tables.restaurantId, restaurantId)));
     }
+
+    await decrementInventoryForOrder(restaurantId, input.items);
   }
 
   revalidatePath("/order-line");
