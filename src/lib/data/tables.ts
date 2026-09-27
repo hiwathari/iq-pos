@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull, lt } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { orders, reservations, tables } from "@/db/schema";
 
@@ -10,19 +10,27 @@ const AUTO_RELEASE_DELAY_MS = 60_000;
 
 async function releaseStaleTables(restaurantId: string) {
   const cutoff = Date.now() - AUTO_RELEASE_DELAY_MS;
-  const stale = await db
-    .select({ tableId: orders.tableId })
-    .from(orders)
-    .where(and(eq(orders.restaurantId, restaurantId), isNotNull(orders.closedOutAt), lt(orders.closedOutAt, cutoff)));
+  const onDineTables = await db
+    .select({ id: tables.id })
+    .from(tables)
+    .where(and(eq(tables.restaurantId, restaurantId), eq(tables.status, "on-dine")));
+  if (onDineTables.length === 0) return;
 
-  const tableIds = [...new Set(stale.map((o) => o.tableId).filter((id): id is string => !!id))];
+  // A table gets reused many times over its life, so its *most recent* order is the only one
+  // that matters here — an old, long-since-superseded order for the same table must never free
+  // whatever party is sitting there right now.
   await Promise.all(
-    tableIds.map((tableId) =>
-      db
-        .update(tables)
-        .set({ status: "available", seated: 0, seatedAt: null })
-        .where(and(eq(tables.id, tableId), eq(tables.restaurantId, restaurantId), eq(tables.status, "on-dine")))
-    )
+    onDineTables.map(async (table) => {
+      const [latestOrder] = await db
+        .select({ closedOutAt: orders.closedOutAt })
+        .from(orders)
+        .where(and(eq(orders.restaurantId, restaurantId), eq(orders.tableId, table.id)))
+        .orderBy(desc(orders.createdAt))
+        .limit(1);
+      if (latestOrder?.closedOutAt && latestOrder.closedOutAt < cutoff) {
+        await db.update(tables).set({ status: "available", seated: 0, seatedAt: null }).where(eq(tables.id, table.id));
+      }
+    })
   );
 }
 
