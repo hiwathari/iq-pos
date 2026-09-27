@@ -10,11 +10,12 @@ import {
   createCategoryAction,
   createDishAction,
   deleteDishAction,
+  setDishStockAction,
   updateDishAction,
   type CreateCategoryInput,
   type DishInput,
 } from "@/lib/actions/menu";
-import { LayoutGrid, List, Plus, Search, SlidersHorizontal, MoreVertical, Pencil, Trash2, X } from "lucide-react";
+import { LayoutGrid, List, Plus, Search, SlidersHorizontal, MoreVertical, Pencil, Trash2, X, Ban } from "lucide-react";
 
 export function ManageDishesClient({
   categories,
@@ -82,6 +83,14 @@ export function ManageDishesClient({
     setOpenMenuId(null);
     startTransition(async () => {
       await deleteDishAction(dishId);
+      router.refresh();
+    });
+  }
+
+  function handleToggleStock(dish: Dish) {
+    setOpenMenuId(null);
+    startTransition(async () => {
+      await setDishStockAction(dish.id, !dish.outOfStock);
       router.refresh();
     });
   }
@@ -194,6 +203,7 @@ export function ManageDishesClient({
                 onToggleMenu={() => setOpenMenuId(openMenuId === dish.id ? null : dish.id)}
                 onEdit={() => openEditDish(dish)}
                 onDelete={() => handleDeleteDish(dish.id)}
+                onToggleStock={() => handleToggleStock(dish)}
                 currencySymbol={currencySymbol}
               />
             ))}
@@ -229,6 +239,9 @@ export function ManageDishesClient({
                         </span>
                       )}
                       <span className="font-medium text-neutral-800">{dish.name}</span>
+                      {dish.outOfStock && (
+                        <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">Sold Out</span>
+                      )}
                     </td>
                     <td className="px-5 py-3 text-neutral-500">
                       {categories.find((c) => c.id === dish.categoryId)?.name}
@@ -236,6 +249,15 @@ export function ManageDishesClient({
                     <td className="px-5 py-3 font-semibold text-neutral-800">{formatMoney(dish.price, currencySymbol)}</td>
                     <td className="px-5 py-3">
                       <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => handleToggleStock(dish)}
+                          title={dish.outOfStock ? "Mark back in stock" : "Mark out of stock"}
+                          className={`rounded-lg p-1.5 ${
+                            dish.outOfStock ? "bg-rose-50 text-rose-600" : "text-neutral-400 hover:bg-rose-50 hover:text-rose-600"
+                          }`}
+                        >
+                          <Ban className="h-4 w-4" />
+                        </button>
                         <button
                           onClick={() => openEditDish(dish)}
                           className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-teal-600"
@@ -328,6 +350,7 @@ function DishCard({
   onToggleMenu,
   onEdit,
   onDelete,
+  onToggleStock,
   currencySymbol,
 }: {
   dish: Dish;
@@ -336,10 +359,15 @@ function DishCard({
   onToggleMenu: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onToggleStock: () => void;
   currencySymbol: string;
 }) {
   return (
-    <div className="relative flex flex-col rounded-2xl border border-neutral-200 bg-white p-4 hover:shadow-md transition-shadow">
+    <div
+      className={`relative flex flex-col rounded-2xl border border-neutral-200 bg-white p-4 transition-shadow hover:shadow-md ${
+        dish.outOfStock ? "opacity-70" : ""
+      }`}
+    >
       <div className="mb-3 flex items-start justify-between">
         <input type="checkbox" className="h-4 w-4 rounded border-neutral-300 accent-teal-600" />
         <div className="relative">
@@ -350,12 +378,18 @@ function DishCard({
             <MoreVertical className="h-4 w-4" />
           </button>
           {menuOpen && (
-            <div className="absolute right-0 top-8 z-10 w-32 overflow-hidden rounded-xl border border-neutral-200 bg-white py-1 shadow-lg">
+            <div className="absolute right-0 top-8 z-10 w-40 overflow-hidden rounded-xl border border-neutral-200 bg-white py-1 shadow-lg">
               <button
                 onClick={onEdit}
                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-neutral-600 hover:bg-neutral-50"
               >
                 <Pencil className="h-3.5 w-3.5" /> Edit
+              </button>
+              <button
+                onClick={onToggleStock}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-neutral-600 hover:bg-neutral-50"
+              >
+                <Ban className="h-3.5 w-3.5" /> {dish.outOfStock ? "Mark In Stock" : "Mark Out of Stock"}
               </button>
               <button
                 onClick={onDelete}
@@ -368,17 +402,26 @@ function DishCard({
         </div>
       </div>
       {dish.imageUrl ? (
-        <img src={dish.imageUrl} alt={dish.name} className="mb-3 h-16 w-16 rounded-2xl object-cover" />
+        <img
+          src={dish.imageUrl}
+          alt={dish.name}
+          className={`mb-3 h-16 w-16 rounded-2xl object-cover ${dish.outOfStock ? "grayscale" : ""}`}
+        />
       ) : (
         <div
-          className="mb-3 flex h-16 w-16 items-center justify-center rounded-full text-3xl"
+          className={`mb-3 flex h-16 w-16 items-center justify-center rounded-full text-3xl ${dish.outOfStock ? "grayscale" : ""}`}
           style={{ backgroundColor: dish.color }}
         >
           {dish.emoji}
         </div>
       )}
       <div className="text-xs text-neutral-400">{categoryName}</div>
-      <div className="mb-1 font-semibold text-neutral-900">{dish.name}</div>
+      <div className="mb-1 flex items-center gap-2 font-semibold text-neutral-900">
+        {dish.name}
+        {dish.outOfStock && (
+          <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">Sold Out</span>
+        )}
+      </div>
       <div className="font-semibold text-neutral-800">{formatMoney(dish.price, currencySymbol)}</div>
     </div>
   );

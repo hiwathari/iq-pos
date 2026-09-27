@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CategoryIconView } from "@/components/category-icon";
 import type {
   Category,
   Dish,
@@ -24,6 +23,7 @@ import {
   voidOrderAction,
 } from "@/lib/actions/orders";
 import { setTableStatusAction } from "@/lib/actions/tables";
+import { setDishStockAction } from "@/lib/actions/menu";
 import { printTicket } from "@/lib/print-ticket";
 import { TableLayoutPicker } from "@/components/table-layout-picker";
 import {
@@ -283,6 +283,7 @@ export function OrderLineClient({
   }
 
   function addToCart(dish: Dish) {
+    if (dish.outOfStock) return;
     setCart((prev) => {
       const existing = prev.items.find((i) => i.dishId === dish.id);
       if (existing) {
@@ -349,6 +350,15 @@ export function OrderLineClient({
         o.status !== "Voided" &&
         !isOrderClosedOut(o)
     );
+  }
+
+  // Toggled from a dish tile's corner badge — lets floor staff 86 an item the moment it runs
+  // out, without waiting on Manage Dishes or the Kitchen Display to do it.
+  function handleToggleStock(dish: Dish) {
+    startTransition(async () => {
+      await setDishStockAction(dish.id, !dish.outOfStock);
+      router.refresh();
+    });
   }
 
   // Frees a table straight from the Tables view — for a walk-in seated but who left before
@@ -607,22 +617,9 @@ export function OrderLineClient({
             </div>
             {!menuSearch && (
               <div ref={menuRef} className="mb-6 flex gap-3 overflow-x-auto pb-1 scroll-smooth">
-                <MenuTab
-                  active={menuCategory === "all"}
-                  icon="all"
-                  label="All Menu"
-                  count={dishes.length}
-                  onClick={() => setMenuCategory("all")}
-                />
+                <MenuTab active={menuCategory === "all"} label="All Menu" onClick={() => setMenuCategory("all")} />
                 {categories.map((c) => (
-                  <MenuTab
-                    key={c.id}
-                    active={menuCategory === c.id}
-                    icon={c.icon}
-                    label={c.name}
-                    count={dishes.filter((d) => d.categoryId === c.id).length}
-                    onClick={() => setMenuCategory(c.id)}
-                  />
+                  <MenuTab key={c.id} active={menuCategory === c.id} label={c.name} onClick={() => setMenuCategory(c.id)} />
                 ))}
               </div>
             )}
@@ -640,15 +637,32 @@ export function OrderLineClient({
                 return (
                   <div
                     key={dish.id}
-                    className={`flex flex-col rounded-2xl border bg-white p-4 transition-shadow hover:shadow-md ${
-                      qty > 0 ? "border-teal-400 ring-1 ring-teal-100" : "border-neutral-200"
+                    className={`relative flex flex-col rounded-2xl border bg-white p-4 transition-shadow ${
+                      dish.outOfStock
+                        ? "border-neutral-200 opacity-60"
+                        : qty > 0
+                          ? "border-teal-400 ring-1 ring-teal-100 hover:shadow-md"
+                          : "border-neutral-200 hover:shadow-md"
                     }`}
                   >
+                    <button
+                      onClick={() => handleToggleStock(dish)}
+                      title={dish.outOfStock ? "Mark back in stock" : "Mark out of stock"}
+                      className={`absolute right-2.5 top-2.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white shadow-sm ${
+                        dish.outOfStock ? "bg-rose-500 text-white hover:bg-rose-600" : "bg-white text-neutral-300 hover:text-rose-500"
+                      }`}
+                    >
+                      <Ban className="h-3.5 w-3.5" />
+                    </button>
                     {dish.imageUrl ? (
-                      <img src={dish.imageUrl} alt={dish.name} className="mb-3 h-14 w-14 rounded-xl object-cover" />
+                      <img
+                        src={dish.imageUrl}
+                        alt={dish.name}
+                        className={`mb-3 h-14 w-14 rounded-xl object-cover ${dish.outOfStock ? "grayscale" : ""}`}
+                      />
                     ) : (
                       <div
-                        className="mb-3 flex h-14 w-14 items-center justify-center rounded-full text-2xl"
+                        className={`mb-3 flex h-14 w-14 items-center justify-center rounded-full text-2xl ${dish.outOfStock ? "grayscale" : ""}`}
                         style={{ backgroundColor: dish.color }}
                       >
                         {dish.emoji}
@@ -663,22 +677,26 @@ export function OrderLineClient({
                         {formatMoney(price, currencySymbol)}
                         {price !== dish.price && <span className="ml-1 text-[10px] font-normal text-teal-600">({cart.channel})</span>}
                       </span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => decrementCartItem(dish.id)}
-                          disabled={qty === 0}
-                          className="flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 text-neutral-500 hover:bg-neutral-50 disabled:opacity-30"
-                        >
-                          <Minus className="h-3.5 w-3.5" />
-                        </button>
-                        <span className="w-4 text-center text-sm font-semibold text-neutral-800">{qty}</span>
-                        <button
-                          onClick={() => addToCart(dish)}
-                          className="flex h-7 w-7 items-center justify-center rounded-full bg-teal-600 text-white hover:bg-teal-700"
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                      {dish.outOfStock ? (
+                        <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">Sold Out</span>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => decrementCartItem(dish.id)}
+                            disabled={qty === 0}
+                            className="flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 text-neutral-500 hover:bg-neutral-50 disabled:opacity-30"
+                          >
+                            <Minus className="h-3.5 w-3.5" />
+                          </button>
+                          <span className="w-4 text-center text-sm font-semibold text-neutral-800">{qty}</span>
+                          <button
+                            onClick={() => addToCart(dish)}
+                            className="flex h-7 w-7 items-center justify-center rounded-full bg-teal-600 text-white hover:bg-teal-700"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -1711,31 +1729,15 @@ function TablesOverview({
   );
 }
 
-function MenuTab({
-  active,
-  icon,
-  label,
-  count,
-  onClick,
-}: {
-  active: boolean;
-  icon: string;
-  label: string;
-  count: number;
-  onClick: () => void;
-}) {
+function MenuTab({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className={`flex shrink-0 flex-col items-start gap-2 rounded-2xl border px-4 py-3 text-left transition-colors ${
-        active ? "border-teal-600 bg-teal-50" : "border-neutral-200 bg-white hover:bg-neutral-50"
+      className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition-colors ${
+        active ? "border-teal-600 bg-teal-600 text-white" : "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
       }`}
     >
-      <span className={`flex h-7 w-7 items-center justify-center rounded-lg ${active ? "bg-teal-600 text-white" : "bg-neutral-100 text-neutral-500"}`}>
-        {icon === "all" ? <LayoutGrid className="h-4 w-4" /> : <CategoryIconView icon={icon} className="h-4 w-4" />}
-      </span>
-      <span className="text-sm font-semibold text-neutral-800">{label}</span>
-      <span className="text-xs text-neutral-400">{count} items</span>
+      {label}
     </button>
   );
 }

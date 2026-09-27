@@ -2,9 +2,26 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { formatOrderTimestamp, orderSequence, type Order, type OrderStatus } from "@/lib/types";
+import { formatOrderTimestamp, orderSequence, type Category, type Dish, type Order, type OrderStatus } from "@/lib/types";
 import { setOrderStatusAction, toggleOrderItemReadyAction, voidOrderAction } from "@/lib/actions/orders";
-import { Ban, Bike, Check, CheckCircle2, ChefHat, Clock, MapPin, Minus, Phone, Plus, RefreshCw, ShoppingBag, X, XCircle } from "lucide-react";
+import { setDishStockAction } from "@/lib/actions/menu";
+import {
+  Ban,
+  Bike,
+  Check,
+  CheckCircle2,
+  ChefHat,
+  Clock,
+  MapPin,
+  Minus,
+  Phone,
+  Plus,
+  RefreshCw,
+  ShoppingBag,
+  X,
+  XCircle,
+  PackageX,
+} from "lucide-react";
 
 // Served and voided tickets share one "Completed" column (green for served, red for voided)
 // and each only needs a brief moment there for staff to double-check — 30 seconds after being
@@ -28,12 +45,23 @@ const COLUMNS: { statuses: OrderStatus[]; label: string; accent: string; showTim
   { statuses: ["Served", "Voided"], label: "Completed", accent: "border-t-neutral-300", showTimer: false },
 ];
 
-export function KitchenClient({ orders, timerLimitMinutes }: { orders: Order[]; timerLimitMinutes: number }) {
+export function KitchenClient({
+  orders,
+  categories,
+  dishes,
+  timerLimitMinutes,
+}: {
+  orders: Order[];
+  categories: Category[];
+  dishes: Dish[];
+  timerLimitMinutes: number;
+}) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [voidTarget, setVoidTarget] = useState<Order | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [fontScaleIndex, setFontScaleIndex] = useState(DEFAULT_FONT_SCALE_INDEX);
+  const [stockModalOpen, setStockModalOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -94,32 +122,53 @@ export function KitchenClient({ orders, timerLimitMinutes }: { orders: Order[]; 
     });
   }
 
+  function toggleStock(dish: Dish) {
+    startTransition(async () => {
+      await setDishStockAction(dish.id, !dish.outOfStock);
+      router.refresh();
+    });
+  }
+
+  const outOfStockCount = dishes.filter((d) => d.outOfStock).length;
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-neutral-100 p-4" style={{ zoom: FONT_SCALE_STEPS[fontScaleIndex] }}>
       <div className="mb-4 flex items-center justify-between">
         <h1 className="flex items-center gap-2 text-xl font-bold text-neutral-900">
           <ChefHat className="h-6 w-6 text-teal-600" /> Kitchen Display
         </h1>
-        <div className="flex items-center gap-1 rounded-xl border border-neutral-200 bg-white p-1">
+        <div className="flex items-center gap-3">
           <button
-            onClick={() => adjustFontScale(-1)}
-            disabled={fontScaleIndex === 0}
-            title="Smaller text"
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-50 disabled:opacity-30"
+            onClick={() => setStockModalOpen(true)}
+            className={`flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-sm font-semibold ${
+              outOfStockCount > 0
+                ? "border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100"
+                : "border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50"
+            }`}
           >
-            <Minus className="h-4 w-4" />
+            <PackageX className="h-4 w-4" /> Stock{outOfStockCount > 0 ? ` (${outOfStockCount} out)` : ""}
           </button>
-          <span className="w-10 text-center text-xs font-semibold text-neutral-500">
-            {Math.round(FONT_SCALE_STEPS[fontScaleIndex] * 100)}%
-          </span>
-          <button
-            onClick={() => adjustFontScale(1)}
-            disabled={fontScaleIndex === FONT_SCALE_STEPS.length - 1}
-            title="Bigger text"
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-50 disabled:opacity-30"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-1 rounded-xl border border-neutral-200 bg-white p-1">
+            <button
+              onClick={() => adjustFontScale(-1)}
+              disabled={fontScaleIndex === 0}
+              title="Smaller text"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-50 disabled:opacity-30"
+            >
+              <Minus className="h-4 w-4" />
+            </button>
+            <span className="w-10 text-center text-xs font-semibold text-neutral-500">
+              {Math.round(FONT_SCALE_STEPS[fontScaleIndex] * 100)}%
+            </span>
+            <button
+              onClick={() => adjustFontScale(1)}
+              disabled={fontScaleIndex === FONT_SCALE_STEPS.length - 1}
+              title="Bigger text"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-50 disabled:opacity-30"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -161,6 +210,68 @@ export function KitchenClient({ orders, timerLimitMinutes }: { orders: Order[]; 
       </div>
 
       {voidTarget && <VoidModal order={voidTarget} onCancel={() => setVoidTarget(null)} onConfirm={confirmVoid} />}
+      {stockModalOpen && (
+        <StockModal categories={categories} dishes={dishes} onToggle={toggleStock} onClose={() => setStockModalOpen(false)} />
+      )}
+    </div>
+  );
+}
+
+function StockModal({
+  categories,
+  dishes,
+  onToggle,
+  onClose,
+}: {
+  categories: Category[];
+  dishes: Dish[];
+  onToggle: (dish: Dish) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-neutral-100 px-5 py-4">
+          <h2 className="flex items-center gap-2 text-base font-bold text-neutral-900">
+            <PackageX className="h-5 w-5 text-rose-500" /> Menu Stock
+          </h2>
+          <button onClick={onClose} className="rounded-lg p-1 text-neutral-400 hover:bg-neutral-100">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <p className="border-b border-neutral-100 px-5 py-2.5 text-xs text-neutral-400">
+          Mark an item out of stock the moment it runs out — the Till stops taking new orders for it immediately.
+        </p>
+        <div className="flex-1 overflow-y-auto p-3">
+          {categories.map((category) => {
+            const categoryDishes = dishes.filter((d) => d.categoryId === category.id);
+            if (categoryDishes.length === 0) return null;
+            return (
+              <div key={category.id} className="mb-3">
+                <div className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">{category.name}</div>
+                {categoryDishes.map((dish) => (
+                  <button
+                    key={dish.id}
+                    onClick={() => onToggle(dish)}
+                    className="flex w-full items-center justify-between rounded-xl px-2.5 py-2.5 text-left hover:bg-neutral-50"
+                  >
+                    <span className={`text-sm font-medium ${dish.outOfStock ? "text-neutral-400 line-through" : "text-neutral-800"}`}>
+                      {dish.name}
+                    </span>
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+                        dish.outOfStock ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700"
+                      }`}
+                    >
+                      {dish.outOfStock ? "Out of Stock" : "In Stock"}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

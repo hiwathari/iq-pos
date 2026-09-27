@@ -84,6 +84,19 @@ export async function deleteDishAction(dishId: string) {
   revalidatePath("/order-line");
 }
 
+// Toggled from the Till or the Kitchen Display when an item runs out mid-service — deliberately
+// not admin-only, since it's the floor/kitchen staff who notice and need to act immediately.
+export async function setDishStockAction(dishId: string, outOfStock: boolean) {
+  const { restaurantId } = await requireRestaurantContext();
+  await db
+    .update(dishes)
+    .set({ outOfStock })
+    .where(and(eq(dishes.id, dishId), eq(dishes.restaurantId, restaurantId)));
+  revalidatePath("/order-line");
+  revalidatePath("/kitchen");
+  revalidatePath("/manage-dishes");
+}
+
 export async function setChannelPriceAction(dishId: string, channel: string, price: number | null) {
   const { session, restaurantId } = await requireRestaurantContext();
   assertAdmin(session);

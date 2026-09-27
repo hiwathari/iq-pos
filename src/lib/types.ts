@@ -1,4 +1,4 @@
-import type { categories, dishes, integrations, orders, paymentTerminals, printers, reservations, restaurants, tables } from "@/db/schema";
+import type { categories, dishes, integrations, orders, paymentTerminals, printers, reservations, restaurants, shifts, tables } from "@/db/schema";
 
 export type CategoryIcon =
   | "all"
@@ -25,6 +25,7 @@ export type Order = typeof orders.$inferSelect;
 export type Printer = typeof printers.$inferSelect;
 export type Integration = typeof integrations.$inferSelect;
 export type PaymentTerminal = typeof paymentTerminals.$inferSelect;
+export type Shift = typeof shifts.$inferSelect;
 
 export interface OrderItem {
   dishId: string;

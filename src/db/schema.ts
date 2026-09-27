@@ -78,6 +78,10 @@ export const dishes = sqliteTable("dishes", {
   // editable per-dish for the odd item that needs a different station (e.g. a dessert routed to
   // the bar printer instead of its category's default).
   printerId: text("printer_id").references(() => printers.id, { onDelete: "set null" }),
+  // Marks a dish as temporarily unavailable (kitchen ran out mid-service) — the Till stops
+  // taking new orders for it and the Kitchen Display can flip it back on the moment it's
+  // restocked, without touching Manage Dishes at all.
+  outOfStock: int("out_of_stock", { mode: "boolean" }).notNull().default(false),
 });
 
 export const tables = sqliteTable(
@@ -214,4 +218,33 @@ export const orderCounters = sqliteTable("order_counters", {
     .primaryKey()
     .references(() => restaurants.id, { onDelete: "cascade" }),
   value: int("value").notNull().default(0),
+});
+
+// A closed-out shift/day-end reconciliation, created when a manager taps "End Shift". Covers
+// the period since the previous shift's closedAt (or since the restaurant's first order, for
+// the very first shift) up to closedAt. Sales figures are frozen at close time rather than
+// recomputed later, so a shift's report stays accurate even as newer orders come in.
+export const shifts = sqliteTable("shifts", {
+  id: id(),
+  restaurantId: text("restaurant_id")
+    .notNull()
+    .references(() => restaurants.id, { onDelete: "cascade" }),
+  openedAt: int("opened_at").notNull(),
+  closedAt: int("closed_at").notNull().$defaultFn(() => Date.now()),
+  closedByUserId: text("closed_by_user_id"),
+  closedByName: text("closed_by_name"),
+  totalSales: real("total_sales").notNull().default(0),
+  cashSales: real("cash_sales").notNull().default(0),
+  cardSales: real("card_sales").notNull().default(0),
+  otherSales: real("other_sales").notNull().default(0),
+  orderCount: int("order_count").notNull().default(0),
+  voidCount: int("void_count").notNull().default(0),
+  voidAmount: real("void_amount").notNull().default(0),
+  // What the drawer should hold in cash given cashSales above (assumes it started at zero for
+  // the shift — a starting float can be folded in via notes until a dedicated field is needed).
+  expectedCash: real("expected_cash").notNull().default(0),
+  // What the manager actually counted in the drawer at close — compared against expectedCash
+  // on the report to flag any over/short.
+  cashCounted: real("cash_counted").notNull().default(0),
+  notes: text("notes"),
 });
