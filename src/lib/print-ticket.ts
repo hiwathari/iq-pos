@@ -9,6 +9,9 @@ export interface TicketData {
   channel: string;
   items: { name: string; qty: number; price: number; note?: string }[];
   subtotal: number;
+  extraDiscount?: number;
+  couponCode?: string;
+  couponDiscount?: number;
   tax: number;
   donation: number;
   total: number;
@@ -109,6 +112,8 @@ export async function printTicket(ticket: TicketData) {
   <hr />
   <table>
     <tr><td>Subtotal</td><td class="right">${money(ticket.subtotal)}</td></tr>
+    ${ticket.extraDiscount ? `<tr><td>Extra Discount</td><td class="right">-${money(ticket.extraDiscount)}</td></tr>` : ""}
+    ${ticket.couponDiscount ? `<tr><td>Coupon${ticket.couponCode ? ` (${escapeHtml(ticket.couponCode)})` : ""}</td><td class="right">-${money(ticket.couponDiscount)}</td></tr>` : ""}
     <tr><td>Tax</td><td class="right">${money(ticket.tax)}</td></tr>
     ${ticket.donation > 0 ? `<tr><td>Donation</td><td class="right">${money(ticket.donation)}</td></tr>` : ""}
     <tr class="total"><td>Total</td><td class="right">${money(ticket.total)}</td></tr>

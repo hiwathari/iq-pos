@@ -5,7 +5,9 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { orderCounters, orders, tables } from "@/db/schema";
 import type { Order, OrderChannel, OrderItem, OrderStatus, PaymentLine, ThirdPartyProvider } from "@/lib/types";
+import { resolveCouponDiscount } from "@/lib/types";
 import { requireRestaurantContext } from "@/lib/scope";
+import { findActiveCoupon } from "@/lib/data/coupons";
 
 // 5-character order codes, base36-encoded from a per-restaurant counter. Deliberately not a
 // plain incrementing decimal (so it doesn't read as "order #31 of the day"), but zero-padded
@@ -44,6 +46,8 @@ export interface PlaceOrderInput {
   payments: PaymentLine[];
   cashReceived?: number;
   donation: number;
+  extraDiscount?: number;
+  couponCode?: string;
   customerName?: string;
   customerPhone?: string;
   customerAddress?: string;
@@ -57,6 +61,21 @@ export async function placeOrderAction(input: PlaceOrderInput) {
   const paymentMethod =
     input.payments.length === 0 ? null : input.payments.length === 1 ? input.payments[0].method : "Split";
   const payments = input.payments.length > 1 ? input.payments : null;
+
+  // Never trust a client-supplied discount amount — recompute from the live coupon record
+  // against this order's own item subtotal, so a stale or tampered value can't be saved.
+  const subtotal = input.items.reduce((sum, i) => sum + i.price * i.qty, 0);
+  const extraDiscount = Math.max(0, Math.min(subtotal, input.extraDiscount ?? 0));
+  const trimmedCode = input.couponCode?.trim().toUpperCase() || null;
+  let couponCode: string | null = null;
+  let couponDiscount = 0;
+  if (trimmedCode) {
+    const coupon = await findActiveCoupon(restaurantId, trimmedCode);
+    if (coupon) {
+      couponCode = coupon.code;
+      couponDiscount = resolveCouponDiscount(coupon, Math.max(0, subtotal - extraDiscount));
+    }
+  }
 
   if (input.editingOrderId) {
     const [existing] = await db
@@ -83,6 +102,9 @@ export async function placeOrderAction(input: PlaceOrderInput) {
         payments,
         cashReceived: input.cashReceived ?? null,
         donation: input.donation,
+        extraDiscount,
+        couponCode,
+        couponDiscount,
         customerName: hasCustomerInfo ? input.customerName || null : null,
         customerPhone: hasCustomerInfo ? input.customerPhone || null : null,
         customerAddress: input.channel === "Delivery" ? input.customerAddress || null : null,
@@ -107,6 +129,9 @@ export async function placeOrderAction(input: PlaceOrderInput) {
       payments,
       cashReceived: input.cashReceived ?? null,
       donation: input.donation,
+      extraDiscount,
+      couponCode,
+      couponDiscount,
       customerName: hasCustomerInfo ? input.customerName || null : null,
       customerPhone: hasCustomerInfo ? input.customerPhone || null : null,
       customerAddress: input.channel === "Delivery" ? input.customerAddress || null : null,

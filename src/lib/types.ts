@@ -1,4 +1,4 @@
-import type { categories, dishes, integrations, orders, paymentTerminals, printers, reservations, restaurants, shifts, tables } from "@/db/schema";
+import type { categories, coupons, dishes, integrations, orders, paymentTerminals, printers, reservations, restaurants, shifts, tables } from "@/db/schema";
 
 export type CategoryIcon =
   | "all"
@@ -26,6 +26,8 @@ export type Printer = typeof printers.$inferSelect;
 export type Integration = typeof integrations.$inferSelect;
 export type PaymentTerminal = typeof paymentTerminals.$inferSelect;
 export type Shift = typeof shifts.$inferSelect;
+export type Coupon = typeof coupons.$inferSelect;
+export type CouponType = "percent" | "fixed";
 
 export interface OrderItem {
   dishId: string;
@@ -64,10 +66,21 @@ export const CURRENCY_OPTIONS = [
   { symbol: "A$", label: "A$ Australian Dollar" },
 ] as const;
 
-export function orderTotal(order: Pick<Order, "items" | "donation">) {
+export const TAX_RATE = 0.06;
+
+export function orderTotal(order: Pick<Order, "items" | "donation" | "extraDiscount" | "couponDiscount">) {
   const subtotal = order.items.reduce((sum, i) => sum + i.price * i.qty, 0);
-  const tax = subtotal * 0.06;
-  return subtotal + tax + (order.donation ?? 0);
+  const discountedSubtotal = Math.max(0, subtotal - (order.extraDiscount ?? 0) - (order.couponDiscount ?? 0));
+  const tax = discountedSubtotal * TAX_RATE;
+  return discountedSubtotal + tax + (order.donation ?? 0);
+}
+
+// Resolves a coupon's percent/fixed value into an actual currency amount against a given
+// subtotal — shared by the Till (live preview before an order is saved) and the server action
+// that places the order, so the two can never disagree on what a coupon is worth.
+export function resolveCouponDiscount(coupon: Pick<Coupon, "type" | "value">, subtotal: number) {
+  const raw = coupon.type === "percent" ? (subtotal * coupon.value) / 100 : coupon.value;
+  return Math.max(0, Math.min(subtotal, raw));
 }
 
 // Table occupied-time display (hours/minutes, not seconds — meals run long) for the Till's

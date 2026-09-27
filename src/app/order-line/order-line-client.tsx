@@ -14,7 +14,7 @@ import type {
   RestaurantTable,
   ThirdPartyProvider,
 } from "@/lib/types";
-import { formatMoney, formatOccupiedTime, formatOrderTimestamp, orderSequence } from "@/lib/types";
+import { formatMoney, formatOccupiedTime, formatOrderTimestamp, orderSequence, orderTotal, TAX_RATE } from "@/lib/types";
 import {
   mergeTableIntoOrderAction,
   placeOrderAction,
@@ -22,6 +22,7 @@ import {
   swapOrderTableAction,
   voidOrderAction,
 } from "@/lib/actions/orders";
+import { validateCouponAction } from "@/lib/actions/coupons";
 import { setTableStatusAction } from "@/lib/actions/tables";
 import { setDishStockAction } from "@/lib/actions/menu";
 import { printTicket } from "@/lib/print-ticket";
@@ -100,8 +101,6 @@ const CARD_TINTS: Record<Order["status"], string> = {
 const CHANNELS: OrderChannel[] = ["Dine in", "Wait List", "Take Away", "Delivery", "Online", "Third Party"];
 const THIRD_PARTY_PROVIDERS: ThirdPartyProvider[] = ["Uber Eats", "Deliveroo", "Just Eat", "Other"];
 
-const TAX_RATE = 0.06;
-
 interface CartState {
   editingOrderId: string | null;
   tableId: string | null;
@@ -115,6 +114,9 @@ interface CartState {
   customerAddress: string;
   payments: PaymentLine[];
   cashReceived: string;
+  extraDiscount: string;
+  couponCode: string;
+  appliedCoupon: { code: string; discount: number } | null;
 }
 
 const emptyCart: CartState = {
@@ -130,6 +132,9 @@ const emptyCart: CartState = {
   customerAddress: "",
   payments: [],
   cashReceived: "",
+  extraDiscount: "",
+  couponCode: "",
+  appliedCoupon: null,
 };
 
 export function OrderLineClient({
@@ -188,6 +193,7 @@ export function OrderLineClient({
   const [tableActionError, setTableActionError] = useState<string | null>(null);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
   const [voidModalOpen, setVoidModalOpen] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -274,9 +280,34 @@ export function OrderLineClient({
   const qtyFor = (dishId: string) => cart.items.find((i) => i.dishId === dishId)?.qty ?? 0;
 
   const subtotal = cart.items.reduce((sum, i) => sum + i.price * i.qty, 0);
-  const tax = subtotal * TAX_RATE;
+  const extraDiscountAmount = Math.max(0, Math.min(subtotal, Number(cart.extraDiscount) || 0));
+  const couponDiscountAmount = cart.appliedCoupon
+    ? Math.max(0, Math.min(subtotal - extraDiscountAmount, cart.appliedCoupon.discount))
+    : 0;
+  const discountedSubtotal = Math.max(0, subtotal - extraDiscountAmount - couponDiscountAmount);
+  const tax = discountedSubtotal * TAX_RATE;
   const donationAmount = donation && cart.items.length > 0 ? 1 : 0;
-  const total = subtotal + tax + donationAmount;
+  const total = discountedSubtotal + tax + donationAmount;
+
+  function applyCoupon() {
+    const code = cart.couponCode.trim();
+    if (!code) return;
+    setCouponError(null);
+    startTransition(async () => {
+      const result = await validateCouponAction(code, Math.max(0, subtotal - extraDiscountAmount));
+      if (result.error) {
+        setCouponError(result.error);
+        setCart((prev) => ({ ...prev, appliedCoupon: null }));
+        return;
+      }
+      setCart((prev) => ({ ...prev, appliedCoupon: { code: result.code!, discount: result.discount! } }));
+    });
+  }
+
+  function removeCoupon() {
+    setCouponError(null);
+    setCart((prev) => ({ ...prev, couponCode: "", appliedCoupon: null }));
+  }
 
   const editingOrder = cart.editingOrderId ? orders.find((o) => o.id === cart.editingOrderId) : null;
 
@@ -321,7 +352,7 @@ export function OrderLineClient({
   }
 
   function loadOrderIntoCart(order: Order) {
-    const orderTotalAmount = order.items.reduce((sum, i) => sum + i.price * i.qty, 0) * (1 + TAX_RATE) + (order.donation ?? 0);
+    const orderTotalAmount = orderTotal(order);
     const payments: PaymentLine[] =
       order.payments?.length ? order.payments : order.paymentMethod ? [{ method: order.paymentMethod, amount: orderTotalAmount }] : [];
 
@@ -338,8 +369,12 @@ export function OrderLineClient({
       customerAddress: order.customerAddress ?? "",
       payments,
       cashReceived: order.cashReceived ? String(order.cashReceived) : "",
+      extraDiscount: order.extraDiscount ? String(order.extraDiscount) : "",
+      couponCode: order.couponCode ?? "",
+      appliedCoupon: order.couponCode ? { code: order.couponCode, discount: order.couponDiscount ?? 0 } : null,
     });
     setDonation((order.donation ?? 0) > 0);
+    setCouponError(null);
     setTableEditorOpen(false);
     setMobileCartOpen(true);
     setView("order");
@@ -406,12 +441,15 @@ export function OrderLineClient({
         payments: cart.payments,
         cashReceived: cashLine ? cashReceivedAmount || undefined : undefined,
         donation: donationAmount,
+        extraDiscount: extraDiscountAmount || undefined,
+        couponCode: cart.appliedCoupon?.code,
         customerName: cart.customerName.trim() || undefined,
         customerPhone: cart.customerPhone.trim() || undefined,
         customerAddress: cart.customerAddress.trim() || undefined,
       });
       setCart(emptyCart);
       setDonation(true);
+      setCouponError(null);
       setTableEditorOpen(true);
       setMobileCartOpen(false);
       router.refresh();
@@ -474,6 +512,9 @@ export function OrderLineClient({
       subtotal,
       tax,
       donation: donationAmount,
+      extraDiscount: extraDiscountAmount || undefined,
+      couponCode: cart.appliedCoupon?.code,
+      couponDiscount: couponDiscountAmount || undefined,
       total,
       currencySymbol,
       customerName: cart.customerName || undefined,
@@ -505,6 +546,11 @@ export function OrderLineClient({
     donation,
     setDonation,
     donationAmount,
+    extraDiscountAmount,
+    couponDiscountAmount,
+    couponError,
+    applyCoupon,
+    removeCoupon,
     total,
     paymentsTotal,
     paymentsRemaining,
@@ -882,6 +928,11 @@ interface CartPanelProps {
   donation: boolean;
   setDonation: (v: boolean) => void;
   donationAmount: number;
+  extraDiscountAmount: number;
+  couponDiscountAmount: number;
+  couponError: string | null;
+  applyCoupon: () => void;
+  removeCoupon: () => void;
   total: number;
   paymentsTotal: number;
   paymentsRemaining: number;
@@ -918,6 +969,11 @@ function CartPanel({
   donation,
   setDonation,
   donationAmount,
+  extraDiscountAmount,
+  couponDiscountAmount,
+  couponError,
+  applyCoupon,
+  removeCoupon,
   total,
   paymentsTotal,
   paymentsRemaining,
@@ -1251,6 +1307,66 @@ function CartPanel({
             <span>Subtotal</span>
             <span>{formatMoney(subtotal, currencySymbol)}</span>
           </div>
+
+          <div className="flex items-center justify-between gap-2 text-sm text-neutral-500">
+            <span>Extra Discount</span>
+            <div className="relative w-28">
+              <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-neutral-400">
+                {currencySymbol}
+              </span>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={cart.extraDiscount}
+                onChange={(e) => setCart((prev) => ({ ...prev, extraDiscount: e.target.value }))}
+                placeholder="0.00"
+                className="w-full rounded-lg border border-neutral-200 py-1.5 pl-6 pr-2 text-right text-sm outline-none focus:border-teal-500"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <input
+                value={cart.couponCode}
+                onChange={(e) => setCart((prev) => ({ ...prev, couponCode: e.target.value.toUpperCase() }))}
+                placeholder="Coupon code"
+                disabled={!!cart.appliedCoupon}
+                className="flex-1 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-mono uppercase outline-none focus:border-teal-500 disabled:bg-neutral-50 disabled:text-neutral-400"
+              />
+              {cart.appliedCoupon ? (
+                <button
+                  onClick={removeCoupon}
+                  className="shrink-0 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-500 hover:bg-neutral-50"
+                >
+                  Remove
+                </button>
+              ) : (
+                <button
+                  onClick={applyCoupon}
+                  disabled={!cart.couponCode.trim()}
+                  className="shrink-0 rounded-lg bg-[var(--brand)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--brand-dark)] disabled:opacity-50"
+                >
+                  Apply
+                </button>
+              )}
+            </div>
+            {couponError && <p className="text-xs font-medium text-rose-600">{couponError}</p>}
+            {cart.appliedCoupon && (
+              <div className="flex justify-between text-sm text-emerald-600">
+                <span>Coupon {cart.appliedCoupon.code}</span>
+                <span>-{formatMoney(couponDiscountAmount, currencySymbol)}</span>
+              </div>
+            )}
+            {extraDiscountAmount > 0 && (
+              <div className="flex justify-between text-sm text-neutral-500">
+                <span>Extra discount applied</span>
+                <span>-{formatMoney(extraDiscountAmount, currencySymbol)}</span>
+              </div>
+            )}
+          </div>
+
           <div className="flex justify-between text-sm text-neutral-500">
             <span>Tax (6%)</span>
             <span>{formatMoney(tax, currencySymbol)}</span>

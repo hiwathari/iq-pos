@@ -182,7 +182,34 @@ export const orders = sqliteTable("orders", {
   // When the order was voided — the Kitchen Display drops a voided ticket off its board about
   // 30 seconds after this (it stays visible on the Till's history for the full audit trail).
   voidedAt: int("voided_at"),
+  // A manual, staff-applied discount (flat amount, already resolved from whatever % or fixed
+  // entry they used) — frozen at order time so a later edit to how discounts work never
+  // reaches back into old orders.
+  extraDiscount: real("extra_discount").notNull().default(0),
+  // Snapshot of the coupon code used, if any — plain text rather than a foreign key, so
+  // deleting or editing a coupon later never disturbs the historical orders that used it.
+  couponCode: text("coupon_code"),
+  couponDiscount: real("coupon_discount").notNull().default(0),
+  // Loyalty member this order is attached to, if the customer was looked up or enrolled at
+  // checkout — set null (not deleted) if the member is ever removed.
+  loyaltyMemberId: text("loyalty_member_id"),
 });
+
+export const coupons = sqliteTable(
+  "coupons",
+  {
+    id: id(),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    code: text("code").notNull(),
+    type: text("type", { enum: ["percent", "fixed"] }).notNull(),
+    value: real("value").notNull(),
+    active: int("active", { mode: "boolean" }).notNull().default(true),
+    createdAt: timestamp("created_at"),
+  },
+  (table) => [uniqueIndex("coupons_restaurant_code_idx").on(table.restaurantId, table.code)]
+);
 
 export const printers = sqliteTable("printers", {
   id: id(),
