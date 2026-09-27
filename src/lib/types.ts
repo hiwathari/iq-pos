@@ -72,3 +72,22 @@ export function orderTotal(order: Pick<Order, "items" | "donation">) {
 export function formatMoney(amount: number, currencySymbol: string) {
   return `${currencySymbol}${amount.toFixed(2)}`;
 }
+
+// A real, always-current date/time for an order, computed from its createdAt timestamp —
+// `createdLabel` is only ever set once at creation ("Just now") and never updates, so it goes
+// stale immediately and shouldn't be relied on for display.
+export function formatOrderTimestamp(createdAt: number) {
+  return new Date(createdAt).toLocaleString(undefined, {
+    day: "2-digit",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+// Order codes are a base36-encoded counter (see encodeOrderNumber in actions/orders.ts) —
+// decoding one back to decimal gives a plain, human-friendly running sequence number, useful
+// as a quick reference alongside the code itself (e.g. "#0A532 · Seq 371").
+export function orderSequence(orderNumber: string) {
+  return parseInt(orderNumber, 36);
+}

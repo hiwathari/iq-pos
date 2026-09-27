@@ -25,11 +25,16 @@ export function TableLayoutPicker({
   selectedTableId,
   onSelect,
   onClose,
+  title = "Select a Table",
+  allowOccupied = false,
 }: {
   tables: RestaurantTable[];
   selectedTableId: string | null;
   onSelect: (table: RestaurantTable) => void;
   onClose: () => void;
+  title?: string;
+  // For merging a table into an order, an already-occupied table is a valid (expected) pick.
+  allowOccupied?: boolean;
 }) {
   const [area, setArea] = useState<TableArea>("Ground Floor");
   const areaTables = useMemo(() => tables.filter((t) => t.area === area), [tables, area]);
@@ -41,7 +46,7 @@ export function TableLayoutPicker({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-neutral-900">Select a Table</h2>
+          <h2 className="text-lg font-semibold text-neutral-900">{title}</h2>
           <button onClick={onClose} className="rounded-full p-1 text-neutral-400 hover:bg-neutral-100">
             <X className="h-5 w-5" />
           </button>
@@ -76,7 +81,7 @@ export function TableLayoutPicker({
         <div className="grid flex-1 grid-cols-3 gap-4 overflow-y-auto pb-1 sm:grid-cols-4">
           {areaTables.map((table) => {
             const isSelected = table.id === selectedTableId;
-            const isOccupied = table.status === "on-dine" && !isSelected;
+            const isOccupied = table.status === "on-dine" && !isSelected && !allowOccupied;
             return (
               <button
                 key={table.id}

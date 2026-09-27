@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { Order, OrderStatus } from "@/lib/types";
+import { formatOrderTimestamp, orderSequence, type Order, type OrderStatus } from "@/lib/types";
 import { setOrderStatusAction, toggleOrderItemReadyAction, voidOrderAction } from "@/lib/actions/orders";
 import { Ban, Bike, Check, CheckCircle2, ChefHat, Clock, MapPin, Phone, RefreshCw, ShoppingBag, X, XCircle } from "lucide-react";
 
@@ -177,10 +177,11 @@ function OrderTicket({
           </span>
         ) : (
           <span className="flex items-center gap-1 text-xs font-medium text-neutral-400">
-            <Clock className="h-3.5 w-3.5" /> {order.createdLabel}
+            <Clock className="h-3.5 w-3.5" /> {formatOrderTimestamp(order.createdAt)}
           </span>
         )}
       </div>
+      <div className="mb-2 text-xs font-medium text-neutral-400">Seq {orderSequence(order.orderNumber)}</div>
 
       {isVoided && (
         <div className="mb-2 rounded-lg bg-rose-100 px-2.5 py-1.5 text-xs font-semibold text-rose-700">
@@ -206,7 +207,11 @@ function OrderTicket({
       )}
 
       <div className="mb-3 text-xs font-semibold text-neutral-500">
-        {order.tableNumber ? `Table ${String(order.tableNumber).padStart(2, "0")}` : order.channel}
+        {order.tableNumber
+          ? `Table ${String(order.tableNumber).padStart(2, "0")}${
+              order.mergedTableNumbers?.length ? ` + ${order.mergedTableNumbers.join(" + ")}` : ""
+            }`
+          : order.channel}
         {order.thirdPartyProvider ? ` · ${order.thirdPartyProvider}` : ""}
       </div>
 
@@ -232,19 +237,19 @@ function OrderTicket({
             <li key={item.dishId}>
               <button
                 onClick={() => onToggleItem(item.dishId, !item.ready)}
-                className="flex w-full items-start gap-2 rounded-lg py-1 text-left text-sm hover:bg-neutral-50"
+                className="flex w-full items-center justify-between gap-2 rounded-lg py-1.5 text-left text-sm hover:bg-neutral-50"
               >
-                <span
-                  className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                    item.ready ? "border-teal-600 bg-teal-600 text-white" : "border-neutral-300"
-                  }`}
-                >
-                  {item.ready && <Check className="h-3 w-3" strokeWidth={3} />}
-                </span>
                 <span className="min-w-0">
                   <span className={`font-bold ${item.ready ? "text-neutral-300" : "text-teal-600"}`}>{item.qty}× </span>
                   <span className={item.ready ? "text-neutral-400 line-through" : "text-neutral-800"}>{item.name}</span>
                   {item.note && <div className="text-xs font-semibold italic text-amber-600">↳ {item.note}</div>}
+                </span>
+                <span
+                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border-2 ${
+                    item.ready ? "border-teal-600 bg-teal-600 text-white" : "border-neutral-300"
+                  }`}
+                >
+                  {item.ready && <Check className="h-4 w-4" strokeWidth={3} />}
                 </span>
               </button>
             </li>

@@ -4,6 +4,7 @@ import QRCode from "qrcode";
 
 export interface TicketData {
   orderNumber: string;
+  createdAt: number;
   tableNumber: number | null;
   channel: string;
   items: { name: string; qty: number; price: number; note?: string }[];
@@ -91,9 +92,9 @@ export async function printTicket(ticket: TicketData) {
         </div>`
       : ""
   }
-  <div class="meta">Invoice #${escapeHtml(ticket.orderNumber)} &middot; ${escapeHtml(ticket.channel)}${
-    ticket.tableNumber ? ` &middot; Table ${ticket.tableNumber}` : ""
-  }</div>
+  <div class="meta">Invoice #${escapeHtml(ticket.orderNumber)} &middot; ${escapeHtml(
+    new Date(ticket.createdAt).toLocaleString(undefined, { day: "2-digit", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })
+  )}<br/>${escapeHtml(ticket.channel)}${ticket.tableNumber ? ` &middot; Table ${ticket.tableNumber}` : ""}</div>
   ${
     ticket.customerName || ticket.customerPhone || ticket.customerAddress
       ? `<div class="customer">

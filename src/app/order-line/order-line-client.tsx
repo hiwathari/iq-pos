@@ -15,8 +15,14 @@ import type {
   RestaurantTable,
   ThirdPartyProvider,
 } from "@/lib/types";
-import { formatMoney } from "@/lib/types";
-import { placeOrderAction, setOrderStatusAction, voidOrderAction } from "@/lib/actions/orders";
+import { formatMoney, formatOrderTimestamp, orderSequence } from "@/lib/types";
+import {
+  mergeTableIntoOrderAction,
+  placeOrderAction,
+  setOrderStatusAction,
+  swapOrderTableAction,
+  voidOrderAction,
+} from "@/lib/actions/orders";
 import { printTicket } from "@/lib/print-ticket";
 import { TableLayoutPicker } from "@/components/table-layout-picker";
 import {
@@ -47,6 +53,8 @@ import {
   RefreshCw,
   XCircle,
   History,
+  ArrowLeftRight,
+  Combine,
 } from "lucide-react";
 
 const QUEUE_TABS = ["All", "Dine in", "Wait List", "Take Away", "Delivery", "Served"] as const;
@@ -172,6 +180,8 @@ export function OrderLineClient({
   // staff see — collapsed when a table was already picked from Manage Table, or when editing.
   const [tableEditorOpen, setTableEditorOpen] = useState(() => !searchParams.get("tableId"));
   const [tablePickerOpen, setTablePickerOpen] = useState(false);
+  const [tableActionMode, setTableActionMode] = useState<"swap" | "merge" | null>(null);
+  const [tableActionError, setTableActionError] = useState<string | null>(null);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
   const [voidModalOpen, setVoidModalOpen] = useState(false);
 
@@ -330,12 +340,17 @@ export function OrderLineClient({
     setView("order");
   }
 
-  function activeOrderForTable(tableId: string) {
-    return orders.find((o) => o.tableId === tableId && o.status !== "Voided" && !isOrderClosedOut(o));
+  function activeOrderForTable(table: RestaurantTable) {
+    return orders.find(
+      (o) =>
+        (o.tableId === table.id || o.mergedTableNumbers?.includes(table.number)) &&
+        o.status !== "Voided" &&
+        !isOrderClosedOut(o)
+    );
   }
 
   function handleTableSelect(table: RestaurantTable) {
-    const existing = activeOrderForTable(table.id);
+    const existing = activeOrderForTable(table);
     if (existing) {
       loadOrderIntoCart(existing);
       return;
@@ -399,9 +414,36 @@ export function OrderLineClient({
     setMobileCartOpen(false);
   }
 
+  function handleTableAction(table: RestaurantTable) {
+    if (!cart.editingOrderId || !tableActionMode) return;
+    const orderId = cart.editingOrderId;
+    const mode = tableActionMode;
+    startTransition(async () => {
+      const result =
+        mode === "swap" ? await swapOrderTableAction(orderId, table.id) : await mergeTableIntoOrderAction(orderId, table.id);
+      if (result.error) {
+        setTableActionError(result.error);
+        return;
+      }
+      if (result.order) {
+        setCart((prev) => ({
+          ...prev,
+          tableId: result.order!.tableId,
+          tableNumber: result.order!.tableNumber,
+          guests: result.order!.guests,
+          items: result.order!.items,
+        }));
+      }
+      setTableActionMode(null);
+      setTableActionError(null);
+      router.refresh();
+    });
+  }
+
   function handlePrint() {
     printTicket({
       orderNumber: editingOrder?.orderNumber ?? "NEW",
+      createdAt: editingOrder?.createdAt ?? Date.now(),
       tableNumber: cart.tableNumber,
       channel: cart.channel,
       items: cart.items,
@@ -454,6 +496,14 @@ export function OrderLineClient({
     handlePlaceOrder,
     handleAdvanceStatus,
     handlePrint,
+    onSwapTableClick: () => {
+      setTableActionError(null);
+      setTableActionMode("swap");
+    },
+    onMergeTableClick: () => {
+      setTableActionError(null);
+      setTableActionMode("merge");
+    },
     onVoidClick: () => setVoidModalOpen(true),
     onClose: () => setMobileCartOpen(false),
   };
@@ -741,6 +791,29 @@ export function OrderLineClient({
           }}
         />
       )}
+      {tableActionMode && (
+        <TableLayoutPicker
+          tables={tables}
+          selectedTableId={cart.tableId}
+          allowOccupied={tableActionMode === "merge"}
+          title={tableActionMode === "merge" ? "Merge Which Table In?" : "Move Order To…"}
+          onSelect={handleTableAction}
+          onClose={() => {
+            setTableActionMode(null);
+            setTableActionError(null);
+          }}
+        />
+      )}
+      {tableActionError && (
+        <div className="fixed inset-x-0 bottom-24 z-[60] flex justify-center px-4 lg:bottom-6">
+          <div className="flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg">
+            {tableActionError}
+            <button onClick={() => setTableActionError(null)} className="text-white/80 hover:text-white">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -774,6 +847,8 @@ interface CartPanelProps {
   handlePlaceOrder: () => void;
   handleAdvanceStatus: (next: OrderStatus) => void;
   handlePrint: () => void;
+  onSwapTableClick: () => void;
+  onMergeTableClick: () => void;
   onVoidClick: () => void;
   onClose: () => void;
   showClose: boolean;
@@ -808,10 +883,13 @@ function CartPanel({
   handlePlaceOrder,
   handleAdvanceStatus,
   handlePrint,
+  onSwapTableClick,
+  onMergeTableClick,
   onVoidClick,
   onClose,
   showClose,
 }: CartPanelProps) {
+  const canManageTable = !!cart.editingOrderId && !!cart.tableId && editingOrder?.status !== "Voided";
   function updatePaymentAmount(method: string, amount: number) {
     setCart((prev) => ({
       ...prev,
@@ -839,7 +917,11 @@ function CartPanel({
         <div>
           <h2 className="flex items-center gap-2 text-lg font-semibold text-neutral-900">
             {cart.tableNumber
-              ? `Table No #${String(cart.tableNumber).padStart(2, "0")}`
+              ? `Table No #${String(cart.tableNumber).padStart(2, "0")}${
+                  editingOrder?.mergedTableNumbers?.length
+                    ? ` + ${editingOrder.mergedTableNumbers.map((n) => String(n).padStart(2, "0")).join(" + ")}`
+                    : ""
+                }`
               : cart.customerName
                 ? `${cart.channel} · ${cart.customerName}`
                 : `${cart.channel} Order`}
@@ -847,7 +929,9 @@ function CartPanel({
             {cart.channel === "Take Away" && <ShoppingBag className="h-4 w-4 text-amber-500" />}
           </h2>
           <p className="mt-0.5 text-sm text-neutral-400">
-            {cart.editingOrderId ? `Order #${editingOrder?.orderNumber}` : "New Order"}
+            {cart.editingOrderId && editingOrder
+              ? `Order #${editingOrder.orderNumber} · Seq ${orderSequence(editingOrder.orderNumber)} · ${formatOrderTimestamp(editingOrder.createdAt)}`
+              : "New Order"}
             {cart.channel === "Dine in" || cart.channel === "Wait List" ? (
               <>
                 {" · "}
@@ -857,6 +941,24 @@ function CartPanel({
           </p>
         </div>
         <div className="flex items-center gap-1.5">
+          {canManageTable && (
+            <>
+              <button
+                onClick={onSwapTableClick}
+                className="rounded-lg border border-neutral-200 p-1.5 text-neutral-400 hover:bg-neutral-50 hover:text-teal-600"
+                title="Move to a different table"
+              >
+                <ArrowLeftRight className="h-4 w-4" />
+              </button>
+              <button
+                onClick={onMergeTableClick}
+                className="rounded-lg border border-neutral-200 p-1.5 text-neutral-400 hover:bg-neutral-50 hover:text-teal-600"
+                title="Merge another table into this order"
+              >
+                <Combine className="h-4 w-4" />
+              </button>
+            </>
+          )}
           <button
             onClick={handlePrint}
             className="rounded-lg border border-neutral-200 p-1.5 text-neutral-400 hover:bg-neutral-50 hover:text-teal-600"
@@ -930,13 +1032,25 @@ function CartPanel({
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-neutral-500">Guests</label>
-                <input
-                  type="number"
-                  min={1}
-                  value={cart.guests}
-                  onChange={(e) => setCart((prev) => ({ ...prev, guests: Math.max(1, Number(e.target.value)) }))}
-                  className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-teal-500"
-                />
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCart((prev) => ({ ...prev, guests: Math.max(1, prev.guests - 1) }))}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 active:scale-95"
+                  >
+                    <Minus className="h-5 w-5" />
+                  </button>
+                  <div className="flex h-11 flex-1 items-center justify-center rounded-xl border border-neutral-200 bg-white text-lg font-semibold text-neutral-900">
+                    {cart.guests}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCart((prev) => ({ ...prev, guests: prev.guests + 1 }))}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-teal-600 text-white hover:bg-teal-700 active:scale-95"
+                  >
+                    <Plus className="h-5 w-5" />
+                  </button>
+                </div>
               </div>
             </>
           )}
@@ -1382,12 +1496,18 @@ function OrderCard({
       <div className="flex items-center justify-between text-sm font-semibold text-neutral-800">
         <span className="flex items-center gap-1">
           {isVoided && <XCircle className="h-3.5 w-3.5 shrink-0 text-rose-500" />}
-          <span className={isVoided ? "line-through decoration-rose-400" : undefined}>Order #{order.orderNumber}</span>
+          <span className={isVoided ? "line-through decoration-rose-400" : undefined}>
+            Order #{order.orderNumber} <span className="font-normal text-neutral-400">· Seq {orderSequence(order.orderNumber)}</span>
+          </span>
         </span>
         <span className="flex items-center gap-1 text-neutral-500">
           {order.channel === "Delivery" && <Bike className="h-3.5 w-3.5 text-blue-500" />}
           {order.channel === "Take Away" && <ShoppingBag className="h-3.5 w-3.5 text-amber-500" />}
-          {order.tableNumber ? `Table ${String(order.tableNumber).padStart(2, "0")}` : order.channel}
+          {order.tableNumber
+            ? `Table ${String(order.tableNumber).padStart(2, "0")}${
+                order.mergedTableNumbers?.length ? ` + ${order.mergedTableNumbers.join(" + ")}` : ""
+              }`
+            : order.channel}
         </span>
       </div>
       <div className="text-sm text-neutral-500">Item: {order.items.reduce((s, i) => s + i.qty, 0)}X</div>
@@ -1397,7 +1517,7 @@ function OrderCard({
         </span>
       )}
       <div className="flex items-center justify-between">
-        <span className="text-xs text-neutral-400">{order.createdLabel}</span>
+        <span className="text-xs text-neutral-400">{formatOrderTimestamp(order.createdAt)}</span>
         <div className="flex items-center gap-1.5">
           {!order.paymentMethod && !isVoided && (
             <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">Unpaid</span>
@@ -1506,8 +1626,12 @@ function TablesOverview({
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
         {areaTables.map((table) => {
           const order = orders.find(
-            (o) => o.tableId === table.id && o.status !== "Voided" && !isOrderClosedOut(o)
+            (o) =>
+              (o.tableId === table.id || o.mergedTableNumbers?.includes(table.number)) &&
+              o.status !== "Voided" &&
+              !isOrderClosedOut(o)
           );
+          const isMergedIn = order && order.tableId !== table.id;
           return (
             <button
               key={table.id}
@@ -1530,7 +1654,7 @@ function TablesOverview({
               </span>
               {order && (
                 <span className={`mt-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[order.status]}`}>
-                  #{order.orderNumber} · {order.status}
+                  {isMergedIn ? `Merged → #${order.tableNumber}` : `#${order.orderNumber} · ${order.status}`}
                 </span>
               )}
             </button>
