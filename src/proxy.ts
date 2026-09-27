@@ -3,6 +3,10 @@ import { IMPERSONATION_COOKIE_NAME, SESSION_COOKIE_NAME, verifySessionToken, typ
 
 const PUBLIC_PATHS = ["/login", "/till-login", "/kitchen-login"];
 
+// Customer-facing loyalty sign-in + account pages use their own session cookie (see
+// src/lib/loyalty-session.ts), checked per-page — never the staff/admin session below.
+const CUSTOMER_FACING_PREFIX = "/my-card";
+
 // Pages only an admin (or an impersonating super admin) may reach — staff are blocked.
 const ADMIN_ONLY_PREFIXES = ["/manage-dishes", "/settings", "/reports", "/pricing", "/shift-report", "/coupons", "/loyalty"];
 
@@ -23,6 +27,7 @@ export async function proxy(request: NextRequest) {
   if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
+    pathname.startsWith(CUSTOMER_FACING_PREFIX) ||
     /\.(svg|png|jpg|jpeg|ico|webp|webmanifest)$/.test(pathname)
   ) {
     return NextResponse.next();

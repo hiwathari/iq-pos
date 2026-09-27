@@ -34,6 +34,11 @@ export async function getRestaurant(id: string) {
   return row ?? null;
 }
 
+export async function getRestaurantBySlug(slug: string) {
+  const [row] = await db.select().from(restaurants).where(eq(restaurants.slug, slug)).limit(1);
+  return row ?? null;
+}
+
 export async function platformTotals() {
   const [[{ restaurantCount }], [{ userCount }], [{ orderCount }]] = await Promise.all([
     db.select({ restaurantCount: sql<number>`count(*)` }).from(restaurants),

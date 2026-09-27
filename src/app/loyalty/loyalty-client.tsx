@@ -3,10 +3,20 @@
 import { useEffect, useState } from "react";
 import type { LoyaltyMember } from "@/lib/types";
 import { loyaltyQrDataUrl } from "@/lib/loyalty-qr";
-import { CreditCard, Mail, Phone, QrCode, X } from "lucide-react";
+import { CreditCard, Mail, Phone, QrCode, X, Link as LinkIcon, Check } from "lucide-react";
 
-export function LoyaltyClient({ members }: { members: LoyaltyMember[] }) {
+export function LoyaltyClient({ members, restaurantSlug }: { members: LoyaltyMember[]; restaurantSlug: string }) {
   const [qrFor, setQrFor] = useState<LoyaltyMember | null>(null);
+  const [copied, setCopied] = useState(false);
+  const loginUrl = restaurantSlug && typeof window !== "undefined" ? `${window.location.origin}/my-card/${restaurantSlug}/login` : "";
+
+  function copyLoginUrl() {
+    if (!loginUrl) return;
+    navigator.clipboard.writeText(loginUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
 
   return (
     <div className="p-6">
@@ -15,6 +25,21 @@ export function LoyaltyClient({ members }: { members: LoyaltyMember[] }) {
         <p className="text-sm text-neutral-400">
           Enrolled at the Till by phone or email — each member gets a 7-character card code with a scannable QR.
         </p>
+      </div>
+
+      <div className="mb-6 flex items-center justify-between gap-3 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3">
+        <div className="flex items-center gap-2 text-sm text-neutral-600">
+          <LinkIcon className="h-4 w-4 shrink-0 text-neutral-400" />
+          <span>Customer sign-in link: </span>
+          <span className="truncate font-mono text-neutral-800">{loginUrl || `.../my-card/${restaurantSlug}/login`}</span>
+        </div>
+        <button
+          onClick={copyLoginUrl}
+          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-500 hover:bg-neutral-50"
+        >
+          {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <LinkIcon className="h-3.5 w-3.5" />}
+          {copied ? "Copied" : "Copy"}
+        </button>
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">

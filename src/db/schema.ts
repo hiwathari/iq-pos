@@ -219,6 +219,24 @@ export const loyaltyMembers = sqliteTable(
   ]
 );
 
+// A one-time magic-link sign-in token for a loyalty member. Only a SHA-256 hash of the token is
+// stored — the raw token exists solely in the emailed URL — so a database read can never be
+// used to sign in as a member. Consumed (usedAt set) the moment it's verified once.
+export const loyaltyMagicLinks = sqliteTable(
+  "loyalty_magic_links",
+  {
+    id: id(),
+    loyaltyMemberId: text("loyalty_member_id")
+      .notNull()
+      .references(() => loyaltyMembers.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: int("expires_at").notNull(),
+    usedAt: int("used_at"),
+    createdAt: timestamp("created_at"),
+  },
+  (table) => [uniqueIndex("loyalty_magic_links_token_hash_idx").on(table.tokenHash)]
+);
+
 export const coupons = sqliteTable(
   "coupons",
   {
