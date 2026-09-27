@@ -57,6 +57,8 @@ import {
   History,
   ArrowLeftRight,
   Combine,
+  QrCode,
+  FileClock,
 } from "lucide-react";
 
 const QUEUE_TABS = ["All", "Dine in", "Wait List", "Take Away", "Delivery", "Served"] as const;
@@ -553,7 +555,7 @@ export function OrderLineClient({
 
       {/* Main column */}
       <div className="flex-1 overflow-y-auto p-6 pb-24 lg:pb-6">
-        <div className="mb-5 flex items-center justify-between">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-xl font-semibold text-neutral-900">Till</h1>
           <div className="flex items-center gap-1 rounded-2xl border border-neutral-200 bg-white p-1">
             <TopViewTab
@@ -583,6 +585,23 @@ export function OrderLineClient({
             />
           </div>
         </div>
+
+        {view === "order" && (
+          <div className="mb-5 flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => {
+                setCart(emptyCart);
+                setTableEditorOpen(true);
+                setMobileCartOpen(false);
+              }}
+              className="flex items-center gap-1.5 rounded-xl bg-[var(--brand)] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[var(--brand-dark)]"
+            >
+              <Plus className="h-3.5 w-3.5" /> New Order
+            </button>
+            <ComingSoonButton icon={QrCode} label="QR Menu Orders" />
+            <ComingSoonButton icon={FileClock} label="Draft List" />
+          </div>
+        )}
 
         {view === "order" && (
           <>
@@ -1593,6 +1612,24 @@ function TopViewTab({
           {count}
         </span>
       )}
+    </button>
+  );
+}
+
+// A visible placeholder for a feature that isn't built yet (kiosk/online ordering feed the QR
+// menu, and a save-and-recall draft queue) — shown rather than omitted, so the toolbar reads as
+// complete and staff know it's coming rather than wondering if it's broken.
+function ComingSoonButton({ icon: Icon, label }: { icon: typeof ShoppingBag; label: string }) {
+  return (
+    <button
+      disabled
+      title="Coming soon"
+      className="flex cursor-not-allowed items-center gap-1.5 rounded-xl border border-dashed border-neutral-200 px-3.5 py-2 text-xs font-semibold text-neutral-400"
+    >
+      <Icon className="h-3.5 w-3.5" /> {label}
+      <span className="rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-neutral-400">
+        Soon
+      </span>
     </button>
   );
 }
