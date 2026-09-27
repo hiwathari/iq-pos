@@ -7,6 +7,7 @@ import { db } from "@/db/client";
 import { categories, paymentTerminals, printers, restaurants, users } from "@/db/schema";
 import { hashPassword, setImpersonatedRestaurant } from "@/lib/auth";
 import { assertAdmin, requireRestaurantContext, requireSession } from "@/lib/scope";
+import { isValidHexColor } from "@/lib/color";
 
 function slugify(name: string) {
   const base = name
@@ -128,6 +129,39 @@ export async function updateInvoiceDetailsAction(input: InvoiceDetailsInput) {
     .where(eq(restaurants.id, restaurantId));
   revalidatePath("/settings");
   revalidatePath("/order-line");
+}
+
+export interface UpdateBrandingState {
+  error?: string;
+}
+
+// Platform-managed branding — deliberately Super Admin-only (not editable from the restaurant's
+// own Settings) since it's set up once during onboarding rather than tweaked day-to-day.
+export async function updateRestaurantBrandingAction(
+  restaurantId: string,
+  input: { logoUrl: string; brandColor: string }
+): Promise<UpdateBrandingState> {
+  const session = await requireSession();
+  if (session.role !== "super_admin") return { error: "Forbidden." };
+
+  const brandColor = input.brandColor.trim();
+  if (brandColor && !isValidHexColor(brandColor)) {
+    return { error: "Brand color must be a hex value like #0D9488." };
+  }
+
+  await db
+    .update(restaurants)
+    .set({
+      invoiceLogoUrl: input.logoUrl.trim() || null,
+      brandColor: brandColor || null,
+    })
+    .where(eq(restaurants.id, restaurantId));
+
+  revalidatePath("/super-admin");
+  revalidatePath("/dashboard");
+  revalidatePath("/order-line");
+  revalidatePath("/kitchen");
+  return {};
 }
 
 export async function toggleRestaurantActiveAction(restaurantId: string, active: boolean) {

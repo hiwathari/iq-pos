@@ -1,5 +1,6 @@
 import { getActiveRestaurantId, getImpersonatedRestaurantId, getSession } from "@/lib/auth";
 import { getRestaurant } from "@/lib/data/restaurants";
+import { brandCssVars } from "@/lib/color";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 import { ImpersonationBanner } from "./impersonation-banner";
@@ -15,7 +16,7 @@ export async function AppShell({ children, title }: { children: React.ReactNode;
   if (session.role === "till" || session.role === "kitchen_display") {
     const label = session.role === "till" ? `Till · ${session.name}` : "Kitchen Display";
     return (
-      <LockedShell restaurantName={restaurant?.name} label={label}>
+      <LockedShell restaurantName={restaurant?.name} label={label} brandColor={restaurant?.brandColor}>
         {children}
       </LockedShell>
     );
@@ -24,7 +25,7 @@ export async function AppShell({ children, title }: { children: React.ReactNode;
   const isImpersonating = session.role === "super_admin" && Boolean(await getImpersonatedRestaurantId());
 
   return (
-    <div className="flex h-dvh w-full overflow-hidden bg-neutral-50">
+    <div className="flex h-dvh w-full overflow-hidden bg-neutral-50" style={brandCssVars(restaurant?.brandColor)}>
       <Sidebar role={session.role} name={session.name} />
       <div className="flex min-w-0 flex-1 flex-col">
         {isImpersonating && restaurant && <ImpersonationBanner restaurantName={restaurant.name} />}

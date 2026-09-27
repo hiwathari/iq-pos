@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { Building2, ChefHat, Plus, ShoppingBag, Table2, Users, X } from "lucide-react";
-import { impersonateRestaurantAction, toggleRestaurantActiveAction } from "@/lib/actions/restaurants";
+import { useState, useTransition } from "react";
+import { Building2, ChefHat, Palette, Plus, ShoppingBag, Table2, Users, X } from "lucide-react";
+import { impersonateRestaurantAction, toggleRestaurantActiveAction, updateRestaurantBrandingAction } from "@/lib/actions/restaurants";
+import { DEFAULT_BRAND_COLOR, isValidHexColor } from "@/lib/color";
 import { CreateRestaurantForm } from "./create-restaurant-form";
 
 interface RestaurantRow {
@@ -14,6 +15,8 @@ interface RestaurantRow {
   dishCount: number;
   tableCount: number;
   orderCount: number;
+  invoiceLogoUrl: string | null;
+  brandColor: string | null;
 }
 
 export function SuperAdminClient({
@@ -24,6 +27,7 @@ export function SuperAdminClient({
   totals: { restaurantCount: number; userCount: number; orderCount: number };
 }) {
   const [modalOpen, setModalOpen] = useState(false);
+  const [brandingTarget, setBrandingTarget] = useState<RestaurantRow | null>(null);
 
   return (
     <div className="p-6">
@@ -47,9 +51,21 @@ export function SuperAdminClient({
         {restaurants.map((r) => (
           <div key={r.id} className="flex flex-col rounded-2xl border border-neutral-200 bg-white p-5">
             <div className="mb-3 flex items-start justify-between">
-              <div>
-                <h2 className="font-semibold text-neutral-900">{r.name}</h2>
-                <p className="text-xs text-neutral-400">/{r.slug}</p>
+              <div className="flex items-center gap-3">
+                {r.invoiceLogoUrl ? (
+                  <img src={r.invoiceLogoUrl} alt="" className="h-9 w-9 shrink-0 rounded-lg object-contain" />
+                ) : (
+                  <span
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-xs font-bold text-white"
+                    style={{ backgroundColor: r.brandColor ?? DEFAULT_BRAND_COLOR }}
+                  >
+                    {r.name.slice(0, 2).toUpperCase()}
+                  </span>
+                )}
+                <div>
+                  <h2 className="font-semibold text-neutral-900">{r.name}</h2>
+                  <p className="text-xs text-neutral-400">/{r.slug}</p>
+                </div>
               </div>
               <span
                 className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
@@ -84,6 +100,13 @@ export function SuperAdminClient({
                   Manage
                 </button>
               </form>
+              <button
+                onClick={() => setBrandingTarget(r)}
+                title="Logo & brand color"
+                className="rounded-xl border border-neutral-200 px-3 py-2 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
+              >
+                <Palette className="h-4 w-4" />
+              </button>
               <form action={toggleRestaurantActiveAction.bind(null, r.id, !r.active)}>
                 <button
                   type="submit"
@@ -115,6 +138,85 @@ export function SuperAdminClient({
           </div>
         </div>
       )}
+
+      {brandingTarget && <BrandingModal restaurant={brandingTarget} onClose={() => setBrandingTarget(null)} />}
+    </div>
+  );
+}
+
+function BrandingModal({ restaurant, onClose }: { restaurant: RestaurantRow; onClose: () => void }) {
+  const [logoUrl, setLogoUrl] = useState(restaurant.invoiceLogoUrl ?? "");
+  const [brandColor, setBrandColor] = useState(restaurant.brandColor ?? DEFAULT_BRAND_COLOR);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function submit() {
+    if (brandColor && !isValidHexColor(brandColor)) {
+      setError("Brand color must be a hex value like #0D9488.");
+      return;
+    }
+    setError(null);
+    startTransition(async () => {
+      const result = await updateRestaurantBrandingAction(restaurant.id, { logoUrl, brandColor });
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      onClose();
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-5 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-neutral-900">Branding</h2>
+            <p className="text-xs text-neutral-400">{restaurant.name}</p>
+          </div>
+          <button onClick={onClose} className="rounded-full p-1 text-neutral-400 hover:bg-neutral-100">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <label className="mb-1 block text-xs font-medium text-neutral-500">Logo URL</label>
+        <input
+          value={logoUrl}
+          onChange={(e) => setLogoUrl(e.target.value)}
+          placeholder="https://…/logo.png"
+          className="mb-4 w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm focus:border-teal-500 focus:outline-none"
+        />
+
+        <label className="mb-1 block text-xs font-medium text-neutral-500">Brand Color</label>
+        <div className="mb-1 flex items-center gap-3">
+          <input
+            type="color"
+            value={isValidHexColor(brandColor) ? brandColor : DEFAULT_BRAND_COLOR}
+            onChange={(e) => setBrandColor(e.target.value)}
+            className="h-11 w-14 shrink-0 cursor-pointer rounded-lg border border-neutral-200"
+          />
+          <input
+            value={brandColor}
+            onChange={(e) => setBrandColor(e.target.value)}
+            placeholder="#0D9488"
+            className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm uppercase focus:border-teal-500 focus:outline-none"
+          />
+        </div>
+        <p className="mb-4 text-xs text-neutral-400">
+          Applied to this restaurant&apos;s primary buttons and active states across the Till, Kitchen Display, and admin
+          sidebar. Leave blank to use IQ POS&apos;s default teal.
+        </p>
+
+        {error && <p className="mb-4 text-xs font-medium text-rose-600">{error}</p>}
+
+        <button
+          onClick={submit}
+          disabled={pending}
+          className="w-full rounded-xl bg-teal-600 py-3 text-sm font-bold text-white hover:bg-teal-700 disabled:opacity-50"
+        >
+          {pending ? "Saving…" : "Save Branding"}
+        </button>
+      </div>
     </div>
   );
 }

@@ -691,7 +691,7 @@ export function OrderLineClient({
                           <span className="w-4 text-center text-sm font-semibold text-neutral-800">{qty}</span>
                           <button
                             onClick={() => addToCart(dish)}
-                            className="flex h-7 w-7 items-center justify-center rounded-full bg-teal-600 text-white hover:bg-teal-700"
+                            className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--brand)] text-white hover:bg-[var(--brand-dark)]"
                           >
                             <Plus className="h-3.5 w-3.5" />
                           </button>
@@ -718,7 +718,7 @@ export function OrderLineClient({
                   onClick={() => setQueueTab(tab)}
                   className={`flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
                     queueTab === tab
-                      ? "border-teal-600 bg-teal-600 text-white"
+                      ? "border-[var(--brand)] bg-[var(--brand)] text-white"
                       : "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
                   }`}
                 >
@@ -798,7 +798,7 @@ export function OrderLineClient({
       {!mobileCartOpen && (
         <button
           onClick={() => setMobileCartOpen(true)}
-          className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-teal-600 px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-teal-600/30 lg:hidden"
+          className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-[var(--brand)] px-5 py-3.5 text-sm font-semibold text-white shadow-lg lg:hidden"
         >
           <ShoppingBag className="h-4 w-4" />
           {cart.items.reduce((s, i) => s + i.qty, 0)} · {formatMoney(total, currencySymbol)}
@@ -1036,7 +1036,7 @@ function CartPanel({
                   key={c}
                   onClick={() => setCart((prev) => ({ ...prev, channel: c }))}
                   className={`rounded-lg border px-2 py-1.5 text-xs font-medium ${
-                    cart.channel === c ? "border-teal-600 bg-teal-600 text-white" : "border-neutral-200 text-neutral-500"
+                    cart.channel === c ? "border-[var(--brand)] bg-[var(--brand)] text-white" : "border-neutral-200 text-neutral-500"
                   }`}
                 >
                   {c}
@@ -1077,7 +1077,7 @@ function CartPanel({
                   <button
                     type="button"
                     onClick={() => setCart((prev) => ({ ...prev, guests: prev.guests + 1 }))}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-teal-600 text-white hover:bg-teal-700 active:scale-95"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[var(--brand)] text-white hover:bg-[var(--brand-dark)] active:scale-95"
                   >
                     <Plus className="h-5 w-5" />
                   </button>
@@ -1364,7 +1364,7 @@ function CartPanel({
                 ? "No payment taken yet — order will be sent to the kitchen and can be settled later"
                 : undefined
             }
-            className="flex-1 rounded-xl bg-teal-600 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex-1 rounded-xl bg-[var(--brand)] py-3.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             {cart.editingOrderId
               ? isFullyPaid
@@ -1496,7 +1496,7 @@ function CustomItemModal({
           <button
             disabled={!canSave}
             onClick={() => onSave(name.trim(), Number(price), qty)}
-            className="flex-1 rounded-xl bg-teal-600 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex-1 rounded-xl bg-[var(--brand)] py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             Add to Order
           </button>
@@ -1579,7 +1579,7 @@ function TopViewTab({
     <button
       onClick={onClick}
       className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-colors ${
-        active ? "bg-teal-600 text-white" : "text-neutral-500 hover:bg-neutral-50"
+        active ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
       }`}
     >
       <Icon className="h-4 w-4" />
@@ -1642,7 +1642,7 @@ function TablesOverview({
             key={a}
             onClick={() => setArea(a)}
             className={`flex-1 rounded-lg py-2 text-sm font-medium transition-colors ${
-              area === a ? "bg-teal-600 text-white" : "text-neutral-500 hover:bg-neutral-50"
+              area === a ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
             }`}
           >
             {a}
@@ -1734,7 +1734,7 @@ function MenuTab({ active, label, onClick }: { active: boolean; label: string; o
     <button
       onClick={onClick}
       className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition-colors ${
-        active ? "border-teal-600 bg-teal-600 text-white" : "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
+        active ? "border-[var(--brand)] bg-[var(--brand)] text-white" : "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
       }`}
     >
       {label}
@@ -1757,7 +1757,7 @@ function PaymentButton({
     <button
       onClick={onClick}
       className={`flex flex-col items-center gap-1.5 rounded-xl border py-2.5 text-xs font-medium transition-colors ${
-        active ? "border-teal-600 bg-teal-50 text-teal-700" : "border-neutral-200 text-neutral-500 hover:bg-neutral-50"
+        active ? "border-[var(--brand)] bg-[var(--brand-light)] text-[var(--brand-dark)]" : "border-neutral-200 text-neutral-500 hover:bg-neutral-50"
       }`}
     >
       <Icon className="h-4 w-4" />
@@ -1789,7 +1789,7 @@ function StatusStepper({ status, onAdvance }: { status: Order["status"]; onAdvan
       disabled={!next}
       onClick={() => next && onAdvance(next)}
       className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
-        next ? "bg-teal-600 text-white hover:bg-teal-700" : "bg-neutral-200 text-neutral-500"
+        next ? "bg-[var(--brand)] text-white hover:bg-[var(--brand-dark)]" : "bg-neutral-200 text-neutral-500"
       }`}
     >
       {STATUS_ACTION_LABEL[status]}

@@ -50,7 +50,7 @@ export function Sidebar({ role, name }: { role: Role; name: string }) {
             className={clsx(
               "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
               pathname === "/super-admin"
-                ? "bg-teal-600 text-white shadow-sm shadow-teal-200"
+                ? "bg-[var(--brand)] text-white shadow-sm"
                 : "text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800"
             )}
           >
@@ -68,7 +68,7 @@ export function Sidebar({ role, name }: { role: Role; name: string }) {
               className={clsx(
                 "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
                 active
-                  ? "bg-teal-600 text-white shadow-sm shadow-teal-200"
+                  ? "bg-[var(--brand)] text-white shadow-sm"
                   : "text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800"
               )}
             >

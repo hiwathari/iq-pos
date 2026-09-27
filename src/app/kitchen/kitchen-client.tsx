@@ -200,7 +200,7 @@ export function KitchenClient({
     <div className="flex h-full min-h-0 flex-col bg-neutral-100 p-4" style={{ zoom: FONT_SCALE_STEPS[fontScaleIndex] }}>
       <div className="mb-4 flex items-center justify-between">
         <h1 className="flex items-center gap-2 text-xl font-bold text-neutral-900">
-          <ChefHat className="h-6 w-6 text-teal-600" /> Kitchen Display
+          <ChefHat className="h-6 w-6 text-[var(--brand)]" /> Kitchen Display
           {station !== "All" && (
             <span className="rounded-full bg-teal-100 px-2.5 py-0.5 text-xs font-bold text-teal-700">{station}</span>
           )}
@@ -212,7 +212,7 @@ export function KitchenClient({
               <button
                 onClick={() => selectStation("All")}
                 className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
-                  station === "All" ? "bg-teal-600 text-white" : "text-neutral-500 hover:bg-neutral-50"
+                  station === "All" ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
                 }`}
               >
                 All
@@ -222,7 +222,7 @@ export function KitchenClient({
                   key={s}
                   onClick={() => selectStation(s)}
                   className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
-                    station === s ? "bg-teal-600 text-white" : "text-neutral-500 hover:bg-neutral-50"
+                    station === s ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
                   }`}
                 >
                   {s}
@@ -532,7 +532,7 @@ function OrderTicket({
                 </span>
                 <span
                   className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border-2 ${
-                    item.ready ? "border-teal-600 bg-teal-600 text-white" : "border-neutral-300"
+                    item.ready ? "border-[var(--brand)] bg-[var(--brand)] text-white" : "border-neutral-300"
                   }`}
                 >
                   {item.ready && <Check className="h-4 w-4" strokeWidth={3} />}
@@ -560,7 +560,7 @@ function OrderTicket({
               onClick={() => onAdvance("Ready")}
               disabled={!allItemsReady}
               title={allItemsReady ? undefined : "Tick off every item first"}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-teal-600 py-3 text-sm font-bold text-white active:scale-95 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-400"
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-[var(--brand)] py-3 text-sm font-bold text-white active:scale-95 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-400"
             >
               <CheckCircle2 className="h-4 w-4" /> Mark Order Ready
             </button>
