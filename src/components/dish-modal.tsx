@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { X } from "lucide-react";
-import type { Category, Dish } from "@/lib/types";
+import type { Category, Dish, Printer } from "@/lib/types";
 
 const EMOJI_PRESETS = [
   "🍔", "🍕", "🍝", "🥗", "🍗", "🥩", "🍤", "🍜", "🍛", "🍣",
@@ -19,8 +19,10 @@ interface DishModalProps {
     emoji: string;
     description: string;
     imageUrl: string;
+    printerId: string | null;
   }) => void;
   categories: Category[];
+  printers: Printer[];
   defaultCategoryId: string;
   initial?: Dish | null;
   currencySymbol?: string;
@@ -28,7 +30,7 @@ interface DishModalProps {
 
 // Mount this component only while the modal should be visible (e.g. `{open && <DishModal ... />}`)
 // so a fresh instance — and fresh initial state — is created each time it opens.
-export function DishModal({ onClose, onSave, categories, defaultCategoryId, initial, currencySymbol = "£" }: DishModalProps) {
+export function DishModal({ onClose, onSave, categories, printers, defaultCategoryId, initial, currencySymbol = "£" }: DishModalProps) {
   const [name, setName] = useState(initial?.name ?? "");
   const [categoryId, setCategoryId] = useState(
     initial?.categoryId ?? (defaultCategoryId === "all" ? categories[0]?.id ?? "" : defaultCategoryId)
@@ -37,6 +39,11 @@ export function DishModal({ onClose, onSave, categories, defaultCategoryId, init
   const [emoji, setEmoji] = useState(initial?.emoji ?? "🍽️");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [imageUrl, setImageUrl] = useState(initial?.imageUrl ?? "");
+  // Defaults to the dish's own printer if it has one, otherwise falls back to its category's
+  // printer — so a new dish is routed sensibly from the start, but can be pointed elsewhere.
+  const [printerId, setPrinterId] = useState(
+    initial?.printerId ?? categories.find((c) => c.id === categoryId)?.printerId ?? ""
+  );
 
   const canSave = name.trim().length > 0 && categoryId && Number(price) > 0;
 
@@ -121,6 +128,26 @@ export function DishModal({ onClose, onSave, categories, defaultCategoryId, init
           </div>
 
           <div>
+            <label className="mb-1.5 block text-xs font-medium text-neutral-500">Printer / Kitchen Station</label>
+            <select
+              value={printerId}
+              onChange={(e) => setPrinterId(e.target.value)}
+              className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+            >
+              <option value="">No printer</option>
+              {printers.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                  {p.isDefault ? " (Default)" : ""}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-neutral-400">
+              Defaults to this dish&rsquo;s category — change it only if this item needs a different station.
+            </p>
+          </div>
+
+          <div>
             <label className="mb-1.5 block text-xs font-medium text-neutral-500">Description (optional)</label>
             <textarea
               value={description}
@@ -150,6 +177,7 @@ export function DishModal({ onClose, onSave, categories, defaultCategoryId, init
                 emoji,
                 description: description.trim(),
                 imageUrl: imageUrl.trim(),
+                printerId: printerId || null,
               })
             }
             className="flex-1 rounded-xl bg-teal-600 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-40"

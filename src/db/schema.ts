@@ -73,6 +73,11 @@ export const dishes = sqliteTable("dishes", {
   imageUrl: text("image_url"),
   // Per-channel price overrides, e.g. { "Online": 12.5, "Uber Eats": 14 }. Falls back to `price` when absent/null.
   channelPrices: text("channel_prices", { mode: "json" }).$type<Record<string, number>>(),
+  // Routes this dish to a specific printer/kitchen station, overriding its category's printer
+  // (categories.printerId) — set automatically from the category when the dish is created, but
+  // editable per-dish for the odd item that needs a different station (e.g. a dessert routed to
+  // the bar printer instead of its category's default).
+  printerId: text("printer_id").references(() => printers.id, { onDelete: "set null" }),
 });
 
 export const tables = sqliteTable(

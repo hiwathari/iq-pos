@@ -4,11 +4,17 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { formatOrderTimestamp, orderSequence, type Order, type OrderStatus } from "@/lib/types";
 import { setOrderStatusAction, toggleOrderItemReadyAction, voidOrderAction } from "@/lib/actions/orders";
-import { Ban, Bike, Check, CheckCircle2, ChefHat, Clock, MapPin, Phone, RefreshCw, ShoppingBag, X, XCircle } from "lucide-react";
+import { Ban, Bike, Check, CheckCircle2, ChefHat, Clock, MapPin, Minus, Phone, Plus, RefreshCw, ShoppingBag, X, XCircle } from "lucide-react";
 
 // A completed ticket stays visible for a minute after being served so staff can double-check
 // it, then drops off the board on its own so Completed doesn't pile up with old tickets.
 const COMPLETED_RETENTION_MS = 60_000;
+
+// How much bigger/smaller the whole board renders — a per-device preference (not tied to the
+// restaurant), since it depends on that screen's size and how far staff stand from it.
+const FONT_SCALE_KEY = "kds-font-scale";
+const FONT_SCALE_STEPS = [0.85, 1, 1.15, 1.3, 1.5, 1.7];
+const DEFAULT_FONT_SCALE_INDEX = 1;
 
 const COLUMNS: { statuses: OrderStatus[]; label: string; accent: string; showTimer: boolean }[] = [
   { statuses: ["Wait List", "In Kitchen"], label: "Pending", accent: "border-t-amber-400", showTimer: true },
@@ -22,6 +28,31 @@ export function KitchenClient({ orders, timerLimitMinutes }: { orders: Order[]; 
   const [, startTransition] = useTransition();
   const [voidTarget, setVoidTarget] = useState<Order | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [fontScaleIndex, setFontScaleIndex] = useState(DEFAULT_FONT_SCALE_INDEX);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(FONT_SCALE_KEY);
+      if (raw === null) return;
+      const stored = Number(raw);
+      // Deferred a tick so this doesn't set state synchronously within the effect body.
+      if (FONT_SCALE_STEPS[stored] !== undefined) setTimeout(() => setFontScaleIndex(stored), 0);
+    } catch {
+      // Storage unavailable (private mode, locked-down kiosk browser) — just use the default.
+    }
+  }, []);
+
+  function adjustFontScale(delta: 1 | -1) {
+    setFontScaleIndex((prev) => {
+      const next = Math.min(FONT_SCALE_STEPS.length - 1, Math.max(0, prev + delta));
+      try {
+        localStorage.setItem(FONT_SCALE_KEY, String(next));
+      } catch {
+        // Ignore — the size still applies for this session even if it can't be remembered.
+      }
+      return next;
+    });
+  }
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -59,11 +90,32 @@ export function KitchenClient({ orders, timerLimitMinutes }: { orders: Order[]; 
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-neutral-100 p-4">
+    <div className="flex h-full min-h-0 flex-col bg-neutral-100 p-4" style={{ zoom: FONT_SCALE_STEPS[fontScaleIndex] }}>
       <div className="mb-4 flex items-center justify-between">
         <h1 className="flex items-center gap-2 text-xl font-bold text-neutral-900">
           <ChefHat className="h-6 w-6 text-teal-600" /> Kitchen Display
         </h1>
+        <div className="flex items-center gap-1 rounded-xl border border-neutral-200 bg-white p-1">
+          <button
+            onClick={() => adjustFontScale(-1)}
+            disabled={fontScaleIndex === 0}
+            title="Smaller text"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-50 disabled:opacity-30"
+          >
+            <Minus className="h-4 w-4" />
+          </button>
+          <span className="w-10 text-center text-xs font-semibold text-neutral-500">
+            {Math.round(FONT_SCALE_STEPS[fontScaleIndex] * 100)}%
+          </span>
+          <button
+            onClick={() => adjustFontScale(1)}
+            disabled={fontScaleIndex === FONT_SCALE_STEPS.length - 1}
+            title="Bigger text"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-50 disabled:opacity-30"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       <div className="grid flex-1 grid-cols-1 gap-4 overflow-hidden md:grid-cols-4">

@@ -273,6 +273,7 @@ export function ManageDishesClient({
           }}
           onSave={handleSaveDish}
           categories={categories}
+          printers={printers}
           defaultCategoryId={selectedCategory}
           initial={editingDish}
           currencySymbol={currencySymbol}
