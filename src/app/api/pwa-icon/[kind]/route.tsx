@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og";
 import { NextRequest } from "next/server";
+import sharp from "sharp";
 import { getActiveRestaurantId, getSession } from "@/lib/auth";
 import { getRestaurant } from "@/lib/data/restaurants";
 
@@ -7,6 +8,21 @@ const BRAND: Record<string, { label: string; letter: string; color: string }> = 
   till: { label: "TILL", letter: "T", color: "#0d9488" },
   kitchen: { label: "KITCHEN", letter: "K", color: "#d97706" },
 };
+
+// Satori (which ImageResponse renders through) can only decode PNG/JPEG — a WebP or AVIF
+// logo silently fails to draw. Fetching it ourselves and normalizing through sharp means any
+// format the restaurant's logo happens to be in still renders correctly.
+async function loadLogoAsPngDataUrl(logoUrl: string): Promise<string | null> {
+  try {
+    const res = await fetch(logoUrl);
+    if (!res.ok) return null;
+    const bytes = Buffer.from(await res.arrayBuffer());
+    const png = await sharp(bytes).png().toBuffer();
+    return `data:image/png;base64,${png.toString("base64")}`;
+  } catch {
+    return null;
+  }
+}
 
 // Generates the home-screen icon for the Till/Kitchen "app". Before a device is logged in
 // there's no restaurant context yet, so it falls back to a plain branded icon — once signed
@@ -31,6 +47,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ kind
     // No session / restaurant available yet — fall back to the generic branded icon below.
   }
 
+  const logoDataUrl = logoUrl ? await loadLogoAsPngDataUrl(logoUrl) : null;
+
   return new ImageResponse(
     (
       <div
@@ -41,13 +59,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ kind
           position: "relative",
           alignItems: "center",
           justifyContent: "center",
-          background: logoUrl ? "#ffffff" : brand.color,
+          background: logoDataUrl ? "#ffffff" : brand.color,
         }}
       >
-        {logoUrl ? (
+        {logoDataUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={logoUrl}
+            src={logoDataUrl}
             width={size}
             height={size}
             style={{ objectFit: "cover" }}
