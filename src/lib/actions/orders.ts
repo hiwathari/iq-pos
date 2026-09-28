@@ -9,7 +9,7 @@ import { resolveCouponDiscount } from "@/lib/types";
 import { requireRestaurantContext } from "@/lib/scope";
 import { findActiveCoupon } from "@/lib/data/coupons";
 import { findLoyaltyMemberById } from "@/lib/data/loyalty";
-import { decrementInventoryForOrder, nextOrderNumber } from "@/lib/order-helpers";
+import { decrementInventoryForOrder, freeTableIfNoLiveOrders, isOrderLive, nextOrderNumber } from "@/lib/order-helpers";
 
 // An order is "closed out" once it's both served and paid — matches the Till's own
 // definition (see isOrderClosedOut in order-line-client.tsx). closedOutAt records the moment
@@ -201,11 +201,20 @@ export async function setOrderStatusAction(orderId: string, status: OrderStatus)
 
 export async function voidOrderAction(orderId: string, reason: string) {
   const { restaurantId } = await requireRestaurantContext();
+  const [order] = await db
+    .select({ tableId: orders.tableId })
+    .from(orders)
+    .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)))
+    .limit(1);
   await db
     .update(orders)
     .set({ status: "Voided", voidReason: reason || "No reason given", voidedAt: Date.now() })
     .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)));
+  // A voided order no longer occupies its table — free it up the same moment, rather than
+  // leaving it stuck "on-dine" until something else happens to notice.
+  if (order?.tableId) await freeTableIfNoLiveOrders(restaurantId, order.tableId, orderId);
   revalidatePath("/order-line");
+  revalidatePath("/manage-table");
   revalidatePath("/dashboard");
   revalidatePath("/kitchen");
   revalidatePath("/reports");
@@ -214,14 +223,6 @@ export async function voidOrderAction(orderId: string, reason: string) {
 export interface TableActionState {
   error?: string;
   order?: Order;
-}
-
-// An order is "live" on its table for merge/swap purposes once it isn't voided or fully
-// wrapped up (served + paid) — matches the Till's own definition of an active ticket.
-function isOrderLive(o: { status: OrderStatus; paymentMethod: string | null }) {
-  if (o.status === "Voided") return false;
-  if (o.status === "Served" && o.paymentMethod) return false;
-  return true;
 }
 
 // Relocates an order to a different table entirely — e.g. the party asked to move seats.

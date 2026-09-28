@@ -34,6 +34,10 @@ export const restaurants = sqliteTable("restaurants", {
   // Set by Super Admin; the app still serves /order/<slug> on the platform's own domain regardless
   // — this only adds a nicer alias once its DNS record points here and it's attached in Vercel.
   customDomain: text("custom_domain"),
+  // When the manager last dismissed the "orders carried over from a previous day were
+  // auto-voided" banner — see autoVoidStaleOrders in lib/data/orders.ts. Null until the first
+  // dismissal, so the banner naturally reappears whenever a newer sweep has something to show.
+  autoVoidNoticeDismissedAt: int("auto_void_notice_dismissed_at"),
   createdAt: timestamp("created_at"),
 },
   (table) => [uniqueIndex("restaurants_custom_domain_idx").on(table.customDomain)]

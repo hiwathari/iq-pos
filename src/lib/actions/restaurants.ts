@@ -106,6 +106,15 @@ export async function updateKitchenTimerLimitAction(minutes: number) {
   revalidatePath("/kitchen");
 }
 
+// Any admin can clear the "orders carried over from a previous day" banner — not just the one
+// who happens to be logged in when it appears.
+export async function dismissAutoVoidNoticeAction() {
+  const { session, restaurantId } = await requireRestaurantContext();
+  assertAdmin(session);
+  await db.update(restaurants).set({ autoVoidNoticeDismissedAt: Date.now() }).where(eq(restaurants.id, restaurantId));
+  revalidatePath("/dashboard");
+}
+
 export interface InvoiceDetailsInput {
   invoiceAddress: string;
   invoicePhone: string;

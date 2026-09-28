@@ -1,8 +1,35 @@
 import "server-only";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { db } from "@/db/client";
-import { dishes, inventoryItems, orderCounters } from "@/db/schema";
-import type { OrderItem } from "@/lib/types";
+import { dishes, inventoryItems, orderCounters, orders, tables } from "@/db/schema";
+import type { OrderItem, OrderStatus } from "@/lib/types";
+
+// Shown as the void reason on a ticket auto-cancelled by the day-rollover sweep (see
+// autoVoidStaleOrders in lib/data/orders.ts) — matched back against this exact string to compute
+// the "carried over from a previous day" notice on the Dashboard.
+export const AUTO_VOID_REASON = "Auto-voided — still unprocessed from a previous day";
+
+// An order still counts as "live" (occupying its table) right up until it's voided or fully
+// closed out (served + paid) — used to decide whether a table can be freed.
+export function isOrderLive(o: { status: OrderStatus; paymentMethod: string | null }) {
+  if (o.status === "Voided") return false;
+  if (o.status === "Served" && o.paymentMethod) return false;
+  return true;
+}
+
+// Frees a table back to "available" once the order that just left it (voided, or auto-voided)
+// was the only thing keeping it occupied — never touches a table another live order still holds.
+export async function freeTableIfNoLiveOrders(restaurantId: string, tableId: string, excludeOrderId: string) {
+  const otherOrders = await db
+    .select({ status: orders.status, paymentMethod: orders.paymentMethod })
+    .from(orders)
+    .where(and(eq(orders.restaurantId, restaurantId), eq(orders.tableId, tableId), ne(orders.id, excludeOrderId)));
+  if (otherOrders.some(isOrderLive)) return;
+  await db
+    .update(tables)
+    .set({ status: "available", seated: 0, seatedAt: null })
+    .where(and(eq(tables.id, tableId), eq(tables.restaurantId, restaurantId)));
+}
 
 // Deliberately a plain server-only module (no "use server") — these helpers trust their
 // restaurantId argument completely and must never become directly callable Server Actions.

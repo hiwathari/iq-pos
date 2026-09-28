@@ -10,6 +10,8 @@ import { listLowStockItems } from "@/lib/data/inventory";
 import { formatMoney, formatOrderTimestamp } from "@/lib/types";
 import { DashboardCharts } from "./dashboard-charts";
 import { EndShiftButton } from "./end-shift-button";
+import { AutoVoidNotice } from "./auto-void-notice";
+import { AUTO_VOID_REASON } from "@/lib/order-helpers";
 import { DollarSign, ClipboardList, Table2, Users, TrendingUp, TrendingDown, Receipt, FileText, AlertTriangle } from "lucide-react";
 
 export default async function DashboardPage() {
@@ -46,6 +48,11 @@ export default async function DashboardPage() {
   const pendingOrders = activeOrders.filter((o) => !isOrderClosedOut(o));
   const billedOrders = activeOrders.filter(isOrderClosedOut);
 
+  const dismissedAt = restaurant?.autoVoidNoticeDismissedAt ?? 0;
+  const carriedOverOrders = orders
+    .filter((o) => o.voidReason === AUTO_VOID_REASON && (o.voidedAt ?? 0) > dismissedAt)
+    .sort((a, b) => b.createdAt - a.createdAt);
+
   return (
     <AppShell title="Dashboard">
       <div className="p-6">
@@ -53,6 +60,8 @@ export default async function DashboardPage() {
           <h1 className="text-xl font-semibold text-neutral-900">Dashboard</h1>
           {session.role !== "staff" && <EndShiftButton currencySymbol={currencySymbol} />}
         </div>
+
+        {session.role !== "staff" && <AutoVoidNotice orders={carriedOverOrders} />}
 
         <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard icon={DollarSign} label="Today's Revenue" value={formatMoney(revenue, currencySymbol)} tint="bg-teal-50 text-teal-600" />
