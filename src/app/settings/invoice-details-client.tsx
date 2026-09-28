@@ -102,7 +102,7 @@ export function InvoiceDetailsClient({
       <div className="mt-4 flex items-center gap-3">
         <button
           onClick={save}
-          className="rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-700"
+          className="rounded-xl bg-[var(--brand)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)]"
         >
           Save Invoice Details
         </button>

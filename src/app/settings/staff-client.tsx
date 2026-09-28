@@ -63,7 +63,7 @@ export function StaffClient({ staff }: { staff: StaffRow[] }) {
         </div>
         <button
           onClick={() => setModalOpen(true)}
-          className="flex shrink-0 items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-700"
+          className="flex shrink-0 items-center gap-2 rounded-xl bg-[var(--brand)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)]"
         >
           <Plus className="h-4 w-4" /> Add Staff Account
         </button>
@@ -225,7 +225,7 @@ function AddStaffModal({ onClose }: { onClose: () => void }) {
           <button
             type="submit"
             disabled={pending}
-            className="w-full rounded-xl bg-teal-600 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full rounded-xl bg-[var(--brand)] py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {pending ? "Creating…" : "Create Account"}
           </button>
@@ -292,7 +292,7 @@ function EditStaffModal({ staff, onClose }: { staff: StaffRow; onClose: () => vo
           <button
             type="submit"
             disabled={pending}
-            className="w-full rounded-xl bg-teal-600 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full rounded-xl bg-[var(--brand)] py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {pending ? "Saving…" : "Save Changes"}
           </button>

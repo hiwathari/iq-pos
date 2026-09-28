@@ -227,7 +227,7 @@ export function DishModal({
                 inventoryUsagePerOrder: inventoryItemId ? Number(inventoryUsagePerOrder) || null : null,
               })
             }
-            className="flex-1 rounded-xl bg-teal-600 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex-1 rounded-xl bg-[var(--brand)] py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             {initial ? "Save Changes" : "Add Dish"}
           </button>

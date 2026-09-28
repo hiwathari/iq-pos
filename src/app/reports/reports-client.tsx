@@ -35,7 +35,7 @@ export function ReportsClient({ report, currencySymbol }: { report: ReportData; 
             key={t}
             onClick={() => setTab(t)}
             className={`flex-1 rounded-lg py-2 text-sm font-medium transition-colors ${
-              tab === t ? "bg-teal-600 text-white" : "text-neutral-500 hover:bg-neutral-50"
+              tab === t ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
             }`}
           >
             {t}

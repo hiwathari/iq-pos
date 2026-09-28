@@ -116,7 +116,7 @@ export function ManageTableClient({
               key={tab}
               onClick={() => setResFilter(tab)}
               className={`flex-1 rounded-lg py-1.5 text-xs font-medium transition-colors ${
-                resFilter === tab ? "bg-teal-600 text-white" : "text-neutral-500 hover:bg-neutral-50"
+                resFilter === tab ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
               }`}
             >
               {tab}
@@ -195,7 +195,7 @@ export function ManageTableClient({
 
         <button
           onClick={() => setReservationModalOpen(true)}
-          className="mt-4 flex items-center justify-center gap-2 rounded-xl bg-teal-600 py-3 text-sm font-semibold text-white hover:bg-teal-700"
+          className="mt-4 flex items-center justify-center gap-2 rounded-xl bg-[var(--brand)] py-3 text-sm font-semibold text-white hover:bg-[var(--brand-dark)]"
         >
           <Plus className="h-4 w-4" /> Add New Reservation
         </button>
@@ -212,7 +212,7 @@ export function ManageTableClient({
                   key={a}
                   onClick={() => setArea(a)}
                   className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                    area === a ? "bg-teal-600 text-white" : "text-neutral-500 hover:bg-neutral-50"
+                    area === a ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
                   }`}
                 >
                   {a}
@@ -221,7 +221,7 @@ export function ManageTableClient({
             </div>
             <button
               onClick={() => setAddTableModalOpen(true)}
-              className="flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-700"
+              className="flex items-center gap-2 rounded-xl bg-[var(--brand)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)]"
             >
               <Plus className="h-4 w-4" /> Add Table
             </button>
@@ -288,7 +288,7 @@ export function ManageTableClient({
                     <div className="flex gap-1.5">
                       <button
                         onClick={() => goOrderForTable(table)}
-                        className="flex-1 rounded-lg bg-teal-600 py-2 text-xs font-semibold text-white hover:bg-teal-700"
+                        className="flex-1 rounded-lg bg-[var(--brand)] py-2 text-xs font-semibold text-white hover:bg-[var(--brand-dark)]"
                       >
                         Start Order →
                       </button>
@@ -429,7 +429,7 @@ function AddTableModal({ onClose, defaultArea }: { onClose: () => void; defaultA
           <button
             type="submit"
             disabled={pending}
-            className="w-full rounded-xl bg-teal-600 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full rounded-xl bg-[var(--brand)] py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {pending ? "Adding…" : "Add Table"}
           </button>
@@ -543,7 +543,7 @@ function AddReservationModal({
                   type="button"
                   onClick={() => setSource(s)}
                   className={`rounded-lg border px-2 py-1.5 text-xs font-medium capitalize ${
-                    source === s ? "border-teal-600 bg-teal-600 text-white" : "border-neutral-200 text-neutral-500"
+                    source === s ? "border-[var(--brand)] bg-[var(--brand)] text-white" : "border-neutral-200 text-neutral-500"
                   }`}
                 >
                   {s}
@@ -575,7 +575,7 @@ function AddReservationModal({
                 source,
               });
             }}
-            className="flex-1 rounded-xl bg-teal-600 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex-1 rounded-xl bg-[var(--brand)] py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             Save Reservation
           </button>

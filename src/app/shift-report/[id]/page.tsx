@@ -13,6 +13,11 @@ export default async function ShiftReportPage({ params }: { params: Promise<{ id
   if (!shift) notFound();
 
   return (
-    <ShiftReportClient shift={shift} restaurantName={restaurant?.name ?? "IQ POS"} currencySymbol={restaurant?.currencySymbol ?? "£"} />
+    <ShiftReportClient
+      shift={shift}
+      restaurantName={restaurant?.name ?? "IQ POS"}
+      currencySymbol={restaurant?.currencySymbol ?? "£"}
+      brandColor={restaurant?.brandColor}
+    />
   );
 }

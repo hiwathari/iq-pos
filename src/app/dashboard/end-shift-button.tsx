@@ -76,7 +76,7 @@ export function EndShiftButton({ currencySymbol }: { currencySymbol: string }) {
             <button
               onClick={submit}
               disabled={pending}
-              className="w-full rounded-xl bg-teal-600 py-3 text-sm font-bold text-white hover:bg-teal-700 disabled:opacity-50"
+              className="w-full rounded-xl bg-[var(--brand)] py-3 text-sm font-bold text-white hover:bg-[var(--brand-dark)] disabled:opacity-50"
             >
               {pending ? "Closing Shift…" : "Close Shift & Generate Report"}
             </button>

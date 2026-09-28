@@ -131,7 +131,7 @@ export function ManageDishesClient({
         </div>
         <button
           onClick={() => setCategoryModalOpen(true)}
-          className="mt-4 flex items-center justify-center gap-2 rounded-xl bg-teal-600 py-3 text-sm font-semibold text-white hover:bg-teal-700"
+          className="mt-4 flex items-center justify-center gap-2 rounded-xl bg-[var(--brand)] py-3 text-sm font-semibold text-white hover:bg-[var(--brand-dark)]"
         >
           <Plus className="h-4 w-4" /> Add New Category
         </button>
@@ -153,7 +153,7 @@ export function ManageDishesClient({
             </div>
             <button
               onClick={openAddDish}
-              className="flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-700"
+              className="flex items-center gap-2 rounded-xl bg-[var(--brand)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)]"
             >
               <Plus className="h-4 w-4" /> Add New Dishes
             </button>
@@ -191,7 +191,7 @@ export function ManageDishesClient({
               onClick={openAddDish}
               className="flex min-h-[220px] flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-teal-300 bg-teal-50/40 text-center text-teal-700 hover:bg-teal-50"
             >
-              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-teal-600 text-white">
+              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--brand)] text-white">
                 <Plus className="h-5 w-5" />
               </span>
               <span className="px-4 text-sm font-medium">Add New Dish to {categoryName}</span>
@@ -337,7 +337,7 @@ function CategoryRow({
       </span>
       <span
         className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-          active ? "bg-teal-600 text-white" : "bg-neutral-100 text-neutral-500"
+          active ? "bg-[var(--brand)] text-white" : "bg-neutral-100 text-neutral-500"
         }`}
       >
         {count}
@@ -504,7 +504,7 @@ function CategoryModal({
             onClick={() =>
               canSave && onSave({ name: name.trim(), printerId: printerId || null, showOnKitchenDisplay })
             }
-            className="flex-1 rounded-xl bg-teal-600 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex-1 rounded-xl bg-[var(--brand)] py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             Add Category
           </button>

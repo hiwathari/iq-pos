@@ -260,7 +260,7 @@ export function MobileTillClient({
                 key={a}
                 onClick={() => setTablesArea(a)}
                 className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold ${
-                  tablesArea === a ? "border-teal-600 bg-teal-600 text-white" : "border-neutral-200 bg-white text-neutral-600"
+                  tablesArea === a ? "border-[var(--brand)] bg-[var(--brand)] text-white" : "border-neutral-200 bg-white text-neutral-600"
                 }`}
               >
                 {a}
@@ -354,7 +354,7 @@ export function MobileTillClient({
                         <span className="w-5 text-center text-base font-bold text-neutral-800">{qty}</span>
                         <button
                           onClick={() => addToCart(dish)}
-                          className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-600 text-white active:scale-90"
+                          className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--brand)] text-white active:scale-90"
                         >
                           <Plus className="h-4 w-4" />
                         </button>
@@ -372,7 +372,7 @@ export function MobileTillClient({
           <button
             onClick={() => setScreen("cart")}
             disabled={itemCount === 0}
-            className="fixed inset-x-3 bottom-3 flex items-center justify-between rounded-2xl bg-teal-600 px-5 py-4 text-white shadow-lg disabled:bg-neutral-300"
+            className="fixed inset-x-3 bottom-3 flex items-center justify-between rounded-2xl bg-[var(--brand)] px-5 py-4 text-white shadow-lg disabled:bg-neutral-300"
           >
             <span className="flex items-center gap-2 font-semibold">
               <ShoppingCart className="h-5 w-5" /> {itemCount} item{itemCount === 1 ? "" : "s"}
@@ -411,7 +411,7 @@ export function MobileTillClient({
                           const dish = dishes.find((d) => d.id === item.dishId);
                           if (dish) addToCart(dish);
                         }}
-                        className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-600 text-white"
+                        className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--brand)] text-white"
                       >
                         <Plus className="h-3.5 w-3.5" />
                       </button>
@@ -436,7 +436,7 @@ export function MobileTillClient({
                   <span className="w-6 text-center text-base font-bold text-neutral-800">{cart.guests}</span>
                   <button
                     onClick={() => adjustGuests(1)}
-                    className="flex h-9 w-9 items-center justify-center rounded-full bg-teal-600 text-white"
+                    className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--brand)] text-white"
                   >
                     <Plus className="h-4 w-4" />
                   </button>
@@ -481,7 +481,7 @@ export function MobileTillClient({
             <button
               onClick={send}
               disabled={cart.items.length === 0 || sending}
-              className="w-full rounded-2xl bg-teal-600 py-4 text-base font-bold text-white active:scale-95 disabled:bg-neutral-300"
+              className="w-full rounded-2xl bg-[var(--brand)] py-4 text-base font-bold text-white active:scale-95 disabled:bg-neutral-300"
             >
               {sending ? "Sending…" : "Send to Kitchen"}
             </button>
@@ -511,7 +511,7 @@ function CategoryPill({ active, label, onClick }: { active: boolean; label: stri
     <button
       onClick={onClick}
       className={`shrink-0 rounded-full border px-3.5 py-1.5 text-sm font-semibold ${
-        active ? "border-teal-600 bg-teal-600 text-white" : "border-neutral-200 bg-white text-neutral-600"
+        active ? "border-[var(--brand)] bg-[var(--brand)] text-white" : "border-neutral-200 bg-white text-neutral-600"
       }`}
     >
       {label}

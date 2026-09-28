@@ -3,16 +3,19 @@
 import Link from "next/link";
 import { useState } from "react";
 import { formatMoney, formatOrderTimestamp, type Shift } from "@/lib/types";
+import { brandCssVars } from "@/lib/color";
 import { ArrowLeft, Printer, Share2, ChefHat } from "lucide-react";
 
 export function ShiftReportClient({
   shift,
   restaurantName,
   currencySymbol,
+  brandColor,
 }: {
   shift: Shift;
   restaurantName: string;
   currencySymbol: string;
+  brandColor?: string | null;
 }) {
   const [shared, setShared] = useState(false);
   const variance = shift.cashCounted - shift.expectedCash;
@@ -34,7 +37,7 @@ export function ShiftReportClient({
   }
 
   return (
-    <div className="mx-auto min-h-dvh max-w-2xl bg-white px-6 py-8 print:p-0">
+    <div className="mx-auto min-h-dvh max-w-2xl bg-white px-6 py-8 print:p-0" style={brandCssVars(brandColor)}>
       <div className="mb-6 flex items-center justify-between print:hidden">
         <Link href="/dashboard" className="flex items-center gap-1.5 text-sm font-medium text-neutral-500 hover:text-neutral-800">
           <ArrowLeft className="h-4 w-4" /> Back to Dashboard
@@ -48,7 +51,7 @@ export function ShiftReportClient({
           </button>
           <button
             onClick={() => window.print()}
-            className="flex items-center gap-1.5 rounded-xl bg-teal-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-teal-700"
+            className="flex items-center gap-1.5 rounded-xl bg-[var(--brand)] px-3.5 py-2 text-sm font-semibold text-white hover:bg-[var(--brand-dark)]"
           >
             <Printer className="h-4 w-4" /> Print / Save as PDF
           </button>
