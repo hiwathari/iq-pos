@@ -13,7 +13,6 @@ export interface TicketData {
   couponCode?: string;
   couponDiscount?: number;
   tax: number;
-  donation: number;
   total: number;
   currencySymbol: string;
   customerName?: string;
@@ -115,7 +114,6 @@ export async function printTicket(ticket: TicketData) {
     ${ticket.extraDiscount ? `<tr><td>Extra Discount</td><td class="right">-${money(ticket.extraDiscount)}</td></tr>` : ""}
     ${ticket.couponDiscount ? `<tr><td>Coupon${ticket.couponCode ? ` (${escapeHtml(ticket.couponCode)})` : ""}</td><td class="right">-${money(ticket.couponDiscount)}</td></tr>` : ""}
     <tr><td>Tax</td><td class="right">${money(ticket.tax)}</td></tr>
-    ${ticket.donation > 0 ? `<tr><td>Donation</td><td class="right">${money(ticket.donation)}</td></tr>` : ""}
     <tr class="total"><td>Total</td><td class="right">${money(ticket.total)}</td></tr>
   </table>
   ${

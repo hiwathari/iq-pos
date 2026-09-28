@@ -188,7 +188,6 @@ export function MobileTillClient({
         thirdPartyProvider: cart.channel === "Third Party" ? cart.thirdPartyProvider : undefined,
         items: cart.items,
         payments: [],
-        donation: 0,
         customerName: cart.customerName.trim() || undefined,
         customerPhone: cart.customerPhone.trim() || undefined,
       });

@@ -191,7 +191,6 @@ export function OrderLineClient({
   const [tablesArea, setTablesArea] = useState<(typeof TABLE_AREAS)[number]>("Ground Floor");
   const [menuCategory, setMenuCategory] = useState<string>("all");
   const [menuSearch, setMenuSearch] = useState("");
-  const [donation, setDonation] = useState(true);
   const [noteEditorFor, setNoteEditorFor] = useState<string | null>(null);
   const [customItemModalOpen, setCustomItemModalOpen] = useState(false);
   // Open by default for a brand-new order so Order Type/table selection is the first thing
@@ -298,8 +297,7 @@ export function OrderLineClient({
     : 0;
   const discountedSubtotal = Math.max(0, subtotal - extraDiscountAmount - couponDiscountAmount);
   const tax = discountedSubtotal * TAX_RATE;
-  const donationAmount = donation && cart.items.length > 0 ? 1 : 0;
-  const total = discountedSubtotal + tax + donationAmount;
+  const total = discountedSubtotal + tax;
 
   function applyCoupon() {
     const code = cart.couponCode.trim();
@@ -436,7 +434,6 @@ export function OrderLineClient({
       loyaltyContact: "",
       loyaltyMember: order.loyaltyMemberId ? { id: order.loyaltyMemberId, code: "", name: null } : null,
     });
-    setDonation((order.donation ?? 0) > 0);
     setCouponError(null);
     setLoyaltyError(null);
     setTableEditorOpen(false);
@@ -504,7 +501,6 @@ export function OrderLineClient({
         items: cart.items,
         payments: cart.payments,
         cashReceived: cashLine ? cashReceivedAmount || undefined : undefined,
-        donation: donationAmount,
         extraDiscount: extraDiscountAmount || undefined,
         couponCode: cart.appliedCoupon?.code,
         loyaltyMemberId: cart.loyaltyMember?.id,
@@ -513,7 +509,6 @@ export function OrderLineClient({
         customerAddress: cart.customerAddress.trim() || undefined,
       });
       setCart(emptyCart);
-      setDonation(true);
       setCouponError(null);
       setLoyaltyError(null);
       setTableEditorOpen(true);
@@ -577,7 +572,6 @@ export function OrderLineClient({
       items: cart.items,
       subtotal,
       tax,
-      donation: donationAmount,
       extraDiscount: extraDiscountAmount || undefined,
       couponCode: cart.appliedCoupon?.code,
       couponDiscount: couponDiscountAmount || undefined,
@@ -609,9 +603,6 @@ export function OrderLineClient({
     tables,
     subtotal,
     tax,
-    donation,
-    setDonation,
-    donationAmount,
     canDiscount,
     extraDiscountAmount,
     couponDiscountAmount,
@@ -1004,9 +995,6 @@ interface CartPanelProps {
   tables: RestaurantTable[];
   subtotal: number;
   tax: number;
-  donation: boolean;
-  setDonation: (v: boolean) => void;
-  donationAmount: number;
   canDiscount: boolean;
   extraDiscountAmount: number;
   couponDiscountAmount: number;
@@ -1049,9 +1037,6 @@ function CartPanel({
   tables,
   subtotal,
   tax,
-  donation,
-  setDonation,
-  donationAmount,
   canDiscount,
   extraDiscountAmount,
   couponDiscountAmount,
@@ -1499,18 +1484,6 @@ function CartPanel({
             <span>Tax (6%)</span>
             <span>{formatMoney(tax, currencySymbol)}</span>
           </div>
-          <label className="flex items-center justify-between text-sm text-neutral-500">
-            <span className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={donation}
-                onChange={(e) => setDonation(e.target.checked)}
-                className="h-3.5 w-3.5 accent-teal-600"
-              />
-              Donation for Palestine
-            </span>
-            <span>{formatMoney(donationAmount, currencySymbol)}</span>
-          </label>
           <div className="flex justify-between border-t border-neutral-100 pt-2 text-base font-semibold text-neutral-900">
             <span>Total Payable</span>
             <span>{formatMoney(total, currencySymbol)}</span>

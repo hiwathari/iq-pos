@@ -27,7 +27,7 @@ export default async function DashboardPage() {
   ]);
   const currencySymbol = restaurant?.currencySymbol ?? "£";
 
-  const revenue = orders.reduce((sum, o) => sum + o.items.reduce((s, i) => s + i.price * i.qty, 0) + (o.donation ?? 0), 0);
+  const revenue = orders.reduce((sum, o) => sum + o.items.reduce((s, i) => s + i.price * i.qty, 0), 0);
   const onDine = tables.filter((t) => t.status === "on-dine").length;
 
   const topDishesMap = new Map<string, { name: string; qty: number }>();

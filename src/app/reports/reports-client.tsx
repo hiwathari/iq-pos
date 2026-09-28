@@ -19,7 +19,6 @@ import {
   LayoutGrid,
   UserCircle,
   Receipt,
-  PiggyBank,
   TrendingUp,
   Utensils,
   Tag,
@@ -213,7 +212,6 @@ function OverviewTab({ report, currencySymbol }: { report: ReportData; currencyS
         <StatCard icon={Utensils} label="Average Party Size" value={report.averagePartySize.toFixed(1)} tint="bg-cyan-50 text-cyan-600" />
         <StatCard icon={Users} label="Total Guests Served" value={String(report.totalGuests)} tint="bg-indigo-50 text-indigo-600" />
         <StatCard icon={Receipt} label="Tax Collected" value={formatMoney(report.totalTax, currencySymbol)} tint="bg-amber-50 text-amber-600" />
-        <StatCard icon={PiggyBank} label="Donations" value={formatMoney(report.totalDonations, currencySymbol)} tint="bg-emerald-50 text-emerald-600" />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -429,7 +427,6 @@ function DailySummaryTab({ summary, currencySymbol }: { summary: DailySummary; c
     ["Total Card Amount (In-Store Machine)", formatMoney(d.totalCardAmount, currencySymbol)],
     ["Total Online Card Amount", formatMoney(d.totalOnlineCardAmount, currencySymbol)],
     ["Total Amount", formatMoney(d.totalAmount, currencySymbol)],
-    ["Total Donations Amount", formatMoney(d.totalDonationsAmount, currencySymbol)],
     ["Total Discount Amount", formatMoney(d.totalDiscountAmount, currencySymbol)],
     ["Closing Balance", formatMoney(d.closingBalance, currencySymbol)],
   ];
@@ -537,7 +534,7 @@ function DailySummaryTab({ summary, currencySymbol }: { summary: DailySummary; c
 
 function OnlineOfflineTab({ orders, currencySymbol, online }: { orders: Order[]; currencySymbol: string; online: boolean }) {
   const filtered = orders.filter((o) => (online ? o.placedVia !== "staff" : o.placedVia === "staff") && o.status !== "Voided");
-  const total = filtered.reduce((sum, o) => sum + o.items.reduce((s, i) => s + i.price * i.qty, 0) + (o.donation ?? 0), 0);
+  const total = filtered.reduce((sum, o) => sum + o.items.reduce((s, i) => s + i.price * i.qty, 0), 0);
   const columns: Column<Order>[] = [
     { key: "orderNumber", label: "Order #", render: (o) => o.orderNumber },
     { key: "seq", label: "Seq", render: (o) => orderSequence(o.orderNumber), sortValue: (o) => orderSequence(o.orderNumber) },
@@ -549,8 +546,8 @@ function OnlineOfflineTab({ orders, currencySymbol, online }: { orders: Order[];
       key: "total",
       label: "Total",
       align: "right",
-      render: (o) => formatMoney(o.items.reduce((s, i) => s + i.price * i.qty, 0) + (o.donation ?? 0), currencySymbol),
-      sortValue: (o) => o.items.reduce((s, i) => s + i.price * i.qty, 0) + (o.donation ?? 0),
+      render: (o) => formatMoney(o.items.reduce((s, i) => s + i.price * i.qty, 0), currencySymbol),
+      sortValue: (o) => o.items.reduce((s, i) => s + i.price * i.qty, 0),
     },
   ];
 

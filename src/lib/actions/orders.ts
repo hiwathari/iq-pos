@@ -28,7 +28,6 @@ export interface PlaceOrderInput {
   items: OrderItem[];
   payments: PaymentLine[];
   cashReceived?: number;
-  donation: number;
   extraDiscount?: number;
   couponCode?: string;
   loyaltyMemberId?: string;
@@ -113,7 +112,6 @@ export async function placeOrderAction(input: PlaceOrderInput) {
         paymentMethod,
         payments,
         cashReceived: input.cashReceived ?? null,
-        donation: input.donation,
         extraDiscount,
         couponCode,
         couponDiscount,
@@ -142,7 +140,6 @@ export async function placeOrderAction(input: PlaceOrderInput) {
       paymentMethod,
       payments,
       cashReceived: input.cashReceived ?? null,
-      donation: input.donation,
       extraDiscount,
       couponCode,
       couponDiscount,

@@ -37,7 +37,6 @@ export async function getReportData(restaurantId: string, range?: { from?: numbe
   let otherSales = 0;
   let totalGuests = 0;
   let totalTax = 0;
-  let totalDonations = 0;
   const itemQty = new Map<string, number>();
   const itemRevenue = new Map<string, number>();
   const channelMap = new Map<string, { revenue: number; count: number }>();
@@ -75,7 +74,6 @@ export async function getReportData(restaurantId: string, range?: { from?: numbe
 
     totalGuests += o.guests ?? 0;
     totalTax += subtotal * 0.06;
-    totalDonations += o.donation ?? 0;
 
     const dateKey = new Date(o.createdAt).toISOString().slice(0, 10);
     dailyMap.set(dateKey, (dailyMap.get(dateKey) ?? 0) + total);
@@ -156,7 +154,6 @@ export async function getReportData(restaurantId: string, range?: { from?: numbe
     averagePartySize,
     totalGuests,
     totalTax,
-    totalDonations,
   };
 }
 
@@ -223,7 +220,6 @@ export async function getDailySummary(restaurantId: string, dateStr: string) {
   let totalOnlineCashOrders = 0;
   let totalOnlineCardOrders = 0;
   let totalDineInCustomers = 0;
-  let totalDonationsAmount = 0;
   let totalDiscountAmount = 0;
 
   for (const o of liveOrders) {
@@ -250,7 +246,6 @@ export async function getDailySummary(restaurantId: string, dateStr: string) {
       if (orderHasCard) totalInStoreCardOrders += 1;
     }
     if (o.channel === "Dine in") totalDineInCustomers += o.guests ?? 0;
-    totalDonationsAmount += o.donation ?? 0;
     totalDiscountAmount += (o.extraDiscount ?? 0) + (o.couponDiscount ?? 0);
   }
 
@@ -290,7 +285,6 @@ export async function getDailySummary(restaurantId: string, dateStr: string) {
       totalCardAmount,
       totalOnlineCardAmount,
       totalAmount,
-      totalDonationsAmount,
       totalDiscountAmount,
       closingBalance,
     },

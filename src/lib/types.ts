@@ -77,11 +77,11 @@ export const CURRENCY_OPTIONS = [
 
 export const TAX_RATE = 0.06;
 
-export function orderTotal(order: Pick<Order, "items" | "donation" | "extraDiscount" | "couponDiscount">) {
+export function orderTotal(order: Pick<Order, "items" | "extraDiscount" | "couponDiscount">) {
   const subtotal = order.items.reduce((sum, i) => sum + i.price * i.qty, 0);
   const discountedSubtotal = Math.max(0, subtotal - (order.extraDiscount ?? 0) - (order.couponDiscount ?? 0));
   const tax = discountedSubtotal * TAX_RATE;
-  return discountedSubtotal + tax + (order.donation ?? 0);
+  return discountedSubtotal + tax;
 }
 
 // Resolves a coupon's percent/fixed value into an actual currency amount against a given

@@ -120,7 +120,6 @@ export async function placePublicOrderAction(input: PlacePublicOrderInput): Prom
     status: "In Kitchen",
     items,
     paymentMethod: null,
-    donation: 0,
     customerName,
     customerPhone,
     loyaltyMemberId,
