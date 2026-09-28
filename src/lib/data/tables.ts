@@ -2,11 +2,10 @@ import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { orders, reservations, tables } from "@/db/schema";
 
-// A table's order stays visible on the Till for a minute after it's fully closed out (served
-// + paid) so staff can double-check it, then the table frees itself automatically — no one has
-// to remember to clear it by hand. Run lazily whenever tables are listed rather than on a
-// schedule, since there's no background job runner in this app.
-const AUTO_RELEASE_DELAY_MS = 60_000;
+// A table frees itself the moment its order is fully closed out (served + paid) so it can be
+// checked back in right away — no one has to remember to clear it by hand. Run lazily whenever
+// tables are listed rather than on a schedule, since there's no background job runner in this app.
+const AUTO_RELEASE_DELAY_MS = 0;
 
 async function releaseStaleTables(restaurantId: string) {
   const cutoff = Date.now() - AUTO_RELEASE_DELAY_MS;

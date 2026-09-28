@@ -42,6 +42,11 @@ export interface OrderItem {
   ready?: boolean;
   // Free-text prep instruction (e.g. "no onions") — set on the Till, shown on Kitchen Display.
   note?: string;
+  // Identifies one cart/ticket line independent of dishId, so the same dish can appear as two
+  // separate lines with different notes instead of merging into one "2x" line that can only
+  // carry a single note. Optional so orders placed before this existed still load fine — those
+  // fall back to matching by dishId wherever a line needs to be targeted individually.
+  lineId?: string;
 }
 
 export interface PaymentLine {

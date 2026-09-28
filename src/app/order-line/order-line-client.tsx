@@ -285,7 +285,9 @@ export function OrderLineClient({
     const key = cart.channel === "Third Party" ? cart.thirdPartyProvider : cart.channel;
     return dish.channelPrices?.[key] ?? dish.price;
   };
-  const qtyFor = (dishId: string) => cart.items.find((i) => i.dishId === dishId)?.qty ?? 0;
+  // Summed across every line for that dish — a dish can now sit in the cart as more than one
+  // line (see addToCart) once different lines carry different kitchen notes.
+  const qtyFor = (dishId: string) => cart.items.filter((i) => i.dishId === dishId).reduce((sum, i) => sum + i.qty, 0);
 
   const subtotal = cart.items.reduce((sum, i) => sum + i.price * i.qty, 0);
   const extraDiscountAmount = Math.max(0, Math.min(subtotal, Number(cart.extraDiscount) || 0));
@@ -350,39 +352,59 @@ export function OrderLineClient({
     ref.current?.scrollBy({ left: dir * 260, behavior: "smooth" });
   }
 
+  // Only merges into an existing line for this dish if that line has no note — a line that
+  // already carries a comment (e.g. "no onions") never silently absorbs another tap and becomes
+  // "2x" with one shared note. A second, distinctly-commented order of the same dish gets its own
+  // line instead, each keeping its own note.
   function addToCart(dish: Dish) {
     if (dish.outOfStock) return;
     setCart((prev) => {
-      const existing = prev.items.find((i) => i.dishId === dish.id);
+      const existing = prev.items.find((i) => i.dishId === dish.id && !i.note);
       if (existing) {
-        return { ...prev, items: prev.items.map((i) => (i.dishId === dish.id ? { ...i, qty: i.qty + 1 } : i)) };
+        return {
+          ...prev,
+          items: prev.items.map((i) => (i.lineId === existing.lineId ? { ...i, qty: i.qty + 1 } : i)),
+        };
       }
-      return { ...prev, items: [...prev.items, { dishId: dish.id, name: dish.name, price: priceFor(dish), qty: 1 }] };
+      return {
+        ...prev,
+        items: [...prev.items, { dishId: dish.id, name: dish.name, price: priceFor(dish), qty: 1, lineId: crypto.randomUUID() }],
+      };
     });
   }
 
+  // Mirrors addToCart's targeting: shrinks the plain (note-less) line for this dish first, since
+  // that's the one the tile's own +/- controls build up; falls back to the last line for the dish
+  // only if every line for it already carries a distinct note.
   function decrementCartItem(dishId: string) {
-    setCart((prev) => ({
-      ...prev,
-      items: prev.items.map((i) => (i.dishId === dishId ? { ...i, qty: i.qty - 1 } : i)).filter((i) => i.qty > 0),
-    }));
+    setCart((prev) => {
+      const matches = prev.items.filter((i) => i.dishId === dishId);
+      if (matches.length === 0) return prev;
+      const target = matches.find((i) => !i.note) ?? matches[matches.length - 1];
+      return {
+        ...prev,
+        items: prev.items
+          .map((i) => (i.lineId === target.lineId ? { ...i, qty: i.qty - 1 } : i))
+          .filter((i) => i.qty > 0),
+      };
+    });
   }
 
-  function removeCartItem(dishId: string) {
-    setCart((prev) => ({ ...prev, items: prev.items.filter((i) => i.dishId !== dishId) }));
+  function removeCartItem(lineId: string) {
+    setCart((prev) => ({ ...prev, items: prev.items.filter((i) => (i.lineId ?? i.dishId) !== lineId) }));
   }
 
   function addCustomItem(name: string, price: number, qty: number) {
     setCart((prev) => ({
       ...prev,
-      items: [...prev.items, { dishId: `custom:${crypto.randomUUID()}`, name, price, qty }],
+      items: [...prev.items, { dishId: `custom:${crypto.randomUUID()}`, name, price, qty, lineId: crypto.randomUUID() }],
     }));
   }
 
-  function updateItemNote(dishId: string, note: string) {
+  function updateItemNote(lineId: string, note: string) {
     setCart((prev) => ({
       ...prev,
-      items: prev.items.map((i) => (i.dishId === dishId ? { ...i, note: note || undefined } : i)),
+      items: prev.items.map((i) => ((i.lineId ?? i.dishId) === lineId ? { ...i, note: note || undefined } : i)),
     }));
   }
 
@@ -398,7 +420,9 @@ export function OrderLineClient({
       guests: order.guests,
       channel: order.channel,
       thirdPartyProvider: order.thirdPartyProvider ?? "Uber Eats",
-      items: order.items,
+      // Backfills a lineId for items placed before this existed, so every line in the cart has a
+      // stable identity to edit/remove/toggle by regardless of when the order was first placed.
+      items: order.items.map((i) => ({ ...i, lineId: i.lineId ?? crypto.randomUUID() })),
       customerName: order.customerName ?? "",
       customerPhone: order.customerPhone ?? "",
       customerAddress: order.customerAddress ?? "",
@@ -998,7 +1022,7 @@ interface CartPanelProps {
   removeCartItem: (id: string) => void;
   noteEditorFor: string | null;
   setNoteEditorFor: (v: string | null) => void;
-  updateItemNote: (dishId: string, note: string) => void;
+  updateItemNote: (lineId: string, note: string) => void;
   onAddCustomItem: () => void;
   handlePlaceOrder: () => void;
   handleAdvanceStatus: (next: OrderStatus) => void;
@@ -1318,8 +1342,10 @@ function CartPanel({
               Tap a dish to add it to the order.
             </div>
           )}
-          {cart.items.map((item) => (
-            <div key={item.dishId} className="space-y-1.5">
+          {cart.items.map((item) => {
+            const lineId = item.lineId ?? item.dishId;
+            return (
+            <div key={lineId} className="space-y-1.5">
               <div className="flex items-center justify-between gap-2 text-sm">
                 <div className="flex min-w-0 items-center gap-2">
                   <span className="shrink-0 font-semibold text-teal-600">{item.qty}x</span>
@@ -1328,25 +1354,25 @@ function CartPanel({
                 <div className="flex shrink-0 items-center gap-1.5">
                   <span className="font-semibold text-neutral-800">{formatMoney(item.price * item.qty, currencySymbol)}</span>
                   <button
-                    onClick={() => setNoteEditorFor(noteEditorFor === item.dishId ? null : item.dishId)}
+                    onClick={() => setNoteEditorFor(noteEditorFor === lineId ? null : lineId)}
                     title="Add note for kitchen"
                     className={`rounded p-0.5 ${item.note ? "text-amber-500" : "text-neutral-300 hover:text-teal-600"}`}
                   >
                     <MessageSquarePlus className="h-3.5 w-3.5" />
                   </button>
-                  <button onClick={() => removeCartItem(item.dishId)} className="text-neutral-300 hover:text-rose-500">
+                  <button onClick={() => removeCartItem(lineId)} className="text-neutral-300 hover:text-rose-500">
                     <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
-              {item.note && noteEditorFor !== item.dishId && (
+              {item.note && noteEditorFor !== lineId && (
                 <div className="ml-5 text-xs italic text-amber-600">Note: {item.note}</div>
               )}
-              {noteEditorFor === item.dishId && (
+              {noteEditorFor === lineId && (
                 <input
                   autoFocus
                   value={item.note ?? ""}
-                  onChange={(e) => updateItemNote(item.dishId, e.target.value)}
+                  onChange={(e) => updateItemNote(lineId, e.target.value)}
                   onBlur={() => setNoteEditorFor(null)}
                   onKeyDown={(e) => e.key === "Enter" && setNoteEditorFor(null)}
                   placeholder="e.g. no onions, extra spicy…"
@@ -1354,7 +1380,8 @@ function CartPanel({
                 />
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 

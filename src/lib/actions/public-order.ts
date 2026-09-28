@@ -78,7 +78,14 @@ export async function placePublicOrderAction(input: PlacePublicOrderInput): Prom
     const qty = Math.max(1, Math.min(50, Math.floor(Number(raw.qty) || 0)));
     if (qty <= 0) continue;
     const price = dish.channelPrices?.[input.channel] ?? dish.price;
-    items.push({ dishId: dish.id, name: dish.name, price, qty, note: raw.note?.trim().slice(0, 200) || undefined });
+    items.push({
+      dishId: dish.id,
+      name: dish.name,
+      price,
+      qty,
+      note: raw.note?.trim().slice(0, 200) || undefined,
+      lineId: crypto.randomUUID(),
+    });
   }
   if (items.length === 0) return { error: "None of the items in your cart are available anymore." };
 

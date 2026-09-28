@@ -163,7 +163,7 @@ export const orders = sqliteTable("orders", {
   thirdPartyProvider: text("third_party_provider", { enum: ["Uber Eats", "Deliveroo", "Just Eat", "Other"] }),
   status: text("status", { enum: ["In Kitchen", "Wait List", "Ready", "Served", "Voided"] }).notNull(),
   items: text("items", { mode: "json" }).notNull().$type<
-    { dishId: string; name: string; price: number; qty: number; ready?: boolean; note?: string }[]
+    { dishId: string; name: string; price: number; qty: number; ready?: boolean; note?: string; lineId?: string }[]
   >(),
   // "Cash", the name of a payment terminal, or "Split" when paid across multiple methods
   // (see `payments` for the breakdown) — kept for quick display and legacy orders.

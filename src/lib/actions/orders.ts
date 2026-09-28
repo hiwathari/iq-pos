@@ -77,6 +77,10 @@ export async function placeOrderAction(input: PlaceOrderInput) {
         ? (existing.closedOutAt ?? Date.now())
         : null
       : null;
+    // The kitchen already finished this ticket, but the edit just put an unprepped item back on
+    // it (e.g. another dish added at the table) — reopen it so it reappears on the Kitchen
+    // Display as a running order instead of staying "Ready" with food nobody's cooking.
+    const reopensKitchen = existing?.status === "Ready" && input.items.some((item) => !item.ready);
 
     await db
       .update(orders)
@@ -100,6 +104,7 @@ export async function placeOrderAction(input: PlaceOrderInput) {
         customerAddress: input.channel === "Delivery" ? input.customerAddress || null : null,
         updatedAt: Date.now(),
         closedOutAt,
+        ...(reopensKitchen ? { status: "In Kitchen" as OrderStatus } : {}),
       })
       .where(and(eq(orders.id, input.editingOrderId), eq(orders.restaurantId, restaurantId)));
   } else {
@@ -147,7 +152,10 @@ export async function placeOrderAction(input: PlaceOrderInput) {
   revalidatePath("/kitchen");
 }
 
-export async function toggleOrderItemReadyAction(orderId: string, dishId: string, ready: boolean) {
+// itemKey is item.lineId when the item has one, else its dishId — matches whichever identity
+// the caller has. Older orders placed before lineId existed only ever had one line per dish, so
+// falling back to dishId there still targets the right (and only) item.
+export async function toggleOrderItemReadyAction(orderId: string, itemKey: string, ready: boolean) {
   const { restaurantId } = await requireRestaurantContext();
   const [order] = await db
     .select()
@@ -156,7 +164,7 @@ export async function toggleOrderItemReadyAction(orderId: string, dishId: string
     .limit(1);
   if (!order) return;
 
-  const items = order.items.map((i) => (i.dishId === dishId ? { ...i, ready } : i));
+  const items = order.items.map((i) => ((i.lineId ?? i.dishId) === itemKey ? { ...i, ready } : i));
   // Ticking off the last item auto-advances the order to Ready — one less tap for the kitchen.
   const allReady = items.every((i) => i.ready);
   const advanceToReady = allReady && order.status === "In Kitchen";
@@ -186,6 +194,7 @@ export async function setOrderStatusAction(orderId: string, status: OrderStatus)
     .set({ status, servedAt: status === "Served" ? Date.now() : undefined, closedOutAt })
     .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)));
   revalidatePath("/order-line");
+  revalidatePath("/manage-table");
   revalidatePath("/dashboard");
   revalidatePath("/kitchen");
 }
