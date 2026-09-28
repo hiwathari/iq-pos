@@ -2,11 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CreditCard, Plus, Trash2, X } from "lucide-react";
+import { CreditCard, Pencil, Plus, Trash2, X } from "lucide-react";
 import {
   createPaymentTerminalAction,
   deletePaymentTerminalAction,
   togglePaymentTerminalActiveAction,
+  updatePaymentTerminalAction,
 } from "@/lib/actions/printers";
 import type { PaymentTerminal } from "@/lib/types";
 
@@ -14,6 +15,7 @@ export function PaymentTerminalsClient({ terminals }: { terminals: PaymentTermin
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingTerminal, setEditingTerminal] = useState<PaymentTerminal | null>(null);
 
   function toggle(id: string, active: boolean) {
     startTransition(async () => {
@@ -35,7 +37,8 @@ export function PaymentTerminalsClient({ terminals }: { terminals: PaymentTermin
         <div>
           <h2 className="text-lg font-semibold text-neutral-900">Payment Terminals</h2>
           <p className="text-sm text-neutral-500">
-            Register each card machine by name (e.g. Card 1, Yellow Card) — staff pick the terminal used at checkout.
+            Register each card machine by name (e.g. Card 1, Yellow Card) — add a logo so staff can tell them apart
+            at a glance on the Till.
           </p>
         </div>
         <button
@@ -51,7 +54,11 @@ export function PaymentTerminalsClient({ terminals }: { terminals: PaymentTermin
           <div key={t.id} className="flex items-start justify-between rounded-2xl border border-neutral-200 bg-white p-4">
             <div>
               <div className="mb-1 flex items-center gap-2">
-                <CreditCard className="h-4 w-4 text-neutral-400" />
+                {t.logoUrl ? (
+                  <img src={t.logoUrl} alt="" className="h-6 w-6 rounded object-contain" />
+                ) : (
+                  <CreditCard className="h-4 w-4 text-neutral-400" />
+                )}
                 <span className="font-semibold text-neutral-900">{t.name}</span>
               </div>
               <span
@@ -63,6 +70,13 @@ export function PaymentTerminalsClient({ terminals }: { terminals: PaymentTermin
               </span>
             </div>
             <div className="flex flex-col gap-1.5">
+              <button
+                onClick={() => setEditingTerminal(t)}
+                className="flex items-center justify-center rounded-lg border border-neutral-200 px-2.5 py-1 text-neutral-500 hover:bg-neutral-50"
+                title="Edit name / logo"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
               <button
                 onClick={() => toggle(t.id, !t.active)}
                 className="rounded-lg border border-neutral-200 px-2.5 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
@@ -85,20 +99,23 @@ export function PaymentTerminalsClient({ terminals }: { terminals: PaymentTermin
         )}
       </div>
 
-      {modalOpen && <AddTerminalModal onClose={() => setModalOpen(false)} />}
+      {modalOpen && <TerminalModal onClose={() => setModalOpen(false)} />}
+      {editingTerminal && <TerminalModal terminal={editingTerminal} onClose={() => setEditingTerminal(null)} />}
     </div>
   );
 }
 
-function AddTerminalModal({ onClose }: { onClose: () => void }) {
+function TerminalModal({ terminal, onClose }: { terminal?: PaymentTerminal; onClose: () => void }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
-  const [name, setName] = useState("");
+  const [name, setName] = useState(terminal?.name ?? "");
+  const [logoUrl, setLogoUrl] = useState(terminal?.logoUrl ?? "");
 
   function save() {
     if (!name.trim()) return;
     startTransition(async () => {
-      await createPaymentTerminalAction(name);
+      if (terminal) await updatePaymentTerminalAction(terminal.id, name, logoUrl);
+      else await createPaymentTerminalAction(name, logoUrl);
       router.refresh();
     });
     onClose();
@@ -108,20 +125,40 @@ function AddTerminalModal({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
       <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-neutral-900">Add Payment Terminal</h2>
+          <h2 className="text-lg font-semibold text-neutral-900">{terminal ? "Edit" : "Add"} Payment Terminal</h2>
           <button onClick={onClose} className="rounded-full p-1 text-neutral-400 hover:bg-neutral-100">
             <X className="h-5 w-5" />
           </button>
         </div>
-        <div>
-          <label className="mb-1.5 block text-xs font-medium text-neutral-500">Name</label>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Yellow Card"
-            autoFocus
-            className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-          />
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-neutral-500">Name</label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Yellow Card"
+              autoFocus
+              className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-neutral-500">Logo URL (optional)</label>
+            <div className="flex items-center gap-2.5">
+              {logoUrl ? (
+                <img src={logoUrl} alt="" className="h-9 w-9 shrink-0 rounded-lg object-contain" />
+              ) : (
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-neutral-100">
+                  <CreditCard className="h-4 w-4 text-neutral-400" />
+                </div>
+              )}
+              <input
+                value={logoUrl}
+                onChange={(e) => setLogoUrl(e.target.value)}
+                placeholder="https://…"
+                className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+              />
+            </div>
+          </div>
         </div>
         <div className="mt-6 flex gap-3">
           <button
@@ -135,7 +172,7 @@ function AddTerminalModal({ onClose }: { onClose: () => void }) {
             disabled={!name.trim()}
             className="flex-1 rounded-xl bg-[var(--brand)] py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Add Terminal
+            {terminal ? "Save Changes" : "Add Terminal"}
           </button>
         </div>
       </div>

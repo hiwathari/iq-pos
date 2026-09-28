@@ -58,11 +58,28 @@ export async function setDefaultPrinterAction(printerId: string) {
   revalidatePath("/manage-dishes");
 }
 
-export async function createPaymentTerminalAction(name: string) {
+export async function createPaymentTerminalAction(name: string, logoUrl?: string) {
   const { session, restaurantId } = await requireRestaurantContext();
   assertAdmin(session);
   if (!name.trim()) return;
-  await db.insert(paymentTerminals).values({ id: crypto.randomUUID(), restaurantId, name: name.trim() });
+  await db.insert(paymentTerminals).values({
+    id: crypto.randomUUID(),
+    restaurantId,
+    name: name.trim(),
+    logoUrl: logoUrl?.trim() || null,
+  });
+  revalidatePath("/settings");
+  revalidatePath("/order-line");
+}
+
+export async function updatePaymentTerminalAction(terminalId: string, name: string, logoUrl?: string) {
+  const { session, restaurantId } = await requireRestaurantContext();
+  assertAdmin(session);
+  if (!name.trim()) return;
+  await db
+    .update(paymentTerminals)
+    .set({ name: name.trim(), logoUrl: logoUrl?.trim() || null })
+    .where(and(eq(paymentTerminals.id, terminalId), eq(paymentTerminals.restaurantId, restaurantId)));
   revalidatePath("/settings");
   revalidatePath("/order-line");
 }

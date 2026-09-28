@@ -1506,6 +1506,7 @@ function CartPanel({
               <PaymentButton
                 key={t.id}
                 icon={CreditCard}
+                logoUrl={t.logoUrl}
                 label={t.name}
                 active={cart.payments.some((p) => p.method === t.name)}
                 onClick={() => togglePaymentLine(t.name)}
@@ -2003,11 +2004,13 @@ function MenuTab({ active, label, onClick }: { active: boolean; label: string; o
 
 function PaymentButton({
   icon: Icon,
+  logoUrl,
   label,
   active,
   onClick,
 }: {
   icon: typeof Wallet;
+  logoUrl?: string | null;
   label: string;
   active: boolean;
   onClick: () => void;
@@ -2019,7 +2022,7 @@ function PaymentButton({
         active ? "border-[var(--brand)] bg-[var(--brand-light)] text-[var(--brand-dark)]" : "border-neutral-200 text-neutral-500 hover:bg-neutral-50"
       }`}
     >
-      <Icon className="h-4 w-4" />
+      {logoUrl ? <img src={logoUrl} alt="" className="h-4 w-4 rounded object-contain" /> : <Icon className="h-4 w-4" />}
       {label}
     </button>
   );

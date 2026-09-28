@@ -309,6 +309,9 @@ export const paymentTerminals = sqliteTable("payment_terminals", {
     .references(() => restaurants.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   active: int("active", { mode: "boolean" }).notNull().default(true),
+  // Optional image URL (e.g. the card network's logo, or a photo of the physical machine) shown
+  // instead of the generic card icon so staff can tell terminals apart at a glance on the Till.
+  logoUrl: text("logo_url"),
 });
 
 export const integrations = sqliteTable("integrations", {
