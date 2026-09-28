@@ -18,7 +18,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = { themeColor: "#0d9488" };
 
 export default async function OrderLinePage() {
-  const { restaurantId } = await requireRestaurantContext();
+  const { session, restaurantId } = await requireRestaurantContext();
 
   const [categories, dishes, tables, orders, paymentTerminals, restaurant] = await Promise.all([
     listCategories(restaurantId),
@@ -31,6 +31,10 @@ export default async function OrderLinePage() {
 
   const currencySymbol = restaurant?.currencySymbol ?? "£";
   const restaurantName = restaurant?.name ?? "IQ POS";
+  // Discounting an order's total is a manager-level call — only Admin (and Super Admin,
+  // impersonating a restaurant) can see or use the Extra Discount / Coupon controls on the Till.
+  // A plain Staff login gets the same Till otherwise, just without that power.
+  const canDiscount = session.role === "admin" || session.role === "super_admin";
 
   return (
     <AppShell title="Till">
@@ -42,6 +46,7 @@ export default async function OrderLinePage() {
         paymentTerminals={paymentTerminals.filter((t) => t.active)}
         currencySymbol={currencySymbol}
         restaurantName={restaurantName}
+        canDiscount={canDiscount}
         invoiceAddress={restaurant?.invoiceAddress ?? undefined}
         invoicePhone={restaurant?.invoicePhone ?? undefined}
         invoiceWebsite={restaurant?.invoiceWebsite ?? undefined}

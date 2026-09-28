@@ -46,19 +46,43 @@ export async function placeOrderAction(input: PlaceOrderInput) {
     input.payments.length === 0 ? null : input.payments.length === 1 ? input.payments[0].method : "Split";
   const payments = input.payments.length > 1 ? input.payments : null;
 
-  // Never trust a client-supplied discount amount — recompute from the live coupon record
-  // against this order's own item subtotal, so a stale or tampered value can't be saved.
+  const existing = input.editingOrderId
+    ? (
+        await db
+          .select()
+          .from(orders)
+          .where(and(eq(orders.id, input.editingOrderId), eq(orders.restaurantId, restaurantId)))
+          .limit(1)
+      )[0]
+    : undefined;
+
+  // Discounting is manager-only (see canDiscount in order-line/page.tsx, which hides the
+  // controls for Staff) — enforced again here so a Staff session can't just craft a request.
+  // A Staff edit to an order a manager already discounted keeps that discount as-is; it can
+  // never introduce or change one, since a Staff session's own input value is never trusted.
+  const canDiscount = session.role === "admin" || session.role === "super_admin";
   const subtotal = input.items.reduce((sum, i) => sum + i.price * i.qty, 0);
-  const extraDiscount = Math.max(0, Math.min(subtotal, input.extraDiscount ?? 0));
-  const trimmedCode = input.couponCode?.trim().toUpperCase() || null;
-  let couponCode: string | null = null;
-  let couponDiscount = 0;
-  if (trimmedCode) {
-    const coupon = await findActiveCoupon(restaurantId, trimmedCode);
-    if (coupon) {
-      couponCode = coupon.code;
-      couponDiscount = resolveCouponDiscount(coupon, Math.max(0, subtotal - extraDiscount));
+  let extraDiscount: number;
+  let couponCode: string | null;
+  let couponDiscount: number;
+  if (canDiscount) {
+    // Never trust a client-supplied discount amount — recompute from the live coupon record
+    // against this order's own item subtotal, so a stale or tampered value can't be saved.
+    extraDiscount = Math.max(0, Math.min(subtotal, input.extraDiscount ?? 0));
+    const trimmedCode = input.couponCode?.trim().toUpperCase() || null;
+    couponCode = null;
+    couponDiscount = 0;
+    if (trimmedCode) {
+      const coupon = await findActiveCoupon(restaurantId, trimmedCode);
+      if (coupon) {
+        couponCode = coupon.code;
+        couponDiscount = resolveCouponDiscount(coupon, Math.max(0, subtotal - extraDiscount));
+      }
     }
+  } else {
+    extraDiscount = existing?.extraDiscount ?? 0;
+    couponCode = existing?.couponCode ?? null;
+    couponDiscount = existing?.couponDiscount ?? 0;
   }
 
   // Confirm the loyalty member actually belongs to this restaurant before attaching it — the
@@ -67,11 +91,6 @@ export async function placeOrderAction(input: PlaceOrderInput) {
   const loyaltyMemberId = loyaltyMember?.id ?? null;
 
   if (input.editingOrderId) {
-    const [existing] = await db
-      .select()
-      .from(orders)
-      .where(and(eq(orders.id, input.editingOrderId), eq(orders.restaurantId, restaurantId)))
-      .limit(1);
     const closedOutAt = existing
       ? isClosedOut(existing.status, paymentMethod)
         ? (existing.closedOutAt ?? Date.now())

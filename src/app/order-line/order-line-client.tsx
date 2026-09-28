@@ -152,6 +152,7 @@ export function OrderLineClient({
   paymentTerminals,
   currencySymbol,
   restaurantName,
+  canDiscount,
   invoiceAddress,
   invoicePhone,
   invoiceWebsite,
@@ -165,6 +166,7 @@ export function OrderLineClient({
   paymentTerminals: PaymentTerminal[];
   currencySymbol: string;
   restaurantName: string;
+  canDiscount: boolean;
   invoiceAddress?: string;
   invoicePhone?: string;
   invoiceWebsite?: string;
@@ -610,6 +612,7 @@ export function OrderLineClient({
     donation,
     setDonation,
     donationAmount,
+    canDiscount,
     extraDiscountAmount,
     couponDiscountAmount,
     couponError,
@@ -1004,6 +1007,7 @@ interface CartPanelProps {
   donation: boolean;
   setDonation: (v: boolean) => void;
   donationAmount: number;
+  canDiscount: boolean;
   extraDiscountAmount: number;
   couponDiscountAmount: number;
   couponError: string | null;
@@ -1048,6 +1052,7 @@ function CartPanel({
   donation,
   setDonation,
   donationAmount,
+  canDiscount,
   extraDiscountAmount,
   couponDiscountAmount,
   couponError,
@@ -1427,51 +1432,55 @@ function CartPanel({
             <span>{formatMoney(subtotal, currencySymbol)}</span>
           </div>
 
-          <div className="flex items-center justify-between gap-2 text-sm text-neutral-500">
-            <span>Extra Discount</span>
-            <div className="relative w-28">
-              <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-neutral-400">
-                {currencySymbol}
-              </span>
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                value={cart.extraDiscount}
-                onChange={(e) => setCart((prev) => ({ ...prev, extraDiscount: e.target.value }))}
-                placeholder="0.00"
-                className="w-full rounded-lg border border-neutral-200 py-1.5 pl-6 pr-2 text-right text-sm outline-none focus:border-teal-500"
-              />
+          {canDiscount && (
+            <div className="flex items-center justify-between gap-2 text-sm text-neutral-500">
+              <span>Extra Discount</span>
+              <div className="relative w-28">
+                <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-neutral-400">
+                  {currencySymbol}
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={cart.extraDiscount}
+                  onChange={(e) => setCart((prev) => ({ ...prev, extraDiscount: e.target.value }))}
+                  placeholder="0.00"
+                  className="w-full rounded-lg border border-neutral-200 py-1.5 pl-6 pr-2 text-right text-sm outline-none focus:border-teal-500"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
-              <input
-                value={cart.couponCode}
-                onChange={(e) => setCart((prev) => ({ ...prev, couponCode: e.target.value.toUpperCase() }))}
-                placeholder="Coupon code"
-                disabled={!!cart.appliedCoupon}
-                className="flex-1 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-mono uppercase outline-none focus:border-teal-500 disabled:bg-neutral-50 disabled:text-neutral-400"
-              />
-              {cart.appliedCoupon ? (
-                <button
-                  onClick={removeCoupon}
-                  className="shrink-0 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-500 hover:bg-neutral-50"
-                >
-                  Remove
-                </button>
-              ) : (
-                <button
-                  onClick={applyCoupon}
-                  disabled={!cart.couponCode.trim()}
-                  className="shrink-0 rounded-lg bg-[var(--brand)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--brand-dark)] disabled:opacity-50"
-                >
-                  Apply
-                </button>
-              )}
-            </div>
-            {couponError && <p className="text-xs font-medium text-rose-600">{couponError}</p>}
+            {canDiscount && (
+              <div className="flex items-center gap-2">
+                <input
+                  value={cart.couponCode}
+                  onChange={(e) => setCart((prev) => ({ ...prev, couponCode: e.target.value.toUpperCase() }))}
+                  placeholder="Coupon code"
+                  disabled={!!cart.appliedCoupon}
+                  className="flex-1 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-mono uppercase outline-none focus:border-teal-500 disabled:bg-neutral-50 disabled:text-neutral-400"
+                />
+                {cart.appliedCoupon ? (
+                  <button
+                    onClick={removeCoupon}
+                    className="shrink-0 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-500 hover:bg-neutral-50"
+                  >
+                    Remove
+                  </button>
+                ) : (
+                  <button
+                    onClick={applyCoupon}
+                    disabled={!cart.couponCode.trim()}
+                    className="shrink-0 rounded-lg bg-[var(--brand)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--brand-dark)] disabled:opacity-50"
+                  >
+                    Apply
+                  </button>
+                )}
+              </div>
+            )}
+            {canDiscount && couponError && <p className="text-xs font-medium text-rose-600">{couponError}</p>}
             {cart.appliedCoupon && (
               <div className="flex justify-between text-sm text-emerald-600">
                 <span>Coupon {cart.appliedCoupon.code}</span>

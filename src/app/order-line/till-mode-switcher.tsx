@@ -22,6 +22,7 @@ export function TillModeSwitcher({
   paymentTerminals,
   currencySymbol,
   restaurantName,
+  canDiscount,
   invoiceAddress,
   invoicePhone,
   invoiceWebsite,
@@ -35,6 +36,7 @@ export function TillModeSwitcher({
   paymentTerminals: PaymentTerminal[];
   currencySymbol: string;
   restaurantName: string;
+  canDiscount: boolean;
   invoiceAddress?: string;
   invoicePhone?: string;
   invoiceWebsite?: string;
@@ -92,6 +94,7 @@ export function TillModeSwitcher({
       paymentTerminals={paymentTerminals}
       currencySymbol={currencySymbol}
       restaurantName={restaurantName}
+      canDiscount={canDiscount}
       invoiceAddress={invoiceAddress}
       invoicePhone={invoicePhone}
       invoiceWebsite={invoiceWebsite}
