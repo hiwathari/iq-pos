@@ -376,3 +376,18 @@ export const inventoryItems = sqliteTable(
   },
   (table) => [uniqueIndex("inventory_items_restaurant_name_idx").on(table.restaurantId, table.name)]
 );
+
+// Ad-hoc cash movements outside of order payments (e.g. "Bought cleaning supplies — £15 out",
+// "Owner topped up the float — £50 in") — rolled into the Daily Summary Report's cash
+// reconciliation alongside order-driven cash sales.
+export const pettyCashEntries = sqliteTable("petty_cash_entries", {
+  id: id(),
+  restaurantId: text("restaurant_id")
+    .notNull()
+    .references(() => restaurants.id, { onDelete: "cascade" }),
+  description: text("description").notNull(),
+  amount: real("amount").notNull(),
+  direction: text("direction", { enum: ["in", "out"] }).notNull(),
+  createdByName: text("created_by_name"),
+  createdAt: timestamp("created_at"),
+});

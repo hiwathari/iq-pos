@@ -45,7 +45,7 @@ export function Sidebar({ role, name }: { role: Role; name: string }) {
   const items = role === "super_admin" ? [] : NAV.filter((item) => item.roles.includes(role));
 
   return (
-    <aside className="hidden md:flex md:w-60 shrink-0 flex-col border-r border-neutral-200 bg-white px-4 py-5">
+    <aside className="hidden md:flex md:w-60 shrink-0 flex-col border-r border-neutral-200 bg-white px-4 py-5 print:hidden">
       <div className="px-2 mb-8">
         <Logo />
       </div>

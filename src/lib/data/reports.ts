@@ -1,14 +1,27 @@
-import { eq } from "drizzle-orm";
+import { and, eq, gte, lt } from "drizzle-orm";
 import { db } from "@/db/client";
-import { categories, dishes, orders, reservations } from "@/db/schema";
-import { orderTotal } from "@/lib/types";
+import { categories, dishes, orders, pettyCashEntries, reservations } from "@/db/schema";
+import { orderTotal, orderSequence } from "@/lib/types";
 
 export type ReportData = Awaited<ReturnType<typeof getReportData>>;
 
-export async function getReportData(restaurantId: string) {
+// `from`/`to` are optional timestamps (from inclusive, to exclusive) — omitting both keeps the
+// original all-time behavior the Dashboard relies on; the Reports page's date filter passes them.
+export async function getReportData(restaurantId: string, range?: { from?: number; to?: number }) {
+  const orderConditions = [eq(orders.restaurantId, restaurantId)];
+  const reservationConditions = [eq(reservations.restaurantId, restaurantId)];
+  if (range?.from !== undefined) {
+    orderConditions.push(gte(orders.createdAt, range.from));
+    reservationConditions.push(gte(reservations.createdAt, range.from));
+  }
+  if (range?.to !== undefined) {
+    orderConditions.push(lt(orders.createdAt, range.to));
+    reservationConditions.push(lt(reservations.createdAt, range.to));
+  }
+
   const [allOrders, allReservations, allDishes, allCategories] = await Promise.all([
-    db.select().from(orders).where(eq(orders.restaurantId, restaurantId)),
-    db.select().from(reservations).where(eq(reservations.restaurantId, restaurantId)),
+    db.select().from(orders).where(and(...orderConditions)),
+    db.select().from(reservations).where(and(...reservationConditions)),
     db.select().from(dishes).where(eq(dishes.restaurantId, restaurantId)),
     db.select().from(categories).where(eq(categories.restaurantId, restaurantId)),
   ]);
@@ -144,5 +157,142 @@ export async function getReportData(restaurantId: string) {
     totalGuests,
     totalTax,
     totalDonations,
+  };
+}
+
+export type DailySummary = Awaited<ReturnType<typeof getDailySummary>>;
+
+// One calendar day (UTC, matching the daily/hourly buckets above), laid out the way an end-of-day
+// cash-up sheet reads: every order placed that day, the sale items behind them, any petty cash
+// movement, anything cancelled, then a reconciliation block a manager can check the till against.
+// There's no opening-float carry-forward yet, so openingBalance is always 0 — a restaurant that
+// starts its drawer with a float would need to fold that in manually for now.
+export async function getDailySummary(restaurantId: string, dateStr: string) {
+  const from = new Date(`${dateStr}T00:00:00.000Z`).getTime();
+  const to = from + 24 * 60 * 60 * 1000;
+
+  const [dayOrders, dayPettyCash, dayReservations] = await Promise.all([
+    db
+      .select()
+      .from(orders)
+      .where(and(eq(orders.restaurantId, restaurantId), gte(orders.createdAt, from), lt(orders.createdAt, to))),
+    db
+      .select()
+      .from(pettyCashEntries)
+      .where(and(eq(pettyCashEntries.restaurantId, restaurantId), gte(pettyCashEntries.createdAt, from), lt(pettyCashEntries.createdAt, to))),
+    db
+      .select()
+      .from(reservations)
+      .where(and(eq(reservations.restaurantId, restaurantId), gte(reservations.createdAt, from), lt(reservations.createdAt, to))),
+  ]);
+
+  const liveOrders = dayOrders.filter((o) => o.status !== "Voided");
+  const voidedOrders = dayOrders.filter((o) => o.status === "Voided");
+
+  const ordersList = liveOrders
+    .slice()
+    .sort((a, b) => a.createdAt - b.createdAt)
+    .map((o, idx) => ({
+      sn: idx + 1,
+      orderNumber: o.orderNumber,
+      seq: orderSequence(o.orderNumber),
+      mode: (o.placedVia === "staff" ? "offline" : "online") as "online" | "offline",
+      type: o.channel === "Dine in" ? "dinein" : o.channel === "Take Away" ? "takeaway" : o.channel.toLowerCase(),
+      totalPayable: orderTotal(o),
+    }));
+  const ordersSum = ordersList.reduce((sum, o) => sum + o.totalPayable, 0);
+
+  const saleItemsMap = new Map<string, number>();
+  for (const o of liveOrders) {
+    for (const item of o.items) saleItemsMap.set(item.name, (saleItemsMap.get(item.name) ?? 0) + item.qty);
+  }
+  const saleItems = [...saleItemsMap.entries()].map(([name, qty]) => ({ name, qty })).sort((a, b) => b.qty - a.qty);
+
+  const cancelledOrders = voidedOrders.map((o) => ({
+    orderNumber: o.orderNumber,
+    seq: orderSequence(o.orderNumber),
+    reason: o.voidReason,
+    amount: orderTotal(o),
+  }));
+
+  let totalCashAmount = 0;
+  let totalCardAmount = 0;
+  let totalOnlineCardAmount = 0;
+  let totalInStoreCashOrders = 0;
+  let totalInStoreCardOrders = 0;
+  let totalOnlineCashOrders = 0;
+  let totalOnlineCardOrders = 0;
+  let totalDineInCustomers = 0;
+  let totalDonationsAmount = 0;
+  let totalDiscountAmount = 0;
+
+  for (const o of liveOrders) {
+    const total = orderTotal(o);
+    const methodLines = o.payments?.length ? o.payments : o.paymentMethod ? [{ method: o.paymentMethod, amount: total }] : [];
+    const isOnline = o.placedVia !== "staff";
+    let orderHasCash = false;
+    let orderHasCard = false;
+    for (const line of methodLines) {
+      if (line.method === "Cash") {
+        totalCashAmount += line.amount;
+        orderHasCash = true;
+      } else {
+        totalCardAmount += line.amount;
+        orderHasCard = true;
+        if (isOnline) totalOnlineCardAmount += line.amount;
+      }
+    }
+    if (isOnline) {
+      if (orderHasCash) totalOnlineCashOrders += 1;
+      if (orderHasCard) totalOnlineCardOrders += 1;
+    } else {
+      if (orderHasCash) totalInStoreCashOrders += 1;
+      if (orderHasCard) totalInStoreCardOrders += 1;
+    }
+    if (o.channel === "Dine in") totalDineInCustomers += o.guests ?? 0;
+    totalDonationsAmount += o.donation ?? 0;
+    totalDiscountAmount += (o.extraDiscount ?? 0) + (o.couponDiscount ?? 0);
+  }
+
+  const totalInStoreOrders = liveOrders.filter((o) => o.placedVia === "staff").length;
+  const totalOnlineOrders = liveOrders.filter((o) => o.placedVia !== "staff").length;
+
+  const pettyCashIn = dayPettyCash.filter((p) => p.direction === "in").reduce((sum, p) => sum + p.amount, 0);
+  const pettyCashOut = dayPettyCash.filter((p) => p.direction === "out").reduce((sum, p) => sum + p.amount, 0);
+  const totalPettyCash = pettyCashIn - pettyCashOut;
+
+  const openingBalance = 0;
+  const totalCashPresent = openingBalance + totalCashAmount + totalPettyCash;
+  const totalAmount = totalCashAmount + totalCardAmount;
+  const closingBalance = totalCashPresent;
+
+  return {
+    date: dateStr,
+    ordersList,
+    ordersSum,
+    pettyCash: dayPettyCash,
+    cancelledOrders,
+    saleItems,
+    detail: {
+      openingBalance,
+      totalBookings: dayReservations.length,
+      totalGuests: dayReservations.reduce((sum, r) => sum + (r.guests ?? 0), 0),
+      totalDineInCustomers,
+      totalInStoreCashOrders,
+      totalInStoreCardOrders,
+      totalInStoreOrders,
+      totalOnlineCashOrders,
+      totalOnlineCardOrders,
+      totalOnlineOrders,
+      totalCashAmount,
+      totalPettyCash,
+      totalCashPresent,
+      totalCardAmount,
+      totalOnlineCardAmount,
+      totalAmount,
+      totalDonationsAmount,
+      totalDiscountAmount,
+      closingBalance,
+    },
   };
 }
