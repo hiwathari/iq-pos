@@ -73,7 +73,12 @@ export async function getReportData(restaurantId: string, range?: { from?: numbe
     bump(staffMap, o.createdByName ?? "Unattributed", total);
 
     totalGuests += o.guests ?? 0;
-    totalTax += subtotal * 0.06;
+    // Mirrors orderTotal()'s tax math: each item's own snapshotted rate, discount applied
+    // proportionally across the tax base — 0 for every order placed while tax was disabled.
+    const discount = Math.min(subtotal, (o.extraDiscount ?? 0) + (o.couponDiscount ?? 0));
+    const discountFactor = subtotal > 0 ? (subtotal - discount) / subtotal : 0;
+    const rawTax = o.items.reduce((sum, i) => sum + i.price * i.qty * ((i.taxRate ?? 0) / 100), 0);
+    totalTax += rawTax * discountFactor;
 
     const dateKey = new Date(o.createdAt).toISOString().slice(0, 10);
     dailyMap.set(dateKey, (dailyMap.get(dateKey) ?? 0) + total);

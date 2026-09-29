@@ -97,6 +97,17 @@ export async function updateRestaurantCurrencyAction(currencySymbol: string) {
   revalidatePath("/dashboard");
 }
 
+export async function updateRestaurantTaxEnabledAction(enabled: boolean) {
+  const { session, restaurantId } = await requireRestaurantContext();
+  assertAdmin(session);
+  await db.update(restaurants).set({ taxEnabled: enabled }).where(eq(restaurants.id, restaurantId));
+  revalidatePath("/settings");
+  revalidatePath("/order-line");
+  revalidatePath("/manage-dishes");
+  revalidatePath("/reports");
+  revalidatePath("/dashboard");
+}
+
 export async function updateKitchenTimerLimitAction(minutes: number) {
   const { session, restaurantId } = await requireRestaurantContext();
   assertAdmin(session);

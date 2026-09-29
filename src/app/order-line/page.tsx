@@ -35,6 +35,7 @@ export default async function OrderLinePage() {
   // impersonating a restaurant) can see or use the Extra Discount / Coupon controls on the Till.
   // A plain Staff login gets the same Till otherwise, just without that power.
   const canDiscount = session.role === "admin" || session.role === "super_admin";
+  const taxEnabled = restaurant?.taxEnabled ?? false;
 
   return (
     <AppShell title="Till">
@@ -47,6 +48,7 @@ export default async function OrderLinePage() {
         currencySymbol={currencySymbol}
         restaurantName={restaurantName}
         canDiscount={canDiscount}
+        taxEnabled={taxEnabled}
         invoiceAddress={restaurant?.invoiceAddress ?? undefined}
         invoicePhone={restaurant?.invoicePhone ?? undefined}
         invoiceWebsite={restaurant?.invoiceWebsite ?? undefined}

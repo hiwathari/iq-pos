@@ -20,7 +20,6 @@ import {
   UtensilsCrossed,
 } from "lucide-react";
 
-const TAX_RATE = 0.06;
 const TABLE_AREAS = ["Ground Floor", "1st Floor", "Basement"] as const;
 
 type Screen = "channel" | "third-party" | "table" | "menu" | "cart";
@@ -71,6 +70,7 @@ export function MobileTillClient({
   orders,
   currencySymbol,
   restaurantName,
+  taxEnabled,
   onSwitchToFull,
 }: {
   categories: Category[];
@@ -79,6 +79,7 @@ export function MobileTillClient({
   orders: Order[];
   currencySymbol: string;
   restaurantName: string;
+  taxEnabled: boolean;
   onSwitchToFull: () => void;
 }) {
   const router = useRouter();
@@ -100,9 +101,15 @@ export function MobileTillClient({
     const key = cart.channel === "Third Party" ? cart.thirdPartyProvider : cart.channel;
     return dish.channelPrices?.[key] ?? dish.price;
   };
+  const taxRateFor = (dish: Dish) => {
+    if (!taxEnabled) return 0;
+    const category = categories.find((c) => c.id === dish.categoryId);
+    return category?.taxRatePercent ?? 0;
+  };
   const qtyFor = (dishId: string) => cart.items.find((i) => i.dishId === dishId)?.qty ?? 0;
   const subtotal = cart.items.reduce((sum, i) => sum + i.price * i.qty, 0);
-  const total = subtotal * (1 + TAX_RATE);
+  const tax = cart.items.reduce((sum, i) => sum + i.price * i.qty * ((i.taxRate ?? 0) / 100), 0);
+  const total = subtotal + tax;
   const itemCount = cart.items.reduce((sum, i) => sum + i.qty, 0);
 
   function selectChannel(channel: OrderChannel) {
@@ -150,7 +157,10 @@ export function MobileTillClient({
       if (existing) {
         return { ...prev, items: prev.items.map((i) => (i.dishId === dish.id ? { ...i, qty: i.qty + 1 } : i)) };
       }
-      return { ...prev, items: [...prev.items, { dishId: dish.id, name: dish.name, price: priceFor(dish), qty: 1 }] };
+      return {
+        ...prev,
+        items: [...prev.items, { dishId: dish.id, name: dish.name, price: priceFor(dish), qty: 1, taxRate: taxRateFor(dish) }],
+      };
     });
   }
 
@@ -465,10 +475,12 @@ export function MobileTillClient({
                 <span>Subtotal</span>
                 <span>{formatMoney(subtotal, currencySymbol)}</span>
               </div>
-              <div className="flex justify-between text-neutral-500">
-                <span>Tax (6%)</span>
-                <span>{formatMoney(subtotal * TAX_RATE, currencySymbol)}</span>
-              </div>
+              {tax > 0 && (
+                <div className="flex justify-between text-neutral-500">
+                  <span>Tax</span>
+                  <span>{formatMoney(tax, currencySymbol)}</span>
+                </div>
+              )}
               <div className="flex justify-between border-t border-neutral-100 pt-1.5 text-base font-bold text-neutral-900">
                 <span>Total</span>
                 <span>{formatMoney(total, currencySymbol)}</span>

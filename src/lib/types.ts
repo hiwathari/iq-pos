@@ -48,6 +48,11 @@ export interface OrderItem {
   // carry a single note. Optional so orders placed before this existed still load fine — those
   // fall back to matching by dishId wherever a line needs to be targeted individually.
   lineId?: string;
+  // The tax rate (percent) that applied to this line at the moment it was ordered — snapshotted
+  // from the dish's category (see Category.taxRatePercent) so an order's total stays correct and
+  // reproducible even if the category's rate changes, or tax gets turned on/off, later. Absent
+  // (or 0) means no tax, which is every order placed while the restaurant has tax disabled.
+  taxRate?: number;
 }
 
 export interface PaymentLine {
@@ -75,13 +80,16 @@ export const CURRENCY_OPTIONS = [
   { symbol: "A$", label: "A$ Australian Dollar" },
 ] as const;
 
-export const TAX_RATE = 0.06;
-
+// Each item carries its own snapshotted tax rate (see OrderItem.taxRate) rather than one flat
+// restaurant-wide rate, since different menu categories can be taxed differently. An extra
+// discount / coupon reduces the taxable amount proportionally across every line, the same way a
+// single flat rate always did — it just adds up per-item now instead of multiplying once.
 export function orderTotal(order: Pick<Order, "items" | "extraDiscount" | "couponDiscount">) {
   const subtotal = order.items.reduce((sum, i) => sum + i.price * i.qty, 0);
-  const discountedSubtotal = Math.max(0, subtotal - (order.extraDiscount ?? 0) - (order.couponDiscount ?? 0));
-  const tax = discountedSubtotal * TAX_RATE;
-  return discountedSubtotal + tax;
+  const discount = Math.min(subtotal, (order.extraDiscount ?? 0) + (order.couponDiscount ?? 0));
+  const discountFactor = subtotal > 0 ? (subtotal - discount) / subtotal : 0;
+  const rawTax = order.items.reduce((sum, i) => sum + i.price * i.qty * ((i.taxRate ?? 0) / 100), 0);
+  return subtotal - discount + rawTax * discountFactor;
 }
 
 // Resolves a coupon's percent/fixed value into an actual currency amount against a given

@@ -14,7 +14,7 @@ import type {
   RestaurantTable,
   ThirdPartyProvider,
 } from "@/lib/types";
-import { formatMoney, formatOccupiedTime, formatOrderTimestamp, orderSequence, orderTotal, TAX_RATE } from "@/lib/types";
+import { formatMoney, formatOccupiedTime, formatOrderTimestamp, orderSequence, orderTotal } from "@/lib/types";
 import {
   mergeTableIntoOrderAction,
   placeOrderAction,
@@ -153,6 +153,7 @@ export function OrderLineClient({
   currencySymbol,
   restaurantName,
   canDiscount,
+  taxEnabled,
   invoiceAddress,
   invoicePhone,
   invoiceWebsite,
@@ -167,6 +168,7 @@ export function OrderLineClient({
   currencySymbol: string;
   restaurantName: string;
   canDiscount: boolean;
+  taxEnabled: boolean;
   invoiceAddress?: string;
   invoicePhone?: string;
   invoiceWebsite?: string;
@@ -286,6 +288,13 @@ export function OrderLineClient({
     const key = cart.channel === "Third Party" ? cart.thirdPartyProvider : cart.channel;
     return dish.channelPrices?.[key] ?? dish.price;
   };
+  // Snapshotted onto the cart line at add-time (see addToCart) so it survives into the placed
+  // order untouched — only relevant while the restaurant has tax turned on at all.
+  const taxRateFor = (dish: Dish) => {
+    if (!taxEnabled) return 0;
+    const category = categories.find((c) => c.id === dish.categoryId);
+    return category?.taxRatePercent ?? 0;
+  };
   // Summed across every line for that dish — a dish can now sit in the cart as more than one
   // line (see addToCart) once different lines carry different kitchen notes.
   const qtyFor = (dishId: string) => cart.items.filter((i) => i.dishId === dishId).reduce((sum, i) => sum + i.qty, 0);
@@ -296,7 +305,11 @@ export function OrderLineClient({
     ? Math.max(0, Math.min(subtotal - extraDiscountAmount, cart.appliedCoupon.discount))
     : 0;
   const discountedSubtotal = Math.max(0, subtotal - extraDiscountAmount - couponDiscountAmount);
-  const tax = discountedSubtotal * TAX_RATE;
+  // Each line's own tax rate applies to its share of the discounted subtotal — mirrors
+  // orderTotal() in lib/types.ts so the live preview always matches what gets saved.
+  const rawTax = cart.items.reduce((sum, i) => sum + i.price * i.qty * ((i.taxRate ?? 0) / 100), 0);
+  const discountFactor = subtotal > 0 ? discountedSubtotal / subtotal : 0;
+  const tax = rawTax * discountFactor;
   const total = discountedSubtotal + tax;
 
   function applyCoupon() {
@@ -368,7 +381,10 @@ export function OrderLineClient({
       }
       return {
         ...prev,
-        items: [...prev.items, { dishId: dish.id, name: dish.name, price: priceFor(dish), qty: 1, lineId: crypto.randomUUID() }],
+        items: [
+          ...prev.items,
+          { dishId: dish.id, name: dish.name, price: priceFor(dish), qty: 1, lineId: crypto.randomUUID(), taxRate: taxRateFor(dish) },
+        ],
       };
     });
   }
@@ -1480,10 +1496,12 @@ function CartPanel({
             )}
           </div>
 
-          <div className="flex justify-between text-sm text-neutral-500">
-            <span>Tax (6%)</span>
-            <span>{formatMoney(tax, currencySymbol)}</span>
-          </div>
+          {tax > 0 && (
+            <div className="flex justify-between text-sm text-neutral-500">
+              <span>Tax</span>
+              <span>{formatMoney(tax, currencySymbol)}</span>
+            </div>
+          )}
           <div className="flex justify-between border-t border-neutral-100 pt-2 text-base font-semibold text-neutral-900">
             <span>Total Payable</span>
             <span>{formatMoney(total, currencySymbol)}</span>

@@ -23,6 +23,7 @@ export function TillModeSwitcher({
   currencySymbol,
   restaurantName,
   canDiscount,
+  taxEnabled,
   invoiceAddress,
   invoicePhone,
   invoiceWebsite,
@@ -37,6 +38,7 @@ export function TillModeSwitcher({
   currencySymbol: string;
   restaurantName: string;
   canDiscount: boolean;
+  taxEnabled: boolean;
   invoiceAddress?: string;
   invoicePhone?: string;
   invoiceWebsite?: string;
@@ -80,6 +82,7 @@ export function TillModeSwitcher({
         orders={orders}
         currencySymbol={currencySymbol}
         restaurantName={restaurantName}
+        taxEnabled={taxEnabled}
         onSwitchToFull={switchToFull}
       />
     );
@@ -95,6 +98,7 @@ export function TillModeSwitcher({
       currencySymbol={currencySymbol}
       restaurantName={restaurantName}
       canDiscount={canDiscount}
+      taxEnabled={taxEnabled}
       invoiceAddress={invoiceAddress}
       invoicePhone={invoicePhone}
       invoiceWebsite={invoiceWebsite}

@@ -38,6 +38,10 @@ export const restaurants = sqliteTable("restaurants", {
   // auto-voided" banner — see autoVoidStaleOrders in lib/data/orders.ts. Null until the first
   // dismissal, so the banner naturally reappears whenever a newer sweep has something to show.
   autoVoidNoticeDismissedAt: int("auto_void_notice_dismissed_at"),
+  // Off by default for every restaurant — no tax is charged anywhere until an admin turns this
+  // on in Settings. Once on, each menu category's own taxRatePercent (see categories below) is
+  // what actually gets applied, not a single restaurant-wide rate.
+  taxEnabled: int("tax_enabled", { mode: "boolean" }).notNull().default(false),
   createdAt: timestamp("created_at"),
 },
   (table) => [uniqueIndex("restaurants_custom_domain_idx").on(table.customDomain)]
@@ -76,6 +80,9 @@ export const categories = sqliteTable("categories", {
   icon: text("icon").notNull().default("all"),
   printerId: text("printer_id").references(() => printers.id, { onDelete: "set null" }),
   showOnKitchenDisplay: int("show_on_kitchen_display", { mode: "boolean" }).notNull().default(true),
+  // Only actually charged when the restaurant's own taxEnabled is on (see restaurants above) —
+  // kept ready with a sensible default either way, so turning tax on doesn't need a backfill step.
+  taxRatePercent: real("tax_rate_percent").notNull().default(20),
 });
 
 export const dishes = sqliteTable("dishes", {
@@ -167,7 +174,16 @@ export const orders = sqliteTable("orders", {
   thirdPartyProvider: text("third_party_provider", { enum: ["Uber Eats", "Deliveroo", "Just Eat", "Other"] }),
   status: text("status", { enum: ["In Kitchen", "Wait List", "Ready", "Served", "Voided"] }).notNull(),
   items: text("items", { mode: "json" }).notNull().$type<
-    { dishId: string; name: string; price: number; qty: number; ready?: boolean; note?: string; lineId?: string }[]
+    {
+      dishId: string;
+      name: string;
+      price: number;
+      qty: number;
+      ready?: boolean;
+      note?: string;
+      lineId?: string;
+      taxRate?: number;
+    }[]
   >(),
   // "Cash", the name of a payment terminal, or "Split" when paid across multiple methods
   // (see `payments` for the breakdown) — kept for quick display and legacy orders.

@@ -10,6 +10,7 @@ export interface CreateCategoryInput {
   name: string;
   printerId: string | null;
   showOnKitchenDisplay: boolean;
+  taxRatePercent: number;
 }
 
 export async function createCategoryAction(input: CreateCategoryInput) {
@@ -23,7 +24,32 @@ export async function createCategoryAction(input: CreateCategoryInput) {
     icon: "all",
     printerId: input.printerId,
     showOnKitchenDisplay: input.showOnKitchenDisplay,
+    taxRatePercent: input.taxRatePercent,
   });
+  revalidatePath("/manage-dishes");
+  revalidatePath("/order-line");
+}
+
+export interface UpdateCategoryInput {
+  name: string;
+  printerId: string | null;
+  showOnKitchenDisplay: boolean;
+  taxRatePercent: number;
+}
+
+export async function updateCategoryAction(categoryId: string, input: UpdateCategoryInput) {
+  const { session, restaurantId } = await requireRestaurantContext();
+  assertAdmin(session);
+  if (!input.name.trim()) return;
+  await db
+    .update(categories)
+    .set({
+      name: input.name.trim(),
+      printerId: input.printerId,
+      showOnKitchenDisplay: input.showOnKitchenDisplay,
+      taxRatePercent: input.taxRatePercent,
+    })
+    .where(and(eq(categories.id, categoryId), eq(categories.restaurantId, restaurantId)));
   revalidatePath("/manage-dishes");
   revalidatePath("/order-line");
 }
