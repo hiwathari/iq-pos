@@ -22,7 +22,7 @@ function initials(name: string) {
 
 export function Topbar({ title, name, role }: { title?: string; name: string; role: Role }) {
   return (
-    <header className="flex items-center gap-4 border-b border-neutral-200 bg-white px-6 py-4">
+    <header className="flex items-center gap-4 border-b border-neutral-200 bg-white px-6 py-4 print:hidden">
       <div className="relative flex-1 max-w-md">
         <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400" />
         <input
@@ -38,7 +38,7 @@ export function Topbar({ title, name, role }: { title?: string; name: string; ro
           <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-rose-500" />
         </button>
         <div className="flex items-center gap-2.5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-teal-500 to-emerald-600 text-sm font-semibold text-white">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-[var(--brand)] to-[var(--brand-dark)] text-sm font-semibold text-white">
             {initials(name) || "?"}
           </div>
           <div className="hidden sm:block leading-tight">

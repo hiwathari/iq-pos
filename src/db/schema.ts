@@ -18,8 +18,34 @@ export const restaurants = sqliteTable("restaurants", {
   invoiceWebsite: text("invoice_website"),
   invoiceLogoUrl: text("invoice_logo_url"),
   invoiceFooterText: text("invoice_footer_text").notNull().default("Thank you for dining with us!"),
+  // This restaurant's brand color (hex, e.g. "#0d9488") — set by Super Admin, applied via a CSS
+  // variable to the key surfaces of this tenant's Till/Kitchen/Dashboard (buttons, active states,
+  // accents). Null falls back to IQ POS's default teal everywhere, unchanged from today.
+  brandColor: text("brand_color"),
+  // Master switch for this restaurant's public customer-facing ordering link (/order/<slug>) —
+  // Super Admin only. Off by default so a restaurant never gets a live public order page it
+  // didn't ask for.
+  onlineOrderingEnabled: int("online_ordering_enabled", { mode: "boolean" }).notNull().default(false),
+  // Sub-features of online ordering, each independently toggleable by Super Admin. Both require
+  // onlineOrderingEnabled to actually take effect.
+  qrTableOrderingEnabled: int("qr_table_ordering_enabled", { mode: "boolean" }).notNull().default(false),
+  kioskOrderingEnabled: int("kiosk_ordering_enabled", { mode: "boolean" }).notNull().default(false),
+  // Optional branded domain/subdomain for this restaurant's ordering link (e.g. "order.alzayt.com").
+  // Set by Super Admin; the app still serves /order/<slug> on the platform's own domain regardless
+  // — this only adds a nicer alias once its DNS record points here and it's attached in Vercel.
+  customDomain: text("custom_domain"),
+  // When the manager last dismissed the "orders carried over from a previous day were
+  // auto-voided" banner — see autoVoidStaleOrders in lib/data/orders.ts. Null until the first
+  // dismissal, so the banner naturally reappears whenever a newer sweep has something to show.
+  autoVoidNoticeDismissedAt: int("auto_void_notice_dismissed_at"),
+  // Off by default for every restaurant — no tax is charged anywhere until an admin turns this
+  // on in Settings. Once on, each menu category's own taxRatePercent (see categories below) is
+  // what actually gets applied, not a single restaurant-wide rate.
+  taxEnabled: int("tax_enabled", { mode: "boolean" }).notNull().default(false),
   createdAt: timestamp("created_at"),
-});
+},
+  (table) => [uniqueIndex("restaurants_custom_domain_idx").on(table.customDomain)]
+);
 
 export const users = sqliteTable(
   "users",
@@ -54,6 +80,9 @@ export const categories = sqliteTable("categories", {
   icon: text("icon").notNull().default("all"),
   printerId: text("printer_id").references(() => printers.id, { onDelete: "set null" }),
   showOnKitchenDisplay: int("show_on_kitchen_display", { mode: "boolean" }).notNull().default(true),
+  // Only actually charged when the restaurant's own taxEnabled is on (see restaurants above) —
+  // kept ready with a sensible default either way, so turning tax on doesn't need a backfill step.
+  taxRatePercent: real("tax_rate_percent").notNull().default(20),
 });
 
 export const dishes = sqliteTable("dishes", {
@@ -78,6 +107,15 @@ export const dishes = sqliteTable("dishes", {
   // editable per-dish for the odd item that needs a different station (e.g. a dessert routed to
   // the bar printer instead of its category's default).
   printerId: text("printer_id").references(() => printers.id, { onDelete: "set null" }),
+  // Marks a dish as temporarily unavailable (kitchen ran out mid-service) — the Till stops
+  // taking new orders for it and the Kitchen Display can flip it back on the moment it's
+  // restocked, without touching Manage Dishes at all.
+  outOfStock: int("out_of_stock", { mode: "boolean" }).notNull().default(false),
+  // Optional single-ingredient link to inventory: selling one of this dish consumes
+  // `inventoryUsagePerOrder` units of `inventoryItemId` — set automatically on the new order in
+  // placeOrderAction. Null/null for a dish with no tracked ingredient (the common case).
+  inventoryItemId: text("inventory_item_id").references(() => inventoryItems.id, { onDelete: "set null" }),
+  inventoryUsagePerOrder: real("inventory_usage_per_order"),
 });
 
 export const tables = sqliteTable(
@@ -94,6 +132,9 @@ export const tables = sqliteTable(
       .notNull()
       .default("available"),
     seated: int("seated").notNull().default(0),
+    // When this table became occupied (status turned "on-dine") — drives the occupied-time
+    // timer shown on the Till's Tables view. Cleared back to null once the table is freed.
+    seatedAt: int("seated_at"),
   },
   (table) => [uniqueIndex("tables_restaurant_number_idx").on(table.restaurantId, table.number)]
 );
@@ -133,7 +174,16 @@ export const orders = sqliteTable("orders", {
   thirdPartyProvider: text("third_party_provider", { enum: ["Uber Eats", "Deliveroo", "Just Eat", "Other"] }),
   status: text("status", { enum: ["In Kitchen", "Wait List", "Ready", "Served", "Voided"] }).notNull(),
   items: text("items", { mode: "json" }).notNull().$type<
-    { dishId: string; name: string; price: number; qty: number; ready?: boolean; note?: string }[]
+    {
+      dishId: string;
+      name: string;
+      price: number;
+      qty: number;
+      ready?: boolean;
+      note?: string;
+      lineId?: string;
+      taxRate?: number;
+    }[]
   >(),
   // "Cash", the name of a payment terminal, or "Split" when paid across multiple methods
   // (see `payments` for the breakdown) — kept for quick display and legacy orders.
@@ -164,7 +214,96 @@ export const orders = sqliteTable("orders", {
   // Extra table numbers folded into this order via a table merge (e.g. a party spanning two
   // physical tables billed as one ticket) — shown as "Table 03 + 04". Null for the normal case.
   mergedTableNumbers: text("merged_table_numbers", { mode: "json" }).$type<number[]>(),
+  // When the order first became fully closed out (Served + paid) — set the moment both
+  // conditions are true, cleared if either stops being true. A minute after this, the Till
+  // auto-frees the order's table so staff don't have to remember to clear it by hand.
+  closedOutAt: int("closed_out_at"),
+  // When the order was voided — the Kitchen Display drops a voided ticket off its board about
+  // 30 seconds after this (it stays visible on the Till's history for the full audit trail).
+  voidedAt: int("voided_at"),
+  // A manual, staff-applied discount (flat amount, already resolved from whatever % or fixed
+  // entry they used) — frozen at order time so a later edit to how discounts work never
+  // reaches back into old orders.
+  extraDiscount: real("extra_discount").notNull().default(0),
+  // Snapshot of the coupon code used, if any — plain text rather than a foreign key, so
+  // deleting or editing a coupon later never disturbs the historical orders that used it.
+  couponCode: text("coupon_code"),
+  couponDiscount: real("coupon_discount").notNull().default(0),
+  // Loyalty member this order is attached to, if the customer was looked up or enrolled at
+  // checkout — set null (not deleted) if the member is ever removed.
+  loyaltyMemberId: text("loyalty_member_id").references(() => loyaltyMembers.id, { onDelete: "set null" }),
+  // How this order was placed — lets Kitchen/Till/Reports flag self-service tickets distinctly
+  // from ones a staff member rang up. "online" = signed-in QR/table ordering, "kiosk" = walk-up
+  // kiosk device.
+  placedVia: text("placed_via", { enum: ["staff", "online", "kiosk"] }).notNull().default("staff"),
 });
+
+// A loyalty/ordering card enrolled against a customer's phone or email. `code` is the
+// 7-character value printed/QR-encoded on the card itself (this restaurant's first 2 letters +
+// 5 random alphanumeric characters, e.g. "AL3F9K2") — see src/lib/loyalty-code.ts.
+export const loyaltyMembers = sqliteTable(
+  "loyalty_members",
+  {
+    id: id(),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    contactType: text("contact_type", { enum: ["phone", "email"] }).notNull(),
+    // Normalized (trimmed, lowercased for email) so a repeat visit always matches the same
+    // member instead of creating a duplicate card.
+    contactValue: text("contact_value").notNull(),
+    name: text("name"),
+    code: text("code").notNull(),
+    createdAt: timestamp("created_at"),
+  },
+  (table) => [
+    uniqueIndex("loyalty_members_restaurant_contact_idx").on(table.restaurantId, table.contactValue),
+    uniqueIndex("loyalty_members_code_idx").on(table.code),
+  ]
+);
+
+// A one-time sign-in request for a loyalty member, deliverable two ways from the same emailed
+// message: a clicked link (tokenHash) or a typed 6-digit code (codeHash) — verifying either one
+// consumes this same row. Only hashes are stored, never the raw token/code, so a database read
+// can never be used to sign in as a member.
+export const loyaltyMagicLinks = sqliteTable(
+  "loyalty_magic_links",
+  {
+    id: id(),
+    loyaltyMemberId: text("loyalty_member_id")
+      .notNull()
+      .references(() => loyaltyMembers.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    codeHash: text("code_hash"),
+    // Where to send the browser after a successful verify (e.g. "/order/al-zayt?table=4"). Always
+    // a relative in-app path — validated again at verify time so it can never become an open
+    // redirect even if this value were somehow tampered with.
+    redirectTo: text("redirect_to"),
+    expiresAt: int("expires_at").notNull(),
+    usedAt: int("used_at"),
+    createdAt: timestamp("created_at"),
+  },
+  (table) => [
+    uniqueIndex("loyalty_magic_links_token_hash_idx").on(table.tokenHash),
+    uniqueIndex("loyalty_magic_links_code_hash_idx").on(table.codeHash),
+  ]
+);
+
+export const coupons = sqliteTable(
+  "coupons",
+  {
+    id: id(),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    code: text("code").notNull(),
+    type: text("type", { enum: ["percent", "fixed"] }).notNull(),
+    value: real("value").notNull(),
+    active: int("active", { mode: "boolean" }).notNull().default(true),
+    createdAt: timestamp("created_at"),
+  },
+  (table) => [uniqueIndex("coupons_restaurant_code_idx").on(table.restaurantId, table.code)]
+);
 
 export const printers = sqliteTable("printers", {
   id: id(),
@@ -186,6 +325,9 @@ export const paymentTerminals = sqliteTable("payment_terminals", {
     .references(() => restaurants.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   active: int("active", { mode: "boolean" }).notNull().default(true),
+  // Optional image URL (e.g. the card network's logo, or a photo of the physical machine) shown
+  // instead of the generic card icon so staff can tell terminals apart at a glance on the Till.
+  logoUrl: text("logo_url"),
 });
 
 export const integrations = sqliteTable("integrations", {
@@ -204,4 +346,67 @@ export const orderCounters = sqliteTable("order_counters", {
     .primaryKey()
     .references(() => restaurants.id, { onDelete: "cascade" }),
   value: int("value").notNull().default(0),
+});
+
+// A closed-out shift/day-end reconciliation, created when a manager taps "End Shift". Covers
+// the period since the previous shift's closedAt (or since the restaurant's first order, for
+// the very first shift) up to closedAt. Sales figures are frozen at close time rather than
+// recomputed later, so a shift's report stays accurate even as newer orders come in.
+export const shifts = sqliteTable("shifts", {
+  id: id(),
+  restaurantId: text("restaurant_id")
+    .notNull()
+    .references(() => restaurants.id, { onDelete: "cascade" }),
+  openedAt: int("opened_at").notNull(),
+  closedAt: int("closed_at").notNull().$defaultFn(() => Date.now()),
+  closedByUserId: text("closed_by_user_id"),
+  closedByName: text("closed_by_name"),
+  totalSales: real("total_sales").notNull().default(0),
+  cashSales: real("cash_sales").notNull().default(0),
+  cardSales: real("card_sales").notNull().default(0),
+  otherSales: real("other_sales").notNull().default(0),
+  orderCount: int("order_count").notNull().default(0),
+  voidCount: int("void_count").notNull().default(0),
+  voidAmount: real("void_amount").notNull().default(0),
+  // What the drawer should hold in cash given cashSales above (assumes it started at zero for
+  // the shift — a starting float can be folded in via notes until a dedicated field is needed).
+  expectedCash: real("expected_cash").notNull().default(0),
+  // What the manager actually counted in the drawer at close — compared against expectedCash
+  // on the report to flag any over/short.
+  cashCounted: real("cash_counted").notNull().default(0),
+  notes: text("notes"),
+});
+
+// A tracked stock item (an ingredient/supply, not necessarily a sellable dish). `quantity` is
+// adjusted manually from /inventory and automatically when a dish linked via
+// dishes.inventoryItemId is sold — see decrementInventoryForOrder in lib/actions/orders.ts.
+export const inventoryItems = sqliteTable(
+  "inventory_items",
+  {
+    id: id(),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    unit: text("unit").notNull().default("pcs"),
+    quantity: real("quantity").notNull().default(0),
+    lowStockThreshold: real("low_stock_threshold").notNull().default(0),
+    createdAt: timestamp("created_at"),
+  },
+  (table) => [uniqueIndex("inventory_items_restaurant_name_idx").on(table.restaurantId, table.name)]
+);
+
+// Ad-hoc cash movements outside of order payments (e.g. "Bought cleaning supplies — £15 out",
+// "Owner topped up the float — £50 in") — rolled into the Daily Summary Report's cash
+// reconciliation alongside order-driven cash sales.
+export const pettyCashEntries = sqliteTable("petty_cash_entries", {
+  id: id(),
+  restaurantId: text("restaurant_id")
+    .notNull()
+    .references(() => restaurants.id, { onDelete: "cascade" }),
+  description: text("description").notNull(),
+  amount: real("amount").notNull(),
+  direction: text("direction", { enum: ["in", "out"] }).notNull(),
+  createdByName: text("created_by_name"),
+  createdAt: timestamp("created_at"),
 });

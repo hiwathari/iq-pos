@@ -4,27 +4,31 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CategoryIconView } from "@/components/category-icon";
 import { DishModal } from "@/components/dish-modal";
-import type { Category, Dish, Printer } from "@/lib/types";
+import type { Category, Dish, InventoryItem, Printer } from "@/lib/types";
 import { formatMoney } from "@/lib/types";
 import {
   createCategoryAction,
   createDishAction,
   deleteDishAction,
+  setDishStockAction,
+  updateCategoryAction,
   updateDishAction,
-  type CreateCategoryInput,
   type DishInput,
+  type UpdateCategoryInput,
 } from "@/lib/actions/menu";
-import { LayoutGrid, List, Plus, Search, SlidersHorizontal, MoreVertical, Pencil, Trash2, X } from "lucide-react";
+import { LayoutGrid, List, Plus, Search, SlidersHorizontal, MoreVertical, Pencil, Trash2, X, Ban } from "lucide-react";
 
 export function ManageDishesClient({
   categories,
   dishes,
   printers,
+  inventoryItems,
   currencySymbol,
 }: {
   categories: Category[];
   dishes: Dish[];
   printers: Printer[];
+  inventoryItems: InventoryItem[];
   currencySymbol: string;
 }) {
   const router = useRouter();
@@ -34,6 +38,7 @@ export function ManageDishesClient({
   const [query, setQuery] = useState("");
   const [dishModalOpen, setDishModalOpen] = useState(false);
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [editingDish, setEditingDish] = useState<Dish | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
@@ -86,12 +91,27 @@ export function ManageDishesClient({
     });
   }
 
-  function handleAddCategory(input: CreateCategoryInput) {
+  function handleToggleStock(dish: Dish) {
+    setOpenMenuId(null);
     startTransition(async () => {
-      await createCategoryAction(input);
+      await setDishStockAction(dish.id, !dish.outOfStock);
+      router.refresh();
+    });
+  }
+
+  function openEditCategory(category: Category) {
+    setEditingCategory(category);
+    setCategoryModalOpen(true);
+  }
+
+  function handleSaveCategory(input: UpdateCategoryInput) {
+    startTransition(async () => {
+      if (editingCategory) await updateCategoryAction(editingCategory.id, input);
+      else await createCategoryAction(input);
       router.refresh();
     });
     setCategoryModalOpen(false);
+    setEditingCategory(null);
   }
 
   return (
@@ -115,12 +135,13 @@ export function ManageDishesClient({
               name={c.name}
               count={counts[c.id] ?? 0}
               onClick={() => setSelectedCategory(c.id)}
+              onEdit={() => openEditCategory(c)}
             />
           ))}
         </div>
         <button
           onClick={() => setCategoryModalOpen(true)}
-          className="mt-4 flex items-center justify-center gap-2 rounded-xl bg-teal-600 py-3 text-sm font-semibold text-white hover:bg-teal-700"
+          className="mt-4 flex items-center justify-center gap-2 rounded-xl bg-[var(--brand)] py-3 text-sm font-semibold text-white hover:bg-[var(--brand-dark)]"
         >
           <Plus className="h-4 w-4" /> Add New Category
         </button>
@@ -142,7 +163,7 @@ export function ManageDishesClient({
             </div>
             <button
               onClick={openAddDish}
-              className="flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-700"
+              className="flex items-center gap-2 rounded-xl bg-[var(--brand)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)]"
             >
               <Plus className="h-4 w-4" /> Add New Dishes
             </button>
@@ -180,7 +201,7 @@ export function ManageDishesClient({
               onClick={openAddDish}
               className="flex min-h-[220px] flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-teal-300 bg-teal-50/40 text-center text-teal-700 hover:bg-teal-50"
             >
-              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-teal-600 text-white">
+              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--brand)] text-white">
                 <Plus className="h-5 w-5" />
               </span>
               <span className="px-4 text-sm font-medium">Add New Dish to {categoryName}</span>
@@ -194,6 +215,7 @@ export function ManageDishesClient({
                 onToggleMenu={() => setOpenMenuId(openMenuId === dish.id ? null : dish.id)}
                 onEdit={() => openEditDish(dish)}
                 onDelete={() => handleDeleteDish(dish.id)}
+                onToggleStock={() => handleToggleStock(dish)}
                 currencySymbol={currencySymbol}
               />
             ))}
@@ -229,6 +251,9 @@ export function ManageDishesClient({
                         </span>
                       )}
                       <span className="font-medium text-neutral-800">{dish.name}</span>
+                      {dish.outOfStock && (
+                        <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">Sold Out</span>
+                      )}
                     </td>
                     <td className="px-5 py-3 text-neutral-500">
                       {categories.find((c) => c.id === dish.categoryId)?.name}
@@ -236,6 +261,15 @@ export function ManageDishesClient({
                     <td className="px-5 py-3 font-semibold text-neutral-800">{formatMoney(dish.price, currencySymbol)}</td>
                     <td className="px-5 py-3">
                       <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => handleToggleStock(dish)}
+                          title={dish.outOfStock ? "Mark back in stock" : "Mark out of stock"}
+                          className={`rounded-lg p-1.5 ${
+                            dish.outOfStock ? "bg-rose-50 text-rose-600" : "text-neutral-400 hover:bg-rose-50 hover:text-rose-600"
+                          }`}
+                        >
+                          <Ban className="h-4 w-4" />
+                        </button>
                         <button
                           onClick={() => openEditDish(dish)}
                           className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-teal-600"
@@ -274,13 +308,22 @@ export function ManageDishesClient({
           onSave={handleSaveDish}
           categories={categories}
           printers={printers}
+          inventoryItems={inventoryItems}
           defaultCategoryId={selectedCategory}
           initial={editingDish}
           currencySymbol={currencySymbol}
         />
       )}
       {categoryModalOpen && (
-        <CategoryModal printers={printers} onClose={() => setCategoryModalOpen(false)} onSave={handleAddCategory} />
+        <CategoryModal
+          printers={printers}
+          category={editingCategory}
+          onClose={() => {
+            setCategoryModalOpen(false);
+            setEditingCategory(null);
+          }}
+          onSave={handleSaveCategory}
+        />
       )}
     </div>
   );
@@ -292,32 +335,42 @@ function CategoryRow({
   name,
   count,
   onClick,
+  onEdit,
 }: {
   active: boolean;
   icon: string;
   name: string;
   count: number;
   onClick: () => void;
+  onEdit?: () => void;
 }) {
   return (
-    <button
-      onClick={onClick}
-      className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm transition-colors ${
+    <div
+      className={`group flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm transition-colors ${
         active ? "border border-teal-500 bg-teal-50 text-teal-700 font-medium" : "text-neutral-600 hover:bg-neutral-50"
       }`}
     >
-      <span className="flex items-center gap-2.5">
+      <button onClick={onClick} className="flex flex-1 items-center gap-2.5 text-left">
         <CategoryIconView icon={icon} className="h-4 w-4" />
         {name}
-      </span>
+      </button>
       <span
         className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-          active ? "bg-teal-600 text-white" : "bg-neutral-100 text-neutral-500"
+          active ? "bg-[var(--brand)] text-white" : "bg-neutral-100 text-neutral-500"
         }`}
       >
         {count}
       </span>
-    </button>
+      {onEdit && (
+        <button
+          onClick={onEdit}
+          className="ml-1.5 rounded-lg p-1 text-neutral-400 opacity-0 hover:bg-neutral-100 hover:text-neutral-600 group-hover:opacity-100"
+          title="Edit category"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -328,6 +381,7 @@ function DishCard({
   onToggleMenu,
   onEdit,
   onDelete,
+  onToggleStock,
   currencySymbol,
 }: {
   dish: Dish;
@@ -336,10 +390,15 @@ function DishCard({
   onToggleMenu: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onToggleStock: () => void;
   currencySymbol: string;
 }) {
   return (
-    <div className="relative flex flex-col rounded-2xl border border-neutral-200 bg-white p-4 hover:shadow-md transition-shadow">
+    <div
+      className={`relative flex flex-col rounded-2xl border border-neutral-200 bg-white p-4 transition-shadow hover:shadow-md ${
+        dish.outOfStock ? "opacity-70" : ""
+      }`}
+    >
       <div className="mb-3 flex items-start justify-between">
         <input type="checkbox" className="h-4 w-4 rounded border-neutral-300 accent-teal-600" />
         <div className="relative">
@@ -350,12 +409,18 @@ function DishCard({
             <MoreVertical className="h-4 w-4" />
           </button>
           {menuOpen && (
-            <div className="absolute right-0 top-8 z-10 w-32 overflow-hidden rounded-xl border border-neutral-200 bg-white py-1 shadow-lg">
+            <div className="absolute right-0 top-8 z-10 w-40 overflow-hidden rounded-xl border border-neutral-200 bg-white py-1 shadow-lg">
               <button
                 onClick={onEdit}
                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-neutral-600 hover:bg-neutral-50"
               >
                 <Pencil className="h-3.5 w-3.5" /> Edit
+              </button>
+              <button
+                onClick={onToggleStock}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-neutral-600 hover:bg-neutral-50"
+              >
+                <Ban className="h-3.5 w-3.5" /> {dish.outOfStock ? "Mark In Stock" : "Mark Out of Stock"}
               </button>
               <button
                 onClick={onDelete}
@@ -368,17 +433,26 @@ function DishCard({
         </div>
       </div>
       {dish.imageUrl ? (
-        <img src={dish.imageUrl} alt={dish.name} className="mb-3 h-16 w-16 rounded-2xl object-cover" />
+        <img
+          src={dish.imageUrl}
+          alt={dish.name}
+          className={`mb-3 h-16 w-16 rounded-2xl object-cover ${dish.outOfStock ? "grayscale" : ""}`}
+        />
       ) : (
         <div
-          className="mb-3 flex h-16 w-16 items-center justify-center rounded-full text-3xl"
+          className={`mb-3 flex h-16 w-16 items-center justify-center rounded-full text-3xl ${dish.outOfStock ? "grayscale" : ""}`}
           style={{ backgroundColor: dish.color }}
         >
           {dish.emoji}
         </div>
       )}
       <div className="text-xs text-neutral-400">{categoryName}</div>
-      <div className="mb-1 font-semibold text-neutral-900">{dish.name}</div>
+      <div className="mb-1 flex items-center gap-2 font-semibold text-neutral-900">
+        {dish.name}
+        {dish.outOfStock && (
+          <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">Sold Out</span>
+        )}
+      </div>
       <div className="font-semibold text-neutral-800">{formatMoney(dish.price, currencySymbol)}</div>
     </div>
   );
@@ -386,17 +460,20 @@ function DishCard({
 
 function CategoryModal({
   printers,
+  category,
   onClose,
   onSave,
 }: {
   printers: Printer[];
+  category?: Category | null;
   onClose: () => void;
-  onSave: (input: CreateCategoryInput) => void;
+  onSave: (input: UpdateCategoryInput) => void;
 }) {
   const defaultPrinter = printers.find((p) => p.isDefault) ?? printers[0] ?? null;
-  const [name, setName] = useState("");
-  const [printerId, setPrinterId] = useState<string>(defaultPrinter?.id ?? "");
-  const [showOnKitchenDisplay, setShowOnKitchenDisplay] = useState(true);
+  const [name, setName] = useState(category?.name ?? "");
+  const [printerId, setPrinterId] = useState<string>(category?.printerId ?? defaultPrinter?.id ?? "");
+  const [showOnKitchenDisplay, setShowOnKitchenDisplay] = useState(category?.showOnKitchenDisplay ?? true);
+  const [taxRatePercent, setTaxRatePercent] = useState(String(category?.taxRatePercent ?? 20));
 
   const canSave = name.trim().length > 0;
 
@@ -404,7 +481,7 @@ function CategoryModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
       <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-neutral-900">Add New Category</h2>
+          <h2 className="text-lg font-semibold text-neutral-900">{category ? "Edit" : "Add New"} Category</h2>
           <button onClick={onClose} className="rounded-full p-1 text-neutral-400 hover:bg-neutral-100">
             <X className="h-5 w-5" />
           </button>
@@ -436,6 +513,21 @@ function CategoryModal({
               ))}
             </select>
           </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-neutral-500">Tax Rate %</label>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step={0.1}
+              value={taxRatePercent}
+              onChange={(e) => setTaxRatePercent(e.target.value)}
+              className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+            />
+            <p className="mt-1 text-xs text-neutral-400">
+              Only applied to dishes in this category while tax is turned on in Settings.
+            </p>
+          </div>
           <label className="flex items-center gap-2 text-sm text-neutral-600">
             <input
               type="checkbox"
@@ -456,11 +548,17 @@ function CategoryModal({
           <button
             disabled={!canSave}
             onClick={() =>
-              canSave && onSave({ name: name.trim(), printerId: printerId || null, showOnKitchenDisplay })
+              canSave &&
+              onSave({
+                name: name.trim(),
+                printerId: printerId || null,
+                showOnKitchenDisplay,
+                taxRatePercent: Math.max(0, Math.min(100, Number(taxRatePercent) || 0)),
+              })
             }
-            className="flex-1 rounded-xl bg-teal-600 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex-1 rounded-xl bg-[var(--brand)] py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Add Category
+            {category ? "Save Changes" : "Add Category"}
           </button>
         </div>
       </div>

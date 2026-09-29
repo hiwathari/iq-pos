@@ -10,6 +10,7 @@ export interface CreateCategoryInput {
   name: string;
   printerId: string | null;
   showOnKitchenDisplay: boolean;
+  taxRatePercent: number;
 }
 
 export async function createCategoryAction(input: CreateCategoryInput) {
@@ -23,7 +24,32 @@ export async function createCategoryAction(input: CreateCategoryInput) {
     icon: "all",
     printerId: input.printerId,
     showOnKitchenDisplay: input.showOnKitchenDisplay,
+    taxRatePercent: input.taxRatePercent,
   });
+  revalidatePath("/manage-dishes");
+  revalidatePath("/order-line");
+}
+
+export interface UpdateCategoryInput {
+  name: string;
+  printerId: string | null;
+  showOnKitchenDisplay: boolean;
+  taxRatePercent: number;
+}
+
+export async function updateCategoryAction(categoryId: string, input: UpdateCategoryInput) {
+  const { session, restaurantId } = await requireRestaurantContext();
+  assertAdmin(session);
+  if (!input.name.trim()) return;
+  await db
+    .update(categories)
+    .set({
+      name: input.name.trim(),
+      printerId: input.printerId,
+      showOnKitchenDisplay: input.showOnKitchenDisplay,
+      taxRatePercent: input.taxRatePercent,
+    })
+    .where(and(eq(categories.id, categoryId), eq(categories.restaurantId, restaurantId)));
   revalidatePath("/manage-dishes");
   revalidatePath("/order-line");
 }
@@ -36,6 +62,8 @@ export interface DishInput {
   description: string;
   imageUrl?: string;
   printerId?: string | null;
+  inventoryItemId?: string | null;
+  inventoryUsagePerOrder?: number | null;
 }
 
 export async function createDishAction(input: DishInput) {
@@ -52,6 +80,8 @@ export async function createDishAction(input: DishInput) {
     description: input.description || null,
     imageUrl: input.imageUrl?.trim() || null,
     printerId: input.printerId ?? null,
+    inventoryItemId: input.inventoryItemId || null,
+    inventoryUsagePerOrder: input.inventoryItemId ? input.inventoryUsagePerOrder || null : null,
   });
   revalidatePath("/manage-dishes");
   revalidatePath("/order-line");
@@ -70,6 +100,8 @@ export async function updateDishAction(dishId: string, input: DishInput) {
       description: input.description || null,
       imageUrl: input.imageUrl?.trim() || null,
       printerId: input.printerId ?? null,
+      inventoryItemId: input.inventoryItemId || null,
+      inventoryUsagePerOrder: input.inventoryItemId ? input.inventoryUsagePerOrder || null : null,
     })
     .where(and(eq(dishes.id, dishId), eq(dishes.restaurantId, restaurantId)));
   revalidatePath("/manage-dishes");
@@ -82,6 +114,19 @@ export async function deleteDishAction(dishId: string) {
   await db.delete(dishes).where(and(eq(dishes.id, dishId), eq(dishes.restaurantId, restaurantId)));
   revalidatePath("/manage-dishes");
   revalidatePath("/order-line");
+}
+
+// Toggled from the Till or the Kitchen Display when an item runs out mid-service — deliberately
+// not admin-only, since it's the floor/kitchen staff who notice and need to act immediately.
+export async function setDishStockAction(dishId: string, outOfStock: boolean) {
+  const { restaurantId } = await requireRestaurantContext();
+  await db
+    .update(dishes)
+    .set({ outOfStock })
+    .where(and(eq(dishes.id, dishId), eq(dishes.restaurantId, restaurantId)));
+  revalidatePath("/order-line");
+  revalidatePath("/kitchen");
+  revalidatePath("/manage-dishes");
 }
 
 export async function setChannelPriceAction(dishId: string, channel: string, price: number | null) {

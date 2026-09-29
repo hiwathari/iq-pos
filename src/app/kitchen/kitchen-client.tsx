@@ -1,14 +1,55 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { formatOrderTimestamp, orderSequence, type Order, type OrderStatus } from "@/lib/types";
-import { setOrderStatusAction, toggleOrderItemReadyAction, voidOrderAction } from "@/lib/actions/orders";
-import { Ban, Bike, Check, CheckCircle2, ChefHat, Clock, MapPin, Minus, Phone, Plus, RefreshCw, ShoppingBag, X, XCircle } from "lucide-react";
+import {
+  formatOrderTimestamp,
+  orderSequence,
+  type Category,
+  type Dish,
+  type Order,
+  type OrderItem,
+  type OrderStatus,
+  type Printer,
+  type PrinterStation,
+} from "@/lib/types";
+import { setOrderStatusAction, toggleOrderItemReadyAction } from "@/lib/actions/orders";
+import { setDishStockAction } from "@/lib/actions/menu";
+import { unlockKitchenAudio, playNewOrderChime, playOrderReadyChime } from "@/lib/kitchen-sounds";
+import {
+  Ban,
+  Bike,
+  Check,
+  CheckCircle2,
+  ChefHat,
+  Clock,
+  MapPin,
+  Minus,
+  Phone,
+  Plus,
+  RefreshCw,
+  ShoppingBag,
+  Sparkles,
+  X,
+  XCircle,
+  PackageX,
+  Radio,
+  Globe,
+} from "lucide-react";
 
-// A completed ticket stays visible for a minute after being served so staff can double-check
-// it, then drops off the board on its own so Completed doesn't pile up with old tickets.
-const COMPLETED_RETENTION_MS = 60_000;
+// The canonical station order the selector and any station badges are shown in.
+const STATION_ORDER: PrinterStation[] = ["Kitchen", "Bar", "Expo", "Receipt"];
+const STATION_KEY = "kds-station";
+
+// Served and voided tickets share one "Completed" column (green for served, red for voided)
+// and each only needs a brief moment there for staff to double-check — 30 seconds after being
+// done, a ticket drops off on its own so the column doesn't pile up with old tickets. The
+// Till's history keeps the full audit trail indefinitely regardless.
+const DONE_RETENTION_MS = 30_000;
+
+function doneAt(order: Order) {
+  return order.status === "Voided" ? (order.voidedAt ?? order.createdAt) : (order.servedAt ?? order.createdAt);
+}
 
 // How much bigger/smaller the whole board renders — a per-device preference (not tied to the
 // restaurant), since it depends on that screen's size and how far staff stand from it.
@@ -16,19 +57,68 @@ const FONT_SCALE_KEY = "kds-font-scale";
 const FONT_SCALE_STEPS = [0.85, 1, 1.15, 1.3, 1.5, 1.7];
 const DEFAULT_FONT_SCALE_INDEX = 1;
 
-const COLUMNS: { statuses: OrderStatus[]; label: string; accent: string; showTimer: boolean }[] = [
-  { statuses: ["Wait List", "In Kitchen"], label: "Pending", accent: "border-t-amber-400", showTimer: true },
-  { statuses: ["Ready"], label: "Ready", accent: "border-t-teal-500", showTimer: true },
-  { statuses: ["Served"], label: "Completed", accent: "border-t-neutral-300", showTimer: false },
-  { statuses: ["Voided"], label: "Voided", accent: "border-t-rose-400", showTimer: false },
-];
+// Kitchen only needs two boards: tickets still to prep ("Pending" — Wait List + In Kitchen) and
+// a brief Completed strip (Served + Voided) for a last glance. "Ready" isn't its own board — once
+// every item is ticked and the cook hits "Mark Order Ready", the ticket hands off to the Till/expo
+// and drops off here; voiding likewise only happens from the Till, never from this screen.
+const PENDING_STATUSES: OrderStatus[] = ["Wait List", "In Kitchen"];
+const COMPLETED_STATUSES: OrderStatus[] = ["Served", "Voided"];
 
-export function KitchenClient({ orders, timerLimitMinutes }: { orders: Order[]; timerLimitMinutes: number }) {
+export function KitchenClient({
+  orders,
+  categories,
+  dishes,
+  printers,
+  timerLimitMinutes,
+}: {
+  orders: Order[];
+  categories: Category[];
+  dishes: Dish[];
+  printers: Printer[];
+  timerLimitMinutes: number;
+}) {
   const router = useRouter();
   const [, startTransition] = useTransition();
-  const [voidTarget, setVoidTarget] = useState<Order | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [fontScaleIndex, setFontScaleIndex] = useState(DEFAULT_FONT_SCALE_INDEX);
+  const [stockModalOpen, setStockModalOpen] = useState(false);
+  const [station, setStation] = useState<PrinterStation | "All">("All");
+
+  // Which stations this restaurant actually has printers for — a restaurant running a single
+  // Kitchen printer never sees a selector at all, since there's nothing to route between yet.
+  const availableStations = useMemo(
+    () => STATION_ORDER.filter((s) => printers.some((p) => p.station === s)),
+    [printers]
+  );
+
+  const dishesById = useMemo(() => new Map(dishes.map((d) => [d.id, d])), [dishes]);
+  const categoriesById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
+  const printersById = useMemo(() => new Map(printers.map((p) => [p.id, p])), [printers]);
+  // `categories` comes back in the same order Manage Dishes lists them in — reusing that order
+  // (rather than each ticket's own add-order) lets prep follow one consistent sequence per station.
+  const categoryOrderIndex = useMemo(() => new Map(categories.map((c, idx) => [c.id, idx])), [categories]);
+
+  function itemSortIndex(item: OrderItem): number {
+    const dish = dishesById.get(item.dishId);
+    if (!dish) return Number.MAX_SAFE_INTEGER;
+    return categoryOrderIndex.get(dish.categoryId) ?? Number.MAX_SAFE_INTEGER;
+  }
+
+  // Resolves the physical station an item routes to — per-dish printer, falling back to its
+  // category's printer, same precedence as everywhere else this pairing is used (Till, Manage
+  // Dishes). A custom/unlisted item resolves to null and is treated as unrouted, never hidden.
+  function resolveItemStation(item: OrderItem): PrinterStation | null {
+    const dish = dishesById.get(item.dishId);
+    const printerId = dish?.printerId ?? (dish ? categoriesById.get(dish.categoryId)?.printerId : undefined);
+    if (!printerId) return null;
+    return printersById.get(printerId)?.station ?? null;
+  }
+
+  function itemMatchesStation(item: OrderItem) {
+    if (station === "All") return true;
+    const itemStation = resolveItemStation(item);
+    return itemStation === null || itemStation === station;
+  }
 
   useEffect(() => {
     try {
@@ -41,6 +131,26 @@ export function KitchenClient({ orders, timerLimitMinutes }: { orders: Order[]; 
       // Storage unavailable (private mode, locked-down kiosk browser) — just use the default.
     }
   }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STATION_KEY);
+      if (raw && (raw === "All" || STATION_ORDER.includes(raw as PrinterStation))) {
+        setTimeout(() => setStation(raw as PrinterStation | "All"), 0);
+      }
+    } catch {
+      // Storage unavailable — this screen just shows every station, same as before.
+    }
+  }, []);
+
+  function selectStation(next: PrinterStation | "All") {
+    setStation(next);
+    try {
+      localStorage.setItem(STATION_KEY, next);
+    } catch {
+      // Ignore — the selection still applies for this session even if it can't be remembered.
+    }
+  }
 
   function adjustFontScale(delta: 1 | -1) {
     setFontScaleIndex((prev) => {
@@ -65,6 +175,38 @@ export function KitchenClient({ orders, timerLimitMinutes }: { orders: Order[]; 
     return () => clearInterval(id);
   }, [router]);
 
+  // Most browsers block audio until the page has seen a user gesture — the first tap anywhere
+  // on this screen (ticking an item, switching stations, etc.) unlocks it for the whole session.
+  useEffect(() => {
+    const unlock = () => unlockKitchenAudio();
+    window.addEventListener("pointerdown", unlock, { once: true });
+    return () => window.removeEventListener("pointerdown", unlock);
+  }, []);
+
+  // Chimes off the order data itself (not the button clicks that cause it), so a ticket that
+  // arrives or finishes from another device — the Till, an online order — still gets announced
+  // here. `null` on the first run means "just loaded", which shouldn't chime for existing tickets.
+  const prevStatusesRef = useRef<Map<string, OrderStatus> | null>(null);
+  useEffect(() => {
+    const previous = prevStatusesRef.current;
+    const next = new Map(orders.map((o) => [o.id, o.status] as const));
+    if (previous) {
+      let hasNewOrder = false;
+      let hasNewlyReady = false;
+      for (const [id, status] of next) {
+        const prevStatus = previous.get(id);
+        if (prevStatus === undefined) {
+          if (PENDING_STATUSES.includes(status)) hasNewOrder = true;
+        } else if (prevStatus !== "Ready" && status === "Ready") {
+          hasNewlyReady = true;
+        }
+      }
+      if (hasNewOrder) playNewOrderChime();
+      if (hasNewlyReady) playOrderReadyChime();
+    }
+    prevStatusesRef.current = next;
+  }, [orders]);
+
   function advance(orderId: string, status: OrderStatus) {
     startTransition(async () => {
       await setOrderStatusAction(orderId, status);
@@ -72,88 +214,233 @@ export function KitchenClient({ orders, timerLimitMinutes }: { orders: Order[]; 
     });
   }
 
-  function toggleItem(orderId: string, dishId: string, ready: boolean) {
+  function toggleItem(orderId: string, itemKey: string, ready: boolean) {
     startTransition(async () => {
-      await toggleOrderItemReadyAction(orderId, dishId, ready);
+      await toggleOrderItemReadyAction(orderId, itemKey, ready);
       router.refresh();
     });
   }
 
-  function confirmVoid(reason: string) {
-    if (!voidTarget) return;
-    const id = voidTarget.id;
-    setVoidTarget(null);
+  function toggleStock(dish: Dish) {
     startTransition(async () => {
-      await voidOrderAction(id, reason);
+      await setDishStockAction(dish.id, !dish.outOfStock);
       router.refresh();
     });
+  }
+
+  const outOfStockCount = dishes.filter((d) => d.outOfStock).length;
+
+  // Already newest-first (listOrders sorts by createdAt desc), so the first pending ticket is
+  // always the most recently placed one — that's the one flagged "major" below.
+  let pendingOrders = orders.filter((o) => PENDING_STATUSES.includes(o.status));
+  let completedOrders = orders
+    .filter((o) => COMPLETED_STATUSES.includes(o.status) && now - doneAt(o) < DONE_RETENTION_MS)
+    .sort((a, b) => doneAt(b) - doneAt(a));
+  // A ticket only belongs on this station's screen if it has at least one item that routes here
+  // (or is unrouted) — an all-drinks order never shows up on the Kitchen screen.
+  if (station !== "All") {
+    pendingOrders = pendingOrders.filter((o) => o.items.some(itemMatchesStation));
+    completedOrders = completedOrders.filter((o) => o.items.some(itemMatchesStation));
   }
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-neutral-100 p-4" style={{ zoom: FONT_SCALE_STEPS[fontScaleIndex] }}>
       <div className="mb-4 flex items-center justify-between">
         <h1 className="flex items-center gap-2 text-xl font-bold text-neutral-900">
-          <ChefHat className="h-6 w-6 text-teal-600" /> Kitchen Display
+          <ChefHat className="h-6 w-6 text-[var(--brand)]" /> Kitchen Display
+          {station !== "All" && (
+            <span className="rounded-full bg-teal-100 px-2.5 py-0.5 text-xs font-bold text-teal-700">{station}</span>
+          )}
         </h1>
-        <div className="flex items-center gap-1 rounded-xl border border-neutral-200 bg-white p-1">
+        <div className="flex items-center gap-3">
           <button
-            onClick={() => adjustFontScale(-1)}
-            disabled={fontScaleIndex === 0}
-            title="Smaller text"
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-50 disabled:opacity-30"
+            onClick={() => window.location.reload()}
+            title="Refresh — reloads the page and clears any cached data"
+            className="flex items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3.5 py-2 text-sm font-semibold text-neutral-500 hover:bg-neutral-50"
           >
-            <Minus className="h-4 w-4" />
+            <RefreshCw className="h-4 w-4" /> Refresh
           </button>
-          <span className="w-10 text-center text-xs font-semibold text-neutral-500">
-            {Math.round(FONT_SCALE_STEPS[fontScaleIndex] * 100)}%
-          </span>
+          {availableStations.length > 0 && (
+            <div className="flex items-center gap-1 rounded-xl border border-neutral-200 bg-white p-1" title="This screen's station — remembered on this device">
+              <Radio className="ml-1.5 h-4 w-4 text-neutral-400" />
+              <button
+                onClick={() => selectStation("All")}
+                className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
+                  station === "All" ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
+                }`}
+              >
+                All
+              </button>
+              {availableStations.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => selectStation(s)}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
+                    station === s ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
           <button
-            onClick={() => adjustFontScale(1)}
-            disabled={fontScaleIndex === FONT_SCALE_STEPS.length - 1}
-            title="Bigger text"
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-50 disabled:opacity-30"
+            onClick={() => setStockModalOpen(true)}
+            className={`flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-sm font-semibold ${
+              outOfStockCount > 0
+                ? "border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100"
+                : "border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50"
+            }`}
           >
-            <Plus className="h-4 w-4" />
+            <PackageX className="h-4 w-4" /> Stock{outOfStockCount > 0 ? ` (${outOfStockCount} out)` : ""}
           </button>
+          <div className="flex items-center gap-1 rounded-xl border border-neutral-200 bg-white p-1">
+            <button
+              onClick={() => adjustFontScale(-1)}
+              disabled={fontScaleIndex === 0}
+              title="Smaller text"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-50 disabled:opacity-30"
+            >
+              <Minus className="h-4 w-4" />
+            </button>
+            <span className="w-10 text-center text-xs font-semibold text-neutral-500">
+              {Math.round(FONT_SCALE_STEPS[fontScaleIndex] * 100)}%
+            </span>
+            <button
+              onClick={() => adjustFontScale(1)}
+              disabled={fontScaleIndex === FONT_SCALE_STEPS.length - 1}
+              title="Bigger text"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-50 disabled:opacity-30"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="grid flex-1 grid-cols-1 gap-4 overflow-hidden md:grid-cols-4">
-        {COLUMNS.map((col) => {
-          let columnOrders = orders.filter((o) => col.statuses.includes(o.status));
-          if (col.label === "Completed") {
-            columnOrders = columnOrders.filter((o) => now - (o.servedAt ?? o.createdAt) < COMPLETED_RETENTION_MS);
-          }
-          return (
-            <div key={col.label} className="flex min-h-0 flex-col rounded-2xl bg-white">
-              <div className={`flex items-center justify-between border-t-4 ${col.accent} rounded-t-2xl px-4 py-3`}>
-                <span className="text-base font-bold text-neutral-900">{col.label}</span>
-                <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-neutral-100 px-2 text-sm font-bold text-neutral-600">
-                  {columnOrders.length}
-                </span>
-              </div>
-              <div className="flex-1 space-y-3 overflow-y-auto p-3">
-                {columnOrders.length === 0 && (
-                  <div className="flex h-24 items-center justify-center text-sm text-neutral-300">No orders</div>
-                )}
-                {columnOrders.map((order) => (
+      <div className="flex flex-1 gap-4 overflow-hidden">
+        <div className="flex min-h-0 flex-[3] flex-col rounded-2xl bg-white">
+          <div className="flex items-center justify-between rounded-t-2xl border-t-4 border-t-amber-400 px-4 py-3">
+            <span className="text-base font-bold text-neutral-900">Pending</span>
+            <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-neutral-100 px-2 text-sm font-bold text-neutral-600">
+              {pendingOrders.length}
+            </span>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3">
+            {pendingOrders.length === 0 && (
+              <div className="flex h-24 items-center justify-center text-sm text-neutral-300">No orders</div>
+            )}
+            <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {pendingOrders.map((order, idx) => (
+                <div key={order.id} className={idx === 0 ? "sm:col-span-2" : undefined}>
                   <OrderTicket
-                    key={order.id}
                     order={order}
-                    now={col.showTimer ? now : null}
+                    now={now}
                     timerLimitMinutes={timerLimitMinutes}
+                    station={station}
+                    itemMatchesStation={itemMatchesStation}
+                    itemSortIndex={itemSortIndex}
+                    major={idx === 0}
                     onAdvance={(status) => advance(order.id, status)}
-                    onToggleItem={(dishId, ready) => toggleItem(order.id, dishId, ready)}
-                    onVoid={() => setVoidTarget(order)}
+                    onToggleItem={(itemKey, ready) => toggleItem(order.id, itemKey, ready)}
                   />
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
-          );
-        })}
+          </div>
+        </div>
+
+        <div className="flex min-h-0 w-full max-w-xs flex-col rounded-2xl bg-white">
+          <div className="flex items-center justify-between rounded-t-2xl border-t-4 border-t-neutral-300 px-4 py-3">
+            <span className="text-base font-bold text-neutral-900">Completed</span>
+            <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-neutral-100 px-2 text-sm font-bold text-neutral-600">
+              {completedOrders.length}
+            </span>
+          </div>
+          <div className="flex-1 space-y-3 overflow-y-auto p-3">
+            {completedOrders.length === 0 && (
+              <div className="flex h-24 items-center justify-center text-sm text-neutral-300">No orders</div>
+            )}
+            {completedOrders.map((order) => (
+              <OrderTicket
+                key={order.id}
+                order={order}
+                now={null}
+                timerLimitMinutes={timerLimitMinutes}
+                station={station}
+                itemMatchesStation={itemMatchesStation}
+                itemSortIndex={itemSortIndex}
+                major={false}
+                onAdvance={(status) => advance(order.id, status)}
+                onToggleItem={(itemKey, ready) => toggleItem(order.id, itemKey, ready)}
+              />
+            ))}
+          </div>
+        </div>
       </div>
 
-      {voidTarget && <VoidModal order={voidTarget} onCancel={() => setVoidTarget(null)} onConfirm={confirmVoid} />}
+      {stockModalOpen && (
+        <StockModal categories={categories} dishes={dishes} onToggle={toggleStock} onClose={() => setStockModalOpen(false)} />
+      )}
+    </div>
+  );
+}
+
+function StockModal({
+  categories,
+  dishes,
+  onToggle,
+  onClose,
+}: {
+  categories: Category[];
+  dishes: Dish[];
+  onToggle: (dish: Dish) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-neutral-100 px-5 py-4">
+          <h2 className="flex items-center gap-2 text-base font-bold text-neutral-900">
+            <PackageX className="h-5 w-5 text-rose-500" /> Menu Stock
+          </h2>
+          <button onClick={onClose} className="rounded-lg p-1 text-neutral-400 hover:bg-neutral-100">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <p className="border-b border-neutral-100 px-5 py-2.5 text-xs text-neutral-400">
+          Mark an item out of stock the moment it runs out — the Till stops taking new orders for it immediately.
+        </p>
+        <div className="flex-1 overflow-y-auto p-3">
+          {categories.map((category) => {
+            const categoryDishes = dishes.filter((d) => d.categoryId === category.id);
+            if (categoryDishes.length === 0) return null;
+            return (
+              <div key={category.id} className="mb-3">
+                <div className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">{category.name}</div>
+                {categoryDishes.map((dish) => (
+                  <button
+                    key={dish.id}
+                    onClick={() => onToggle(dish)}
+                    className="flex w-full items-center justify-between rounded-xl px-2.5 py-2.5 text-left hover:bg-neutral-50"
+                  >
+                    <span className={`text-sm font-medium ${dish.outOfStock ? "text-neutral-400 line-through" : "text-neutral-800"}`}>
+                      {dish.name}
+                    </span>
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+                        dish.outOfStock ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700"
+                      }`}
+                    >
+                      {dish.outOfStock ? "Out of Stock" : "In Stock"}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
@@ -184,36 +471,61 @@ function OrderTicket({
   order,
   now,
   timerLimitMinutes,
+  station,
+  itemMatchesStation,
+  itemSortIndex,
+  major,
   onAdvance,
   onToggleItem,
-  onVoid,
 }: {
   order: Order;
   now: number | null;
   timerLimitMinutes: number;
+  station: PrinterStation | "All";
+  itemMatchesStation: (item: OrderItem) => boolean;
+  itemSortIndex: (item: OrderItem) => number;
+  major: boolean;
   onAdvance: (status: OrderStatus) => void;
-  onToggleItem: (dishId: string, ready: boolean) => void;
-  onVoid: () => void;
+  onToggleItem: (itemKey: string, ready: boolean) => void;
 }) {
   const elapsedMs = now !== null ? now - order.createdAt : null;
   const band = elapsedMs !== null ? timerBand(elapsedMs, timerLimitMinutes) : null;
   const itemsCheckable = order.status === "In Kitchen";
   const allItemsReady = order.items.every((i) => i.ready);
   const isVoided = order.status === "Voided";
-  // Flags a ticket that was edited (items/table/etc. changed) after being sent, so kitchen
-  // notices the change — cleared once it's done (Served/Voided), since it no longer matters.
+  const isDone = order.status === "Served";
+  // Flags a ticket that got new items added after it was already sent (including one the
+  // kitchen had already finished — see the reopensKitchen check in placeOrderAction) — cleared
+  // once it's done (Served/Voided), since it no longer matters.
   const wasUpdated = !!order.updatedAt && order.status !== "Served" && order.status !== "Voided";
+  // On a single station's screen, only that station's items show — the rest of the ticket
+  // belongs to another screen. Whole-ticket actions (advance) stay in the "All" view only, since
+  // a bar screen shouldn't be the one deciding a whole dine-in order is served. Voiding an order
+  // is a Till-only action — this screen only ever displays the result, crossed out below.
+  const visibleItems = station === "All" ? order.items : order.items.filter(itemMatchesStation);
+  const sortedItems = [...visibleItems].sort((a, b) => itemSortIndex(a) - itemSortIndex(b));
+  const hiddenItemCount = order.items.length - visibleItems.length;
+  const showTicketActions = station === "All";
 
   return (
     <div
       className={`rounded-xl border p-3.5 shadow-sm ${
         isVoided
           ? "border-rose-200 bg-rose-50/60 opacity-75"
-          : order.channel === "Delivery"
-            ? "border-blue-200 bg-blue-50/40"
-            : "border-neutral-200"
+          : isDone
+            ? "border-emerald-200 bg-emerald-50/50"
+            : major
+              ? "border-amber-300 ring-2 ring-amber-300"
+              : order.channel === "Delivery"
+                ? "border-blue-200 bg-blue-50/40"
+                : "border-neutral-200"
       }`}
     >
+      {major && (
+        <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-amber-400 px-2.5 py-1 text-xs font-bold text-amber-950">
+          <Sparkles className="h-3.5 w-3.5" /> NEWEST ORDER
+        </div>
+      )}
       <div className="mb-2 flex items-center justify-between">
         <span className="flex items-center gap-1.5 text-base font-bold text-neutral-900">
           {isVoided && <XCircle className="h-4 w-4 text-rose-500" />}
@@ -222,6 +534,10 @@ function OrderTicket({
         {isVoided ? (
           <span className="flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">
             <Ban className="h-3.5 w-3.5" /> Voided
+          </span>
+        ) : isDone ? (
+          <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">
+            <CheckCircle2 className="h-3.5 w-3.5" /> Completed
           </span>
         ) : elapsedMs !== null && band ? (
           <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold ${TIMER_STYLES[band]}`}>
@@ -243,7 +559,7 @@ function OrderTicket({
 
       {wasUpdated && (
         <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700">
-          <RefreshCw className="h-3.5 w-3.5" /> UPDATED — recheck the items below
+          <RefreshCw className="h-3.5 w-3.5" /> RUNNING ORDER — items were added, recheck below
         </div>
       )}
 
@@ -255,6 +571,11 @@ function OrderTicket({
       {order.channel === "Take Away" && (
         <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700">
           <ShoppingBag className="h-3.5 w-3.5" /> TAKEAWAY
+        </div>
+      )}
+      {order.placedVia !== "staff" && (
+        <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-indigo-100 px-2.5 py-1 text-xs font-bold text-indigo-700">
+          <Globe className="h-3.5 w-3.5" /> {order.placedVia === "kiosk" ? "KIOSK ORDER" : "ONLINE ORDER"}
         </div>
       )}
 
@@ -284,11 +605,15 @@ function OrderTicket({
       )}
 
       <ul className="mb-3 space-y-1">
-        {order.items.map((item) =>
-          itemsCheckable ? (
-            <li key={item.dishId}>
+        {sortedItems.map((item, idx) => {
+          const itemKey = item.lineId ?? `${item.dishId}-${idx}`;
+          // A voided order's items are crossed out unconditionally (not just when ready) — the
+          // whole ticket didn't happen, so every line on it should read that way at a glance.
+          const crossedOut = isVoided || item.ready;
+          return itemsCheckable ? (
+            <li key={itemKey}>
               <button
-                onClick={() => onToggleItem(item.dishId, !item.ready)}
+                onClick={() => onToggleItem(item.lineId ?? item.dishId, !item.ready)}
                 className="flex w-full items-center justify-between gap-2 rounded-lg py-1.5 text-left text-sm hover:bg-neutral-50"
               >
                 <span className="min-w-0">
@@ -298,7 +623,7 @@ function OrderTicket({
                 </span>
                 <span
                   className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border-2 ${
-                    item.ready ? "border-teal-600 bg-teal-600 text-white" : "border-neutral-300"
+                    item.ready ? "border-[var(--brand)] bg-[var(--brand)] text-white" : "border-neutral-300"
                   }`}
                 >
                   {item.ready && <Check className="h-4 w-4" strokeWidth={3} />}
@@ -306,22 +631,37 @@ function OrderTicket({
               </button>
             </li>
           ) : (
-            <li key={item.dishId} className="text-sm">
-              <span className="font-bold text-teal-600">{item.qty}× </span>
-              <span className={item.ready ? "text-neutral-400 line-through" : "text-neutral-800"}>{item.name}</span>
+            <li key={itemKey} className="text-sm">
+              <span className={`font-bold ${isVoided ? "text-rose-400" : "text-teal-600"}`}>{item.qty}× </span>
+              <span
+                className={
+                  isVoided
+                    ? "text-rose-400 line-through decoration-rose-400"
+                    : crossedOut
+                      ? "text-neutral-400 line-through"
+                      : "text-neutral-800"
+                }
+              >
+                {item.name}
+              </span>
               {item.note && <div className="ml-4 text-xs font-semibold italic text-amber-600">↳ {item.note}</div>}
             </li>
-          )
-        )}
+          );
+        })}
       </ul>
-      {!isVoided && (
+      {hiddenItemCount > 0 && (
+        <div className="mb-3 text-xs italic text-neutral-400">
+          +{hiddenItemCount} more item{hiddenItemCount === 1 ? "" : "s"} on another station
+        </div>
+      )}
+      {!isVoided && !isDone && showTicketActions && (
         <div className="flex gap-2">
           {order.status === "In Kitchen" && (
             <button
               onClick={() => onAdvance("Ready")}
               disabled={!allItemsReady}
               title={allItemsReady ? undefined : "Tick off every item first"}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-teal-600 py-3 text-sm font-bold text-white active:scale-95 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-400"
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-[var(--brand)] py-3 text-sm font-bold text-white active:scale-95 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-400"
             >
               <CheckCircle2 className="h-4 w-4" /> Mark Order Ready
             </button>
@@ -334,70 +674,9 @@ function OrderTicket({
               Send to Kitchen
             </button>
           )}
-          {order.status === "Ready" && (
-            <button
-              onClick={() => onAdvance("Served")}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-neutral-800 py-3 text-sm font-bold text-white active:scale-95"
-            >
-              <CheckCircle2 className="h-4 w-4" /> Mark Served
-            </button>
-          )}
-          {order.status !== "Served" && (
-            <button
-              onClick={onVoid}
-              className="flex items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-3 text-rose-600 active:scale-95"
-            >
-              <Ban className="h-4 w-4" />
-            </button>
-          )}
         </div>
       )}
     </div>
   );
 }
 
-function VoidModal({
-  order,
-  onCancel,
-  onConfirm,
-}: {
-  order: Order;
-  onCancel: () => void;
-  onConfirm: (reason: string) => void;
-}) {
-  const [reason, setReason] = useState("");
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onCancel}>
-      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-neutral-900">Void Order #{order.orderNumber}</h2>
-          <button onClick={onCancel} className="rounded-full p-1 text-neutral-400 hover:bg-neutral-100">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-        <label className="mb-1.5 block text-xs font-medium text-neutral-500">Reason (optional)</label>
-        <textarea
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          rows={3}
-          placeholder="e.g. Customer changed mind, kitchen error…"
-          className="mb-4 w-full resize-none rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100"
-        />
-        <div className="flex gap-3">
-          <button
-            onClick={onCancel}
-            className="flex-1 rounded-xl border border-neutral-200 py-2.5 text-sm font-medium text-neutral-600 hover:bg-neutral-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => onConfirm(reason)}
-            className="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-semibold text-white hover:bg-rose-700"
-          >
-            Void Order
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}

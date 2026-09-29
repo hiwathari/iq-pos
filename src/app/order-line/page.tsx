@@ -6,7 +6,7 @@ import { listTables } from "@/lib/data/tables";
 import { listOrders } from "@/lib/data/orders";
 import { listPaymentTerminals } from "@/lib/data/printers";
 import { getRestaurant } from "@/lib/data/restaurants";
-import { OrderLineClient } from "./order-line-client";
+import { TillModeSwitcher } from "./till-mode-switcher";
 
 export const metadata: Metadata = {
   title: "Till",
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = { themeColor: "#0d9488" };
 
 export default async function OrderLinePage() {
-  const { restaurantId } = await requireRestaurantContext();
+  const { session, restaurantId } = await requireRestaurantContext();
 
   const [categories, dishes, tables, orders, paymentTerminals, restaurant] = await Promise.all([
     listCategories(restaurantId),
@@ -29,16 +29,26 @@ export default async function OrderLinePage() {
     getRestaurant(restaurantId),
   ]);
 
+  const currencySymbol = restaurant?.currencySymbol ?? "£";
+  const restaurantName = restaurant?.name ?? "IQ POS";
+  // Discounting an order's total is a manager-level call — only Admin (and Super Admin,
+  // impersonating a restaurant) can see or use the Extra Discount / Coupon controls on the Till.
+  // A plain Staff login gets the same Till otherwise, just without that power.
+  const canDiscount = session.role === "admin" || session.role === "super_admin";
+  const taxEnabled = restaurant?.taxEnabled ?? false;
+
   return (
     <AppShell title="Till">
-      <OrderLineClient
+      <TillModeSwitcher
         categories={categories}
         dishes={dishes}
         tables={tables}
         orders={orders}
         paymentTerminals={paymentTerminals.filter((t) => t.active)}
-        currencySymbol={restaurant?.currencySymbol ?? "£"}
-        restaurantName={restaurant?.name ?? "IQ POS"}
+        currencySymbol={currencySymbol}
+        restaurantName={restaurantName}
+        canDiscount={canDiscount}
+        taxEnabled={taxEnabled}
         invoiceAddress={restaurant?.invoiceAddress ?? undefined}
         invoicePhone={restaurant?.invoicePhone ?? undefined}
         invoiceWebsite={restaurant?.invoiceWebsite ?? undefined}

@@ -2,19 +2,26 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { updateKitchenTimerLimitAction, updateRestaurantCurrencyAction } from "@/lib/actions/restaurants";
+import {
+  updateKitchenTimerLimitAction,
+  updateRestaurantCurrencyAction,
+  updateRestaurantTaxEnabledAction,
+} from "@/lib/actions/restaurants";
 import { CURRENCY_OPTIONS } from "@/lib/types";
 
 export function RestaurantClient({
   currencySymbol,
   kitchenTimerLimitMinutes,
+  taxEnabled,
 }: {
   currencySymbol: string;
   kitchenTimerLimitMinutes: number;
+  taxEnabled: boolean;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [timerLimit, setTimerLimit] = useState(kitchenTimerLimitMinutes);
+  const [taxOn, setTaxOn] = useState(taxEnabled);
 
   function handleCurrencyChange(symbol: string) {
     startTransition(async () => {
@@ -27,6 +34,14 @@ export function RestaurantClient({
     setTimerLimit(minutes);
     startTransition(async () => {
       await updateKitchenTimerLimitAction(minutes);
+      router.refresh();
+    });
+  }
+
+  function handleTaxEnabledChange(enabled: boolean) {
+    setTaxOn(enabled);
+    startTransition(async () => {
+      await updateRestaurantTaxEnabledAction(enabled);
       router.refresh();
     });
   }
@@ -62,6 +77,29 @@ export function RestaurantClient({
           />
           <p className="mt-1 text-xs text-neutral-400">
             An order&apos;s Kitchen Display timer turns fully red once it&apos;s been waiting this long.
+          </p>
+        </div>
+        <div className="max-w-xs">
+          <label className="mb-1.5 block text-xs font-medium text-neutral-500">Tax</label>
+          <button
+            onClick={() => handleTaxEnabledChange(!taxOn)}
+            className={`flex w-full items-center justify-between rounded-xl border px-3.5 py-2.5 text-sm font-medium ${
+              taxOn ? "border-teal-500 bg-teal-50 text-teal-700" : "border-neutral-200 text-neutral-500"
+            }`}
+          >
+            <span>Tax {taxOn ? "Enabled" : "Disabled"}</span>
+            <span
+              className={`relative h-5 w-9 rounded-full transition-colors ${taxOn ? "bg-teal-500" : "bg-neutral-300"}`}
+            >
+              <span
+                className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
+                  taxOn ? "translate-x-4" : "translate-x-0.5"
+                }`}
+              />
+            </span>
+          </button>
+          <p className="mt-1 text-xs text-neutral-400">
+            Off by default. Each category in Manage Dishes has its own tax rate, applied only once this is on.
           </p>
         </div>
       </div>

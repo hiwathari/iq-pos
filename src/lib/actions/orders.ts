@@ -3,27 +3,19 @@
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
-import { orderCounters, orders, tables } from "@/db/schema";
+import { orders, tables } from "@/db/schema";
 import type { Order, OrderChannel, OrderItem, OrderStatus, PaymentLine, ThirdPartyProvider } from "@/lib/types";
+import { resolveCouponDiscount } from "@/lib/types";
 import { requireRestaurantContext } from "@/lib/scope";
+import { findActiveCoupon } from "@/lib/data/coupons";
+import { findLoyaltyMemberById } from "@/lib/data/loyalty";
+import { decrementInventoryForOrder, freeTableIfNoLiveOrders, isOrderLive, nextOrderNumber } from "@/lib/order-helpers";
 
-// 5-character order codes, base36-encoded from a per-restaurant counter. Deliberately not a
-// plain incrementing decimal (so it doesn't read as "order #31 of the day"), but zero-padded
-// base36 preserves numeric ordering character-by-character ('0'-'9' < 'A'-'Z' in ASCII too),
-// so sorting the codes as strings reproduces the order they were placed in.
-function encodeOrderNumber(counter: number) {
-  return counter.toString(36).toUpperCase().padStart(5, "0");
-}
-
-async function nextOrderNumber(restaurantId: string) {
-  const [existing] = await db.select().from(orderCounters).where(eq(orderCounters.restaurantId, restaurantId)).limit(1);
-  const next = (existing?.value ?? 30) + 1;
-  if (existing) {
-    await db.update(orderCounters).set({ value: next }).where(eq(orderCounters.restaurantId, restaurantId));
-  } else {
-    await db.insert(orderCounters).values({ restaurantId, value: next });
-  }
-  return encodeOrderNumber(next);
+// An order is "closed out" once it's both served and paid — matches the Till's own
+// definition (see isOrderClosedOut in order-line-client.tsx). closedOutAt records the moment
+// that first became true so the table can be auto-freed a minute after it happens.
+function isClosedOut(status: OrderStatus, paymentMethod: string | null) {
+  return status === "Served" && !!paymentMethod;
 }
 
 export interface PlaceOrderInput {
@@ -36,7 +28,9 @@ export interface PlaceOrderInput {
   items: OrderItem[];
   payments: PaymentLine[];
   cashReceived?: number;
-  donation: number;
+  extraDiscount?: number;
+  couponCode?: string;
+  loyaltyMemberId?: string;
   customerName?: string;
   customerPhone?: string;
   customerAddress?: string;
@@ -51,7 +45,61 @@ export async function placeOrderAction(input: PlaceOrderInput) {
     input.payments.length === 0 ? null : input.payments.length === 1 ? input.payments[0].method : "Split";
   const payments = input.payments.length > 1 ? input.payments : null;
 
+  const existing = input.editingOrderId
+    ? (
+        await db
+          .select()
+          .from(orders)
+          .where(and(eq(orders.id, input.editingOrderId), eq(orders.restaurantId, restaurantId)))
+          .limit(1)
+      )[0]
+    : undefined;
+
+  // Discounting is manager-only (see canDiscount in order-line/page.tsx, which hides the
+  // controls for Staff) — enforced again here so a Staff session can't just craft a request.
+  // A Staff edit to an order a manager already discounted keeps that discount as-is; it can
+  // never introduce or change one, since a Staff session's own input value is never trusted.
+  const canDiscount = session.role === "admin" || session.role === "super_admin";
+  const subtotal = input.items.reduce((sum, i) => sum + i.price * i.qty, 0);
+  let extraDiscount: number;
+  let couponCode: string | null;
+  let couponDiscount: number;
+  if (canDiscount) {
+    // Never trust a client-supplied discount amount — recompute from the live coupon record
+    // against this order's own item subtotal, so a stale or tampered value can't be saved.
+    extraDiscount = Math.max(0, Math.min(subtotal, input.extraDiscount ?? 0));
+    const trimmedCode = input.couponCode?.trim().toUpperCase() || null;
+    couponCode = null;
+    couponDiscount = 0;
+    if (trimmedCode) {
+      const coupon = await findActiveCoupon(restaurantId, trimmedCode);
+      if (coupon) {
+        couponCode = coupon.code;
+        couponDiscount = resolveCouponDiscount(coupon, Math.max(0, subtotal - extraDiscount));
+      }
+    }
+  } else {
+    extraDiscount = existing?.extraDiscount ?? 0;
+    couponCode = existing?.couponCode ?? null;
+    couponDiscount = existing?.couponDiscount ?? 0;
+  }
+
+  // Confirm the loyalty member actually belongs to this restaurant before attaching it — the
+  // Till only ever hands back an ID it just resolved itself, but never trust a client ID as-is.
+  const loyaltyMember = input.loyaltyMemberId ? await findLoyaltyMemberById(restaurantId, input.loyaltyMemberId) : null;
+  const loyaltyMemberId = loyaltyMember?.id ?? null;
+
   if (input.editingOrderId) {
+    const closedOutAt = existing
+      ? isClosedOut(existing.status, paymentMethod)
+        ? (existing.closedOutAt ?? Date.now())
+        : null
+      : null;
+    // The kitchen already finished this ticket, but the edit just put an unprepped item back on
+    // it (e.g. another dish added at the table) — reopen it so it reappears on the Kitchen
+    // Display as a running order instead of staying "Ready" with food nobody's cooking.
+    const reopensKitchen = existing?.status === "Ready" && input.items.some((item) => !item.ready);
+
     await db
       .update(orders)
       .set({
@@ -64,11 +112,16 @@ export async function placeOrderAction(input: PlaceOrderInput) {
         paymentMethod,
         payments,
         cashReceived: input.cashReceived ?? null,
-        donation: input.donation,
+        extraDiscount,
+        couponCode,
+        couponDiscount,
+        loyaltyMemberId,
         customerName: hasCustomerInfo ? input.customerName || null : null,
         customerPhone: hasCustomerInfo ? input.customerPhone || null : null,
         customerAddress: input.channel === "Delivery" ? input.customerAddress || null : null,
         updatedAt: Date.now(),
+        closedOutAt,
+        ...(reopensKitchen ? { status: "In Kitchen" as OrderStatus } : {}),
       })
       .where(and(eq(orders.id, input.editingOrderId), eq(orders.restaurantId, restaurantId)));
   } else {
@@ -87,7 +140,10 @@ export async function placeOrderAction(input: PlaceOrderInput) {
       paymentMethod,
       payments,
       cashReceived: input.cashReceived ?? null,
-      donation: input.donation,
+      extraDiscount,
+      couponCode,
+      couponDiscount,
+      loyaltyMemberId,
       customerName: hasCustomerInfo ? input.customerName || null : null,
       customerPhone: hasCustomerInfo ? input.customerPhone || null : null,
       customerAddress: input.channel === "Delivery" ? input.customerAddress || null : null,
@@ -99,9 +155,11 @@ export async function placeOrderAction(input: PlaceOrderInput) {
     if (input.tableId) {
       await db
         .update(tables)
-        .set({ status: "on-dine", seated: input.guests })
+        .set({ status: "on-dine", seated: input.guests, seatedAt: Date.now() })
         .where(and(eq(tables.id, input.tableId), eq(tables.restaurantId, restaurantId)));
     }
+
+    await decrementInventoryForOrder(restaurantId, input.items);
   }
 
   revalidatePath("/order-line");
@@ -110,7 +168,10 @@ export async function placeOrderAction(input: PlaceOrderInput) {
   revalidatePath("/kitchen");
 }
 
-export async function toggleOrderItemReadyAction(orderId: string, dishId: string, ready: boolean) {
+// itemKey is item.lineId when the item has one, else its dishId — matches whichever identity
+// the caller has. Older orders placed before lineId existed only ever had one line per dish, so
+// falling back to dishId there still targets the right (and only) item.
+export async function toggleOrderItemReadyAction(orderId: string, itemKey: string, ready: boolean) {
   const { restaurantId } = await requireRestaurantContext();
   const [order] = await db
     .select()
@@ -119,7 +180,7 @@ export async function toggleOrderItemReadyAction(orderId: string, dishId: string
     .limit(1);
   if (!order) return;
 
-  const items = order.items.map((i) => (i.dishId === dishId ? { ...i, ready } : i));
+  const items = order.items.map((i) => ((i.lineId ?? i.dishId) === itemKey ? { ...i, ready } : i));
   // Ticking off the last item auto-advances the order to Ready — one less tap for the kitchen.
   const allReady = items.every((i) => i.ready);
   const advanceToReady = allReady && order.status === "In Kitchen";
@@ -133,22 +194,43 @@ export async function toggleOrderItemReadyAction(orderId: string, dishId: string
 
 export async function setOrderStatusAction(orderId: string, status: OrderStatus) {
   const { restaurantId } = await requireRestaurantContext();
+  const [order] = await db
+    .select()
+    .from(orders)
+    .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)))
+    .limit(1);
+  const closedOutAt = order
+    ? isClosedOut(status, order.paymentMethod)
+      ? (order.closedOutAt ?? Date.now())
+      : null
+    : null;
+
   await db
     .update(orders)
-    .set({ status, servedAt: status === "Served" ? Date.now() : undefined })
+    .set({ status, servedAt: status === "Served" ? Date.now() : undefined, closedOutAt })
     .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)));
   revalidatePath("/order-line");
+  revalidatePath("/manage-table");
   revalidatePath("/dashboard");
   revalidatePath("/kitchen");
 }
 
 export async function voidOrderAction(orderId: string, reason: string) {
   const { restaurantId } = await requireRestaurantContext();
+  const [order] = await db
+    .select({ tableId: orders.tableId })
+    .from(orders)
+    .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)))
+    .limit(1);
   await db
     .update(orders)
-    .set({ status: "Voided", voidReason: reason || "No reason given" })
+    .set({ status: "Voided", voidReason: reason || "No reason given", voidedAt: Date.now() })
     .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)));
+  // A voided order no longer occupies its table — free it up the same moment, rather than
+  // leaving it stuck "on-dine" until something else happens to notice.
+  if (order?.tableId) await freeTableIfNoLiveOrders(restaurantId, order.tableId, orderId);
   revalidatePath("/order-line");
+  revalidatePath("/manage-table");
   revalidatePath("/dashboard");
   revalidatePath("/kitchen");
   revalidatePath("/reports");
@@ -157,14 +239,6 @@ export async function voidOrderAction(orderId: string, reason: string) {
 export interface TableActionState {
   error?: string;
   order?: Order;
-}
-
-// An order is "live" on its table for merge/swap purposes once it isn't voided or fully
-// wrapped up (served + paid) — matches the Till's own definition of an active ticket.
-function isOrderLive(o: { status: OrderStatus; paymentMethod: string | null }) {
-  if (o.status === "Voided") return false;
-  if (o.status === "Served" && o.paymentMethod) return false;
-  return true;
 }
 
 // Relocates an order to a different table entirely — e.g. the party asked to move seats.
@@ -200,12 +274,12 @@ export async function swapOrderTableAction(orderId: string, newTableId: string):
     .returning();
   await db
     .update(tables)
-    .set({ status: "on-dine", seated: order.guests })
+    .set({ status: "on-dine", seated: order.guests, seatedAt: Date.now() })
     .where(and(eq(tables.id, newTable.id), eq(tables.restaurantId, restaurantId)));
   if (oldTableId) {
     await db
       .update(tables)
-      .set({ status: "available", seated: 0 })
+      .set({ status: "available", seated: 0, seatedAt: null })
       .where(and(eq(tables.id, oldTableId), eq(tables.restaurantId, restaurantId)));
   }
 
@@ -255,7 +329,11 @@ export async function mergeTableIntoOrderAction(primaryOrderId: string, secondar
 
     await db
       .update(orders)
-      .set({ status: "Voided", voidReason: `Merged into Table ${primary.tableNumber ?? primary.orderNumber}` })
+      .set({
+        status: "Voided",
+        voidReason: `Merged into Table ${primary.tableNumber ?? primary.orderNumber}`,
+        voidedAt: Date.now(),
+      })
       .where(eq(orders.id, secondaryOrder.id));
   }
 
@@ -268,7 +346,7 @@ export async function mergeTableIntoOrderAction(primaryOrderId: string, secondar
     .returning();
   await db
     .update(tables)
-    .set({ status: "on-dine" })
+    .set({ status: "on-dine", seatedAt: Date.now() })
     .where(and(eq(tables.id, secondaryTable.id), eq(tables.restaurantId, restaurantId)));
 
   revalidatePath("/order-line");

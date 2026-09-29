@@ -1,5 +1,6 @@
 import { LogOut } from "lucide-react";
 import { logoutAction } from "@/lib/actions/auth";
+import { brandCssVars } from "@/lib/color";
 
 // Chrome for PIN-unlocked device sessions (till, kitchen display) — no sidebar, no nav,
 // just the single screen the PIN grants access to and a way to lock it back up.
@@ -7,13 +8,15 @@ export function LockedShell({
   children,
   restaurantName,
   label,
+  brandColor,
 }: {
   children: React.ReactNode;
   restaurantName?: string;
   label: string;
+  brandColor?: string | null;
 }) {
   return (
-    <div className="flex h-dvh w-full flex-col overflow-hidden bg-neutral-50">
+    <div className="flex h-dvh w-full flex-col overflow-hidden bg-neutral-50" style={brandCssVars(brandColor)}>
       <header className="flex items-center justify-between border-b border-neutral-200 bg-white px-5 py-3">
         <div className="text-sm font-semibold text-neutral-900">{restaurantName ?? "IQ POS"}</div>
         <div className="flex items-center gap-3">

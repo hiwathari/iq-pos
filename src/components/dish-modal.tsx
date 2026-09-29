@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { X } from "lucide-react";
-import type { Category, Dish, Printer } from "@/lib/types";
+import type { Category, Dish, InventoryItem, Printer } from "@/lib/types";
 
 const EMOJI_PRESETS = [
   "🍔", "🍕", "🍝", "🥗", "🍗", "🥩", "🍤", "🍜", "🍛", "🍣",
@@ -20,9 +20,12 @@ interface DishModalProps {
     description: string;
     imageUrl: string;
     printerId: string | null;
+    inventoryItemId: string | null;
+    inventoryUsagePerOrder: number | null;
   }) => void;
   categories: Category[];
   printers: Printer[];
+  inventoryItems?: InventoryItem[];
   defaultCategoryId: string;
   initial?: Dish | null;
   currencySymbol?: string;
@@ -30,7 +33,16 @@ interface DishModalProps {
 
 // Mount this component only while the modal should be visible (e.g. `{open && <DishModal ... />}`)
 // so a fresh instance — and fresh initial state — is created each time it opens.
-export function DishModal({ onClose, onSave, categories, printers, defaultCategoryId, initial, currencySymbol = "£" }: DishModalProps) {
+export function DishModal({
+  onClose,
+  onSave,
+  categories,
+  printers,
+  inventoryItems = [],
+  defaultCategoryId,
+  initial,
+  currencySymbol = "£",
+}: DishModalProps) {
   const [name, setName] = useState(initial?.name ?? "");
   const [categoryId, setCategoryId] = useState(
     initial?.categoryId ?? (defaultCategoryId === "all" ? categories[0]?.id ?? "" : defaultCategoryId)
@@ -43,6 +55,10 @@ export function DishModal({ onClose, onSave, categories, printers, defaultCatego
   // printer — so a new dish is routed sensibly from the start, but can be pointed elsewhere.
   const [printerId, setPrinterId] = useState(
     initial?.printerId ?? categories.find((c) => c.id === categoryId)?.printerId ?? ""
+  );
+  const [inventoryItemId, setInventoryItemId] = useState(initial?.inventoryItemId ?? "");
+  const [inventoryUsagePerOrder, setInventoryUsagePerOrder] = useState(
+    initial?.inventoryUsagePerOrder ? String(initial.inventoryUsagePerOrder) : "1"
   );
 
   const canSave = name.trim().length > 0 && categoryId && Number(price) > 0;
@@ -147,6 +163,35 @@ export function DishModal({ onClose, onSave, categories, printers, defaultCatego
             </p>
           </div>
 
+          {inventoryItems.length > 0 && (
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-neutral-500">Linked Inventory Item (optional)</label>
+              <div className="grid grid-cols-2 gap-3">
+                <select
+                  value={inventoryItemId}
+                  onChange={(e) => setInventoryItemId(e.target.value)}
+                  className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+                >
+                  <option value="">Not tracked</option>
+                  {inventoryItems.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.name} ({i.unit})
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={inventoryUsagePerOrder}
+                  onChange={(e) => setInventoryUsagePerOrder(e.target.value.replace(/[^0-9.]/g, ""))}
+                  disabled={!inventoryItemId}
+                  placeholder="Used per order"
+                  inputMode="decimal"
+                  className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 disabled:bg-neutral-50 disabled:text-neutral-400"
+                />
+              </div>
+              <p className="mt-1 text-xs text-neutral-400">Selling one of this dish decrements the item by this amount.</p>
+            </div>
+          )}
+
           <div>
             <label className="mb-1.5 block text-xs font-medium text-neutral-500">Description (optional)</label>
             <textarea
@@ -178,9 +223,11 @@ export function DishModal({ onClose, onSave, categories, printers, defaultCatego
                 description: description.trim(),
                 imageUrl: imageUrl.trim(),
                 printerId: printerId || null,
+                inventoryItemId: inventoryItemId || null,
+                inventoryUsagePerOrder: inventoryItemId ? Number(inventoryUsagePerOrder) || null : null,
               })
             }
-            className="flex-1 rounded-xl bg-teal-600 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex-1 rounded-xl bg-[var(--brand)] py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             {initial ? "Save Changes" : "Add Dish"}
           </button>

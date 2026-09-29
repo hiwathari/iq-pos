@@ -50,6 +50,8 @@ export async function setTableStatusAction(tableId: string, status: TableStatus,
   const patch: Partial<typeof tables.$inferInsert> = { status };
   if (seated !== undefined) patch.seated = seated;
   else if (status === "available") patch.seated = 0;
+  if (status === "on-dine") patch.seatedAt = Date.now();
+  else if (status === "available") patch.seatedAt = null;
   await db
     .update(tables)
     .set(patch)

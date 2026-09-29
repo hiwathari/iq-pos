@@ -58,7 +58,7 @@ export function TableLayoutPicker({
               key={a}
               onClick={() => setArea(a)}
               className={`flex-1 rounded-lg py-2 text-sm font-medium transition-colors ${
-                area === a ? "bg-teal-600 text-white" : "text-neutral-500 hover:bg-white"
+                area === a ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-white"
               }`}
             >
               {a}

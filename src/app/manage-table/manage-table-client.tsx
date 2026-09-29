@@ -23,7 +23,9 @@ import {
   Trash2,
   X,
   Globe,
+  QrCode,
 } from "lucide-react";
+import { tableOrderQrDataUrl } from "@/lib/table-qr";
 
 const AREAS: TableArea[] = ["Ground Floor", "1st Floor", "Basement"];
 
@@ -41,8 +43,19 @@ const RES_STATUS_META: Record<string, { label: string; className: string }> = {
   available: { label: "Free", className: "bg-neutral-100 text-neutral-500" },
 };
 
-export function ManageTableClient({ tables, reservations }: { tables: RestaurantTable[]; reservations: Reservation[] }) {
+export function ManageTableClient({
+  tables,
+  reservations,
+  restaurantSlug,
+  qrTableOrderingEnabled,
+}: {
+  tables: RestaurantTable[];
+  reservations: Reservation[];
+  restaurantSlug: string;
+  qrTableOrderingEnabled: boolean;
+}) {
   const router = useRouter();
+  const [qrForTable, setQrForTable] = useState<RestaurantTable | null>(null);
   const [, startTransition] = useTransition();
 
   const [area, setArea] = useState<TableArea>("Ground Floor");
@@ -103,7 +116,7 @@ export function ManageTableClient({ tables, reservations }: { tables: Restaurant
               key={tab}
               onClick={() => setResFilter(tab)}
               className={`flex-1 rounded-lg py-1.5 text-xs font-medium transition-colors ${
-                resFilter === tab ? "bg-teal-600 text-white" : "text-neutral-500 hover:bg-neutral-50"
+                resFilter === tab ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
               }`}
             >
               {tab}
@@ -182,7 +195,7 @@ export function ManageTableClient({ tables, reservations }: { tables: Restaurant
 
         <button
           onClick={() => setReservationModalOpen(true)}
-          className="mt-4 flex items-center justify-center gap-2 rounded-xl bg-teal-600 py-3 text-sm font-semibold text-white hover:bg-teal-700"
+          className="mt-4 flex items-center justify-center gap-2 rounded-xl bg-[var(--brand)] py-3 text-sm font-semibold text-white hover:bg-[var(--brand-dark)]"
         >
           <Plus className="h-4 w-4" /> Add New Reservation
         </button>
@@ -199,7 +212,7 @@ export function ManageTableClient({ tables, reservations }: { tables: Restaurant
                   key={a}
                   onClick={() => setArea(a)}
                   className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                    area === a ? "bg-teal-600 text-white" : "text-neutral-500 hover:bg-neutral-50"
+                    area === a ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
                   }`}
                 >
                   {a}
@@ -208,7 +221,7 @@ export function ManageTableClient({ tables, reservations }: { tables: Restaurant
             </div>
             <button
               onClick={() => setAddTableModalOpen(true)}
-              className="flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-700"
+              className="flex items-center gap-2 rounded-xl bg-[var(--brand)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)]"
             >
               <Plus className="h-4 w-4" /> Add Table
             </button>
@@ -275,10 +288,22 @@ export function ManageTableClient({ tables, reservations }: { tables: Restaurant
                     <div className="flex gap-1.5">
                       <button
                         onClick={() => goOrderForTable(table)}
-                        className="flex-1 rounded-lg bg-teal-600 py-2 text-xs font-semibold text-white hover:bg-teal-700"
+                        className="flex-1 rounded-lg bg-[var(--brand)] py-2 text-xs font-semibold text-white hover:bg-[var(--brand-dark)]"
                       >
                         Start Order →
                       </button>
+                      {qrTableOrderingEnabled && (
+                        <button
+                          onClick={() => {
+                            setQrForTable(table);
+                            setOpenTableId(null);
+                          }}
+                          title="Table QR code for online ordering"
+                          className="flex items-center justify-center rounded-lg border border-neutral-200 px-2.5 text-neutral-500 hover:bg-neutral-50"
+                        >
+                          <QrCode className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                       <button
                         onClick={() => handleDeleteTable(table.id)}
                         title="Delete table"
@@ -299,6 +324,40 @@ export function ManageTableClient({ tables, reservations }: { tables: Restaurant
         <AddReservationModal onClose={() => setReservationModalOpen(false)} tables={tables} onSave={handleAddReservation} />
       )}
       {addTableModalOpen && <AddTableModal onClose={() => setAddTableModalOpen(false)} defaultArea={area} />}
+      {qrForTable && <TableQrModal table={qrForTable} restaurantSlug={restaurantSlug} onClose={() => setQrForTable(null)} />}
+    </div>
+  );
+}
+
+function TableQrModal({ table, restaurantSlug, onClose }: { table: RestaurantTable; restaurantSlug: string; onClose: () => void }) {
+  const [dataUrl, setDataUrl] = useState<string | null>(null);
+  const url = typeof window !== "undefined" ? `${window.location.origin}/order/${restaurantSlug}?table=${table.number}` : "";
+
+  useEffect(() => {
+    let cancelled = false;
+    if (url) tableOrderQrDataUrl(url).then((v) => !cancelled && setDataUrl(v));
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
+      <div className="w-full max-w-xs rounded-2xl bg-white p-6 text-center shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-neutral-900">Table {table.number} QR</h2>
+          <button onClick={onClose} className="rounded-full p-1 text-neutral-400 hover:bg-neutral-100">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        {dataUrl ? (
+          <img src={dataUrl} alt={`Table ${table.number} order QR`} className="mx-auto mb-4 h-48 w-48" />
+        ) : (
+          <div className="mx-auto mb-4 flex h-48 w-48 items-center justify-center text-sm text-neutral-400">Generating…</div>
+        )}
+        <p className="break-all text-xs text-neutral-400">{url}</p>
+        <p className="mt-2 text-xs text-neutral-400">Print this and stick it on the table — scanning it opens the menu with this table pre-selected.</p>
+      </div>
     </div>
   );
 }
@@ -370,7 +429,7 @@ function AddTableModal({ onClose, defaultArea }: { onClose: () => void; defaultA
           <button
             type="submit"
             disabled={pending}
-            className="w-full rounded-xl bg-teal-600 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full rounded-xl bg-[var(--brand)] py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {pending ? "Adding…" : "Add Table"}
           </button>
@@ -484,7 +543,7 @@ function AddReservationModal({
                   type="button"
                   onClick={() => setSource(s)}
                   className={`rounded-lg border px-2 py-1.5 text-xs font-medium capitalize ${
-                    source === s ? "border-teal-600 bg-teal-600 text-white" : "border-neutral-200 text-neutral-500"
+                    source === s ? "border-[var(--brand)] bg-[var(--brand)] text-white" : "border-neutral-200 text-neutral-500"
                   }`}
                 >
                   {s}
@@ -516,7 +575,7 @@ function AddReservationModal({
                 source,
               });
             }}
-            className="flex-1 rounded-xl bg-teal-600 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex-1 rounded-xl bg-[var(--brand)] py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             Save Reservation
           </button>

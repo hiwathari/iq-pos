@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CategoryIconView } from "@/components/category-icon";
 import type {
   Category,
   Dish,
@@ -15,7 +14,7 @@ import type {
   RestaurantTable,
   ThirdPartyProvider,
 } from "@/lib/types";
-import { formatMoney, formatOrderTimestamp, orderSequence } from "@/lib/types";
+import { formatMoney, formatOccupiedTime, formatOrderTimestamp, orderSequence, orderTotal } from "@/lib/types";
 import {
   mergeTableIntoOrderAction,
   placeOrderAction,
@@ -23,6 +22,11 @@ import {
   swapOrderTableAction,
   voidOrderAction,
 } from "@/lib/actions/orders";
+import { validateCouponAction } from "@/lib/actions/coupons";
+import { lookupOrCreateLoyaltyMemberAction } from "@/lib/actions/loyalty";
+import type { LoyaltyContactType } from "@/lib/types";
+import { setTableStatusAction } from "@/lib/actions/tables";
+import { setDishStockAction } from "@/lib/actions/menu";
 import { printTicket } from "@/lib/print-ticket";
 import { TableLayoutPicker } from "@/components/table-layout-picker";
 import {
@@ -49,12 +53,16 @@ import {
   ClipboardList,
   Armchair,
   Users,
+  Clock,
   Search,
   RefreshCw,
   XCircle,
   History,
   ArrowLeftRight,
   Combine,
+  QrCode,
+  FileClock,
+  Globe,
 } from "lucide-react";
 
 const QUEUE_TABS = ["All", "Dine in", "Wait List", "Take Away", "Delivery", "Served"] as const;
@@ -96,8 +104,6 @@ const CARD_TINTS: Record<Order["status"], string> = {
 const CHANNELS: OrderChannel[] = ["Dine in", "Wait List", "Take Away", "Delivery", "Online", "Third Party"];
 const THIRD_PARTY_PROVIDERS: ThirdPartyProvider[] = ["Uber Eats", "Deliveroo", "Just Eat", "Other"];
 
-const TAX_RATE = 0.06;
-
 interface CartState {
   editingOrderId: string | null;
   tableId: string | null;
@@ -111,6 +117,11 @@ interface CartState {
   customerAddress: string;
   payments: PaymentLine[];
   cashReceived: string;
+  extraDiscount: string;
+  couponCode: string;
+  appliedCoupon: { code: string; discount: number } | null;
+  loyaltyContact: string;
+  loyaltyMember: { id: string; code: string; name: string | null } | null;
 }
 
 const emptyCart: CartState = {
@@ -126,6 +137,11 @@ const emptyCart: CartState = {
   customerAddress: "",
   payments: [],
   cashReceived: "",
+  extraDiscount: "",
+  couponCode: "",
+  appliedCoupon: null,
+  loyaltyContact: "",
+  loyaltyMember: null,
 };
 
 export function OrderLineClient({
@@ -136,6 +152,8 @@ export function OrderLineClient({
   paymentTerminals,
   currencySymbol,
   restaurantName,
+  canDiscount,
+  taxEnabled,
   invoiceAddress,
   invoicePhone,
   invoiceWebsite,
@@ -149,6 +167,8 @@ export function OrderLineClient({
   paymentTerminals: PaymentTerminal[];
   currencySymbol: string;
   restaurantName: string;
+  canDiscount: boolean;
+  taxEnabled: boolean;
   invoiceAddress?: string;
   invoicePhone?: string;
   invoiceWebsite?: string;
@@ -173,7 +193,6 @@ export function OrderLineClient({
   const [tablesArea, setTablesArea] = useState<(typeof TABLE_AREAS)[number]>("Ground Floor");
   const [menuCategory, setMenuCategory] = useState<string>("all");
   const [menuSearch, setMenuSearch] = useState("");
-  const [donation, setDonation] = useState(true);
   const [noteEditorFor, setNoteEditorFor] = useState<string | null>(null);
   const [customItemModalOpen, setCustomItemModalOpen] = useState(false);
   // Open by default for a brand-new order so Order Type/table selection is the first thing
@@ -184,6 +203,8 @@ export function OrderLineClient({
   const [tableActionError, setTableActionError] = useState<string | null>(null);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
   const [voidModalOpen, setVoidModalOpen] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [loyaltyError, setLoyaltyError] = useState<string | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -267,12 +288,76 @@ export function OrderLineClient({
     const key = cart.channel === "Third Party" ? cart.thirdPartyProvider : cart.channel;
     return dish.channelPrices?.[key] ?? dish.price;
   };
-  const qtyFor = (dishId: string) => cart.items.find((i) => i.dishId === dishId)?.qty ?? 0;
+  // Snapshotted onto the cart line at add-time (see addToCart) so it survives into the placed
+  // order untouched — only relevant while the restaurant has tax turned on at all.
+  const taxRateFor = (dish: Dish) => {
+    if (!taxEnabled) return 0;
+    const category = categories.find((c) => c.id === dish.categoryId);
+    return category?.taxRatePercent ?? 0;
+  };
+  // Summed across every line for that dish — a dish can now sit in the cart as more than one
+  // line (see addToCart) once different lines carry different kitchen notes.
+  const qtyFor = (dishId: string) => cart.items.filter((i) => i.dishId === dishId).reduce((sum, i) => sum + i.qty, 0);
 
   const subtotal = cart.items.reduce((sum, i) => sum + i.price * i.qty, 0);
-  const tax = subtotal * TAX_RATE;
-  const donationAmount = donation && cart.items.length > 0 ? 1 : 0;
-  const total = subtotal + tax + donationAmount;
+  const extraDiscountAmount = Math.max(0, Math.min(subtotal, Number(cart.extraDiscount) || 0));
+  const couponDiscountAmount = cart.appliedCoupon
+    ? Math.max(0, Math.min(subtotal - extraDiscountAmount, cart.appliedCoupon.discount))
+    : 0;
+  const discountedSubtotal = Math.max(0, subtotal - extraDiscountAmount - couponDiscountAmount);
+  // Each line's own tax rate applies to its share of the discounted subtotal — mirrors
+  // orderTotal() in lib/types.ts so the live preview always matches what gets saved.
+  const rawTax = cart.items.reduce((sum, i) => sum + i.price * i.qty * ((i.taxRate ?? 0) / 100), 0);
+  const discountFactor = subtotal > 0 ? discountedSubtotal / subtotal : 0;
+  const tax = rawTax * discountFactor;
+  const total = discountedSubtotal + tax;
+
+  function applyCoupon() {
+    const code = cart.couponCode.trim();
+    if (!code) return;
+    setCouponError(null);
+    startTransition(async () => {
+      const result = await validateCouponAction(code, Math.max(0, subtotal - extraDiscountAmount));
+      if (result.error) {
+        setCouponError(result.error);
+        setCart((prev) => ({ ...prev, appliedCoupon: null }));
+        return;
+      }
+      setCart((prev) => ({ ...prev, appliedCoupon: { code: result.code!, discount: result.discount! } }));
+    });
+  }
+
+  function removeCoupon() {
+    setCouponError(null);
+    setCart((prev) => ({ ...prev, couponCode: "", appliedCoupon: null }));
+  }
+
+  function findOrEnrollLoyalty() {
+    const contact = cart.loyaltyContact.trim();
+    if (!contact) return;
+    const contactType: LoyaltyContactType = contact.includes("@") ? "email" : "phone";
+    setLoyaltyError(null);
+    startTransition(async () => {
+      const result = await lookupOrCreateLoyaltyMemberAction({
+        contactType,
+        contactValue: contact,
+        name: cart.customerName.trim() || undefined,
+      });
+      if (result.error || !result.member) {
+        setLoyaltyError(result.error ?? "Couldn't look up that customer.");
+        return;
+      }
+      setCart((prev) => ({
+        ...prev,
+        loyaltyMember: { id: result.member!.id, code: result.member!.code, name: result.member!.name },
+      }));
+    });
+  }
+
+  function removeLoyalty() {
+    setLoyaltyError(null);
+    setCart((prev) => ({ ...prev, loyaltyContact: "", loyaltyMember: null }));
+  }
 
   const editingOrder = cart.editingOrderId ? orders.find((o) => o.id === cart.editingOrderId) : null;
 
@@ -280,43 +365,67 @@ export function OrderLineClient({
     ref.current?.scrollBy({ left: dir * 260, behavior: "smooth" });
   }
 
+  // Only merges into an existing line for this dish if that line has no note — a line that
+  // already carries a comment (e.g. "no onions") never silently absorbs another tap and becomes
+  // "2x" with one shared note. A second, distinctly-commented order of the same dish gets its own
+  // line instead, each keeping its own note.
   function addToCart(dish: Dish) {
+    if (dish.outOfStock) return;
     setCart((prev) => {
-      const existing = prev.items.find((i) => i.dishId === dish.id);
+      const existing = prev.items.find((i) => i.dishId === dish.id && !i.note);
       if (existing) {
-        return { ...prev, items: prev.items.map((i) => (i.dishId === dish.id ? { ...i, qty: i.qty + 1 } : i)) };
+        return {
+          ...prev,
+          items: prev.items.map((i) => (i.lineId === existing.lineId ? { ...i, qty: i.qty + 1 } : i)),
+        };
       }
-      return { ...prev, items: [...prev.items, { dishId: dish.id, name: dish.name, price: priceFor(dish), qty: 1 }] };
+      return {
+        ...prev,
+        items: [
+          ...prev.items,
+          { dishId: dish.id, name: dish.name, price: priceFor(dish), qty: 1, lineId: crypto.randomUUID(), taxRate: taxRateFor(dish) },
+        ],
+      };
     });
   }
 
+  // Mirrors addToCart's targeting: shrinks the plain (note-less) line for this dish first, since
+  // that's the one the tile's own +/- controls build up; falls back to the last line for the dish
+  // only if every line for it already carries a distinct note.
   function decrementCartItem(dishId: string) {
-    setCart((prev) => ({
-      ...prev,
-      items: prev.items.map((i) => (i.dishId === dishId ? { ...i, qty: i.qty - 1 } : i)).filter((i) => i.qty > 0),
-    }));
+    setCart((prev) => {
+      const matches = prev.items.filter((i) => i.dishId === dishId);
+      if (matches.length === 0) return prev;
+      const target = matches.find((i) => !i.note) ?? matches[matches.length - 1];
+      return {
+        ...prev,
+        items: prev.items
+          .map((i) => (i.lineId === target.lineId ? { ...i, qty: i.qty - 1 } : i))
+          .filter((i) => i.qty > 0),
+      };
+    });
   }
 
-  function removeCartItem(dishId: string) {
-    setCart((prev) => ({ ...prev, items: prev.items.filter((i) => i.dishId !== dishId) }));
+  function removeCartItem(lineId: string) {
+    setCart((prev) => ({ ...prev, items: prev.items.filter((i) => (i.lineId ?? i.dishId) !== lineId) }));
   }
 
   function addCustomItem(name: string, price: number, qty: number) {
     setCart((prev) => ({
       ...prev,
-      items: [...prev.items, { dishId: `custom:${crypto.randomUUID()}`, name, price, qty }],
+      items: [...prev.items, { dishId: `custom:${crypto.randomUUID()}`, name, price, qty, lineId: crypto.randomUUID() }],
     }));
   }
 
-  function updateItemNote(dishId: string, note: string) {
+  function updateItemNote(lineId: string, note: string) {
     setCart((prev) => ({
       ...prev,
-      items: prev.items.map((i) => (i.dishId === dishId ? { ...i, note: note || undefined } : i)),
+      items: prev.items.map((i) => ((i.lineId ?? i.dishId) === lineId ? { ...i, note: note || undefined } : i)),
     }));
   }
 
   function loadOrderIntoCart(order: Order) {
-    const orderTotalAmount = order.items.reduce((sum, i) => sum + i.price * i.qty, 0) * (1 + TAX_RATE) + (order.donation ?? 0);
+    const orderTotalAmount = orderTotal(order);
     const payments: PaymentLine[] =
       order.payments?.length ? order.payments : order.paymentMethod ? [{ method: order.paymentMethod, amount: orderTotalAmount }] : [];
 
@@ -327,14 +436,22 @@ export function OrderLineClient({
       guests: order.guests,
       channel: order.channel,
       thirdPartyProvider: order.thirdPartyProvider ?? "Uber Eats",
-      items: order.items,
+      // Backfills a lineId for items placed before this existed, so every line in the cart has a
+      // stable identity to edit/remove/toggle by regardless of when the order was first placed.
+      items: order.items.map((i) => ({ ...i, lineId: i.lineId ?? crypto.randomUUID() })),
       customerName: order.customerName ?? "",
       customerPhone: order.customerPhone ?? "",
       customerAddress: order.customerAddress ?? "",
       payments,
       cashReceived: order.cashReceived ? String(order.cashReceived) : "",
+      extraDiscount: order.extraDiscount ? String(order.extraDiscount) : "",
+      couponCode: order.couponCode ?? "",
+      appliedCoupon: order.couponCode ? { code: order.couponCode, discount: order.couponDiscount ?? 0 } : null,
+      loyaltyContact: "",
+      loyaltyMember: order.loyaltyMemberId ? { id: order.loyaltyMemberId, code: "", name: null } : null,
     });
-    setDonation((order.donation ?? 0) > 0);
+    setCouponError(null);
+    setLoyaltyError(null);
     setTableEditorOpen(false);
     setMobileCartOpen(true);
     setView("order");
@@ -347,6 +464,25 @@ export function OrderLineClient({
         o.status !== "Voided" &&
         !isOrderClosedOut(o)
     );
+  }
+
+  // Toggled from a dish tile's corner badge — lets floor staff 86 an item the moment it runs
+  // out, without waiting on Manage Dishes or the Kitchen Display to do it.
+  function handleToggleStock(dish: Dish) {
+    startTransition(async () => {
+      await setDishStockAction(dish.id, !dish.outOfStock);
+      router.refresh();
+    });
+  }
+
+  // Frees a table straight from the Tables view — for a walk-in seated but who left before
+  // ordering (or a table left occupied after its only order was voided), so staff don't have
+  // to jump to Manage Table just to release it.
+  function handleClearTable(table: RestaurantTable) {
+    startTransition(async () => {
+      await setTableStatusAction(table.id, "available", 0);
+      router.refresh();
+    });
   }
 
   function handleTableSelect(table: RestaurantTable) {
@@ -381,13 +517,16 @@ export function OrderLineClient({
         items: cart.items,
         payments: cart.payments,
         cashReceived: cashLine ? cashReceivedAmount || undefined : undefined,
-        donation: donationAmount,
+        extraDiscount: extraDiscountAmount || undefined,
+        couponCode: cart.appliedCoupon?.code,
+        loyaltyMemberId: cart.loyaltyMember?.id,
         customerName: cart.customerName.trim() || undefined,
         customerPhone: cart.customerPhone.trim() || undefined,
         customerAddress: cart.customerAddress.trim() || undefined,
       });
       setCart(emptyCart);
-      setDonation(true);
+      setCouponError(null);
+      setLoyaltyError(null);
       setTableEditorOpen(true);
       setMobileCartOpen(false);
       router.refresh();
@@ -449,7 +588,9 @@ export function OrderLineClient({
       items: cart.items,
       subtotal,
       tax,
-      donation: donationAmount,
+      extraDiscount: extraDiscountAmount || undefined,
+      couponCode: cart.appliedCoupon?.code,
+      couponDiscount: couponDiscountAmount || undefined,
       total,
       currencySymbol,
       customerName: cart.customerName || undefined,
@@ -478,9 +619,15 @@ export function OrderLineClient({
     tables,
     subtotal,
     tax,
-    donation,
-    setDonation,
-    donationAmount,
+    canDiscount,
+    extraDiscountAmount,
+    couponDiscountAmount,
+    couponError,
+    applyCoupon,
+    removeCoupon,
+    loyaltyError,
+    findOrEnrollLoyalty,
+    removeLoyalty,
     total,
     paymentsTotal,
     paymentsRemaining,
@@ -531,36 +678,62 @@ export function OrderLineClient({
 
       {/* Main column */}
       <div className="flex-1 overflow-y-auto p-6 pb-24 lg:pb-6">
-        <div className="mb-5 flex items-center justify-between">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-xl font-semibold text-neutral-900">Till</h1>
-          <div className="flex items-center gap-1 rounded-2xl border border-neutral-200 bg-white p-1">
-            <TopViewTab
-              active={view === "order"}
-              icon={ShoppingBag}
-              label="Order"
-              onClick={() => setView("order")}
-            />
-            <TopViewTab
-              active={view === "tickets"}
-              icon={ClipboardList}
-              label="Open Tickets"
-              count={queueCounts.All}
-              onClick={() => setView("tickets")}
-            />
-            <TopViewTab
-              active={view === "tables"}
-              icon={LayoutGrid}
-              label="Tables"
-              onClick={() => setView("tables")}
-            />
-            <TopViewTab
-              active={view === "history"}
-              icon={History}
-              label="History"
-              onClick={() => setView("history")}
-            />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => window.location.reload()}
+              title="Refresh — reloads the page and clears any cached data"
+              className="flex items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-500 hover:bg-neutral-50"
+            >
+              <RefreshCw className="h-4 w-4" /> Refresh
+            </button>
+            <div className="flex items-center gap-1 rounded-2xl border border-neutral-200 bg-white p-1">
+              <TopViewTab
+                active={view === "order"}
+                icon={ShoppingBag}
+                label="Order"
+                onClick={() => setView("order")}
+              />
+              <TopViewTab
+                active={view === "tickets"}
+                icon={ClipboardList}
+                label="Open Tickets"
+                count={queueCounts.All}
+                onClick={() => setView("tickets")}
+              />
+              <TopViewTab
+                active={view === "tables"}
+                icon={LayoutGrid}
+                label="Tables"
+                onClick={() => setView("tables")}
+              />
+              <TopViewTab
+                active={view === "history"}
+                icon={History}
+                label="History"
+                onClick={() => setView("history")}
+              />
+            </div>
           </div>
         </div>
+
+        {view === "order" && (
+          <div className="mb-5 flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => {
+                setCart(emptyCart);
+                setTableEditorOpen(true);
+                setMobileCartOpen(false);
+              }}
+              className="flex items-center gap-1.5 rounded-xl bg-[var(--brand)] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[var(--brand-dark)]"
+            >
+              <Plus className="h-3.5 w-3.5" /> New Order
+            </button>
+            <ComingSoonButton icon={QrCode} label="QR Menu Orders" />
+            <ComingSoonButton icon={FileClock} label="Draft List" />
+          </div>
+        )}
 
         {view === "order" && (
           <>
@@ -595,22 +768,9 @@ export function OrderLineClient({
             </div>
             {!menuSearch && (
               <div ref={menuRef} className="mb-6 flex gap-3 overflow-x-auto pb-1 scroll-smooth">
-                <MenuTab
-                  active={menuCategory === "all"}
-                  icon="all"
-                  label="All Menu"
-                  count={dishes.length}
-                  onClick={() => setMenuCategory("all")}
-                />
+                <MenuTab active={menuCategory === "all"} label="All Menu" onClick={() => setMenuCategory("all")} />
                 {categories.map((c) => (
-                  <MenuTab
-                    key={c.id}
-                    active={menuCategory === c.id}
-                    icon={c.icon}
-                    label={c.name}
-                    count={dishes.filter((d) => d.categoryId === c.id).length}
-                    onClick={() => setMenuCategory(c.id)}
-                  />
+                  <MenuTab key={c.id} active={menuCategory === c.id} label={c.name} onClick={() => setMenuCategory(c.id)} />
                 ))}
               </div>
             )}
@@ -628,15 +788,32 @@ export function OrderLineClient({
                 return (
                   <div
                     key={dish.id}
-                    className={`flex flex-col rounded-2xl border bg-white p-4 transition-shadow hover:shadow-md ${
-                      qty > 0 ? "border-teal-400 ring-1 ring-teal-100" : "border-neutral-200"
+                    className={`relative flex flex-col rounded-2xl border bg-white p-4 transition-shadow ${
+                      dish.outOfStock
+                        ? "border-neutral-200 opacity-60"
+                        : qty > 0
+                          ? "border-teal-400 ring-1 ring-teal-100 hover:shadow-md"
+                          : "border-neutral-200 hover:shadow-md"
                     }`}
                   >
+                    <button
+                      onClick={() => handleToggleStock(dish)}
+                      title={dish.outOfStock ? "Mark back in stock" : "Mark out of stock"}
+                      className={`absolute right-2.5 top-2.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white shadow-sm ${
+                        dish.outOfStock ? "bg-rose-500 text-white hover:bg-rose-600" : "bg-white text-neutral-300 hover:text-rose-500"
+                      }`}
+                    >
+                      <Ban className="h-3.5 w-3.5" />
+                    </button>
                     {dish.imageUrl ? (
-                      <img src={dish.imageUrl} alt={dish.name} className="mb-3 h-14 w-14 rounded-xl object-cover" />
+                      <img
+                        src={dish.imageUrl}
+                        alt={dish.name}
+                        className={`mb-3 h-14 w-14 rounded-xl object-cover ${dish.outOfStock ? "grayscale" : ""}`}
+                      />
                     ) : (
                       <div
-                        className="mb-3 flex h-14 w-14 items-center justify-center rounded-full text-2xl"
+                        className={`mb-3 flex h-14 w-14 items-center justify-center rounded-full text-2xl ${dish.outOfStock ? "grayscale" : ""}`}
                         style={{ backgroundColor: dish.color }}
                       >
                         {dish.emoji}
@@ -651,22 +828,26 @@ export function OrderLineClient({
                         {formatMoney(price, currencySymbol)}
                         {price !== dish.price && <span className="ml-1 text-[10px] font-normal text-teal-600">({cart.channel})</span>}
                       </span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => decrementCartItem(dish.id)}
-                          disabled={qty === 0}
-                          className="flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 text-neutral-500 hover:bg-neutral-50 disabled:opacity-30"
-                        >
-                          <Minus className="h-3.5 w-3.5" />
-                        </button>
-                        <span className="w-4 text-center text-sm font-semibold text-neutral-800">{qty}</span>
-                        <button
-                          onClick={() => addToCart(dish)}
-                          className="flex h-7 w-7 items-center justify-center rounded-full bg-teal-600 text-white hover:bg-teal-700"
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                      {dish.outOfStock ? (
+                        <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">Sold Out</span>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => decrementCartItem(dish.id)}
+                            disabled={qty === 0}
+                            className="flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 text-neutral-500 hover:bg-neutral-50 disabled:opacity-30"
+                          >
+                            <Minus className="h-3.5 w-3.5" />
+                          </button>
+                          <span className="w-4 text-center text-sm font-semibold text-neutral-800">{qty}</span>
+                          <button
+                            onClick={() => addToCart(dish)}
+                            className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--brand)] text-white hover:bg-[var(--brand-dark)]"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -688,7 +869,7 @@ export function OrderLineClient({
                   onClick={() => setQueueTab(tab)}
                   className={`flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
                     queueTab === tab
-                      ? "border-teal-600 bg-teal-600 text-white"
+                      ? "border-[var(--brand)] bg-[var(--brand)] text-white"
                       : "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
                   }`}
                 >
@@ -731,6 +912,7 @@ export function OrderLineClient({
             setArea={setTablesArea}
             cartTableId={cart.tableId}
             onSelect={handleTableSelect}
+            onClear={handleClearTable}
           />
         )}
 
@@ -767,7 +949,7 @@ export function OrderLineClient({
       {!mobileCartOpen && (
         <button
           onClick={() => setMobileCartOpen(true)}
-          className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-teal-600 px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-teal-600/30 lg:hidden"
+          className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-[var(--brand)] px-5 py-3.5 text-sm font-semibold text-white shadow-lg lg:hidden"
         >
           <ShoppingBag className="h-4 w-4" />
           {cart.items.reduce((s, i) => s + i.qty, 0)} · {formatMoney(total, currencySymbol)}
@@ -829,9 +1011,15 @@ interface CartPanelProps {
   tables: RestaurantTable[];
   subtotal: number;
   tax: number;
-  donation: boolean;
-  setDonation: (v: boolean) => void;
-  donationAmount: number;
+  canDiscount: boolean;
+  extraDiscountAmount: number;
+  couponDiscountAmount: number;
+  couponError: string | null;
+  applyCoupon: () => void;
+  removeCoupon: () => void;
+  loyaltyError: string | null;
+  findOrEnrollLoyalty: () => void;
+  removeLoyalty: () => void;
   total: number;
   paymentsTotal: number;
   paymentsRemaining: number;
@@ -842,7 +1030,7 @@ interface CartPanelProps {
   removeCartItem: (id: string) => void;
   noteEditorFor: string | null;
   setNoteEditorFor: (v: string | null) => void;
-  updateItemNote: (dishId: string, note: string) => void;
+  updateItemNote: (lineId: string, note: string) => void;
   onAddCustomItem: () => void;
   handlePlaceOrder: () => void;
   handleAdvanceStatus: (next: OrderStatus) => void;
@@ -865,9 +1053,15 @@ function CartPanel({
   tables,
   subtotal,
   tax,
-  donation,
-  setDonation,
-  donationAmount,
+  canDiscount,
+  extraDiscountAmount,
+  couponDiscountAmount,
+  couponError,
+  applyCoupon,
+  removeCoupon,
+  loyaltyError,
+  findOrEnrollLoyalty,
+  removeLoyalty,
   total,
   paymentsTotal,
   paymentsRemaining,
@@ -1005,7 +1199,7 @@ function CartPanel({
                   key={c}
                   onClick={() => setCart((prev) => ({ ...prev, channel: c }))}
                   className={`rounded-lg border px-2 py-1.5 text-xs font-medium ${
-                    cart.channel === c ? "border-teal-600 bg-teal-600 text-white" : "border-neutral-200 text-neutral-500"
+                    cart.channel === c ? "border-[var(--brand)] bg-[var(--brand)] text-white" : "border-neutral-200 text-neutral-500"
                   }`}
                 >
                   {c}
@@ -1046,7 +1240,7 @@ function CartPanel({
                   <button
                     type="button"
                     onClick={() => setCart((prev) => ({ ...prev, guests: prev.guests + 1 }))}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-teal-600 text-white hover:bg-teal-700 active:scale-95"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[var(--brand)] text-white hover:bg-[var(--brand-dark)] active:scale-95"
                   >
                     <Plus className="h-5 w-5" />
                   </button>
@@ -1154,8 +1348,10 @@ function CartPanel({
               Tap a dish to add it to the order.
             </div>
           )}
-          {cart.items.map((item) => (
-            <div key={item.dishId} className="space-y-1.5">
+          {cart.items.map((item) => {
+            const lineId = item.lineId ?? item.dishId;
+            return (
+            <div key={lineId} className="space-y-1.5">
               <div className="flex items-center justify-between gap-2 text-sm">
                 <div className="flex min-w-0 items-center gap-2">
                   <span className="shrink-0 font-semibold text-teal-600">{item.qty}x</span>
@@ -1164,25 +1360,25 @@ function CartPanel({
                 <div className="flex shrink-0 items-center gap-1.5">
                   <span className="font-semibold text-neutral-800">{formatMoney(item.price * item.qty, currencySymbol)}</span>
                   <button
-                    onClick={() => setNoteEditorFor(noteEditorFor === item.dishId ? null : item.dishId)}
+                    onClick={() => setNoteEditorFor(noteEditorFor === lineId ? null : lineId)}
                     title="Add note for kitchen"
                     className={`rounded p-0.5 ${item.note ? "text-amber-500" : "text-neutral-300 hover:text-teal-600"}`}
                   >
                     <MessageSquarePlus className="h-3.5 w-3.5" />
                   </button>
-                  <button onClick={() => removeCartItem(item.dishId)} className="text-neutral-300 hover:text-rose-500">
+                  <button onClick={() => removeCartItem(lineId)} className="text-neutral-300 hover:text-rose-500">
                     <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
-              {item.note && noteEditorFor !== item.dishId && (
+              {item.note && noteEditorFor !== lineId && (
                 <div className="ml-5 text-xs italic text-amber-600">Note: {item.note}</div>
               )}
-              {noteEditorFor === item.dishId && (
+              {noteEditorFor === lineId && (
                 <input
                   autoFocus
                   value={item.note ?? ""}
-                  onChange={(e) => updateItemNote(item.dishId, e.target.value)}
+                  onChange={(e) => updateItemNote(lineId, e.target.value)}
                   onBlur={() => setNoteEditorFor(null)}
                   onKeyDown={(e) => e.key === "Enter" && setNoteEditorFor(null)}
                   placeholder="e.g. no onions, extra spicy…"
@@ -1190,8 +1386,43 @@ function CartPanel({
                 />
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
+      </div>
+
+      <div className="space-y-2 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+        <h3 className="flex items-center gap-1.5 text-sm font-semibold text-neutral-900">
+          <CreditCard className="h-4 w-4 text-neutral-400" /> Loyalty Card
+        </h3>
+        {cart.loyaltyMember ? (
+          <div className="flex items-center justify-between rounded-lg bg-white px-3 py-2">
+            <div>
+              <div className="font-mono text-sm font-semibold text-neutral-800">{cart.loyaltyMember.code || "Attached"}</div>
+              {cart.loyaltyMember.name && <div className="text-xs text-neutral-500">{cart.loyaltyMember.name}</div>}
+            </div>
+            <button onClick={removeLoyalty} className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-500 hover:bg-neutral-50">
+              Remove
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <input
+              value={cart.loyaltyContact}
+              onChange={(e) => setCart((prev) => ({ ...prev, loyaltyContact: e.target.value }))}
+              placeholder="Phone or email"
+              className="flex-1 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm outline-none focus:border-teal-500"
+            />
+            <button
+              onClick={findOrEnrollLoyalty}
+              disabled={!cart.loyaltyContact.trim()}
+              className="shrink-0 rounded-lg bg-[var(--brand)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--brand-dark)] disabled:opacity-50"
+            >
+              Find / Enroll
+            </button>
+          </div>
+        )}
+        {loyaltyError && <p className="text-xs font-medium text-rose-600">{loyaltyError}</p>}
       </div>
 
       <div>
@@ -1201,22 +1432,76 @@ function CartPanel({
             <span>Subtotal</span>
             <span>{formatMoney(subtotal, currencySymbol)}</span>
           </div>
-          <div className="flex justify-between text-sm text-neutral-500">
-            <span>Tax (6%)</span>
-            <span>{formatMoney(tax, currencySymbol)}</span>
+
+          {canDiscount && (
+            <div className="flex items-center justify-between gap-2 text-sm text-neutral-500">
+              <span>Extra Discount</span>
+              <div className="relative w-28">
+                <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-neutral-400">
+                  {currencySymbol}
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={cart.extraDiscount}
+                  onChange={(e) => setCart((prev) => ({ ...prev, extraDiscount: e.target.value }))}
+                  placeholder="0.00"
+                  className="w-full rounded-lg border border-neutral-200 py-1.5 pl-6 pr-2 text-right text-sm outline-none focus:border-teal-500"
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            {canDiscount && (
+              <div className="flex items-center gap-2">
+                <input
+                  value={cart.couponCode}
+                  onChange={(e) => setCart((prev) => ({ ...prev, couponCode: e.target.value.toUpperCase() }))}
+                  placeholder="Coupon code"
+                  disabled={!!cart.appliedCoupon}
+                  className="flex-1 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-mono uppercase outline-none focus:border-teal-500 disabled:bg-neutral-50 disabled:text-neutral-400"
+                />
+                {cart.appliedCoupon ? (
+                  <button
+                    onClick={removeCoupon}
+                    className="shrink-0 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-500 hover:bg-neutral-50"
+                  >
+                    Remove
+                  </button>
+                ) : (
+                  <button
+                    onClick={applyCoupon}
+                    disabled={!cart.couponCode.trim()}
+                    className="shrink-0 rounded-lg bg-[var(--brand)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--brand-dark)] disabled:opacity-50"
+                  >
+                    Apply
+                  </button>
+                )}
+              </div>
+            )}
+            {canDiscount && couponError && <p className="text-xs font-medium text-rose-600">{couponError}</p>}
+            {cart.appliedCoupon && (
+              <div className="flex justify-between text-sm text-emerald-600">
+                <span>Coupon {cart.appliedCoupon.code}</span>
+                <span>-{formatMoney(couponDiscountAmount, currencySymbol)}</span>
+              </div>
+            )}
+            {extraDiscountAmount > 0 && (
+              <div className="flex justify-between text-sm text-neutral-500">
+                <span>Extra discount applied</span>
+                <span>-{formatMoney(extraDiscountAmount, currencySymbol)}</span>
+              </div>
+            )}
           </div>
-          <label className="flex items-center justify-between text-sm text-neutral-500">
-            <span className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={donation}
-                onChange={(e) => setDonation(e.target.checked)}
-                className="h-3.5 w-3.5 accent-teal-600"
-              />
-              Donation for Palestine
-            </span>
-            <span>{formatMoney(donationAmount, currencySymbol)}</span>
-          </label>
+
+          {tax > 0 && (
+            <div className="flex justify-between text-sm text-neutral-500">
+              <span>Tax</span>
+              <span>{formatMoney(tax, currencySymbol)}</span>
+            </div>
+          )}
           <div className="flex justify-between border-t border-neutral-100 pt-2 text-base font-semibold text-neutral-900">
             <span>Total Payable</span>
             <span>{formatMoney(total, currencySymbol)}</span>
@@ -1239,6 +1524,7 @@ function CartPanel({
               <PaymentButton
                 key={t.id}
                 icon={CreditCard}
+                logoUrl={t.logoUrl}
                 label={t.name}
                 active={cart.payments.some((p) => p.method === t.name)}
                 onClick={() => togglePaymentLine(t.name)}
@@ -1333,7 +1619,7 @@ function CartPanel({
                 ? "No payment taken yet — order will be sent to the kitchen and can be settled later"
                 : undefined
             }
-            className="flex-1 rounded-xl bg-teal-600 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex-1 rounded-xl bg-[var(--brand)] py-3.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             {cart.editingOrderId
               ? isFullyPaid
@@ -1465,7 +1751,7 @@ function CustomItemModal({
           <button
             disabled={!canSave}
             onClick={() => onSave(name.trim(), Number(price), qty)}
-            className="flex-1 rounded-xl bg-teal-600 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex-1 rounded-xl bg-[var(--brand)] py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             Add to Order
           </button>
@@ -1516,6 +1802,11 @@ function OrderCard({
           <RefreshCw className="h-3 w-3" /> Updated
         </span>
       )}
+      {order.placedVia !== "staff" && (
+        <span className="flex w-fit items-center gap-1 rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
+          <Globe className="h-3 w-3" /> {order.placedVia === "kiosk" ? "Kiosk" : "Online"}
+        </span>
+      )}
       <div className="flex items-center justify-between">
         <span className="text-xs text-neutral-400">{formatOrderTimestamp(order.createdAt)}</span>
         <div className="flex items-center gap-1.5">
@@ -1548,7 +1839,7 @@ function TopViewTab({
     <button
       onClick={onClick}
       className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-colors ${
-        active ? "bg-teal-600 text-white" : "text-neutral-500 hover:bg-neutral-50"
+        active ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
       }`}
     >
       <Icon className="h-4 w-4" />
@@ -1562,6 +1853,24 @@ function TopViewTab({
           {count}
         </span>
       )}
+    </button>
+  );
+}
+
+// A visible placeholder for a feature that isn't built yet (kiosk/online ordering feed the QR
+// menu, and a save-and-recall draft queue) — shown rather than omitted, so the toolbar reads as
+// complete and staff know it's coming rather than wondering if it's broken.
+function ComingSoonButton({ icon: Icon, label }: { icon: typeof ShoppingBag; label: string }) {
+  return (
+    <button
+      disabled
+      title="Coming soon"
+      className="flex cursor-not-allowed items-center gap-1.5 rounded-xl border border-dashed border-neutral-200 px-3.5 py-2 text-xs font-semibold text-neutral-400"
+    >
+      <Icon className="h-3.5 w-3.5" /> {label}
+      <span className="rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-neutral-400">
+        Soon
+      </span>
     </button>
   );
 }
@@ -1585,6 +1894,7 @@ function TablesOverview({
   setArea,
   cartTableId,
   onSelect,
+  onClear,
 }: {
   tables: RestaurantTable[];
   orders: Order[];
@@ -1592,8 +1902,15 @@ function TablesOverview({
   setArea: (a: (typeof TABLE_AREAS)[number]) => void;
   cartTableId: string | null;
   onSelect: (table: RestaurantTable) => void;
+  onClear: (table: RestaurantTable) => void;
 }) {
   const areaTables = tables.filter((t) => t.area === area);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(id);
+  }, []);
 
   return (
     <div>
@@ -1603,7 +1920,7 @@ function TablesOverview({
             key={a}
             onClick={() => setArea(a)}
             className={`flex-1 rounded-lg py-2 text-sm font-medium transition-colors ${
-              area === a ? "bg-teal-600 text-white" : "text-neutral-500 hover:bg-neutral-50"
+              area === a ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
             }`}
           >
             {a}
@@ -1632,32 +1949,54 @@ function TablesOverview({
               !isOrderClosedOut(o)
           );
           const isMergedIn = order && order.tableId !== table.id;
+          // A table can be occupied with nothing to show for it — a walk-in seated then left,
+          // or its only order got voided — so staff can free it here instead of via Manage Table.
+          const canClear = table.status === "on-dine" && !order;
           return (
-            <button
-              key={table.id}
-              onClick={() => onSelect(table)}
-              className={`flex flex-col items-center justify-center gap-1 rounded-2xl border-2 p-4 transition-transform hover:scale-[1.02] ${
-                TABLE_STATUS_CARD[table.status]
-              } ${table.id === cartTableId ? "ring-2 ring-teal-500" : ""}`}
-            >
-              <span className="flex items-center gap-1.5 text-sm font-semibold text-neutral-800">
-                <span className={`h-2 w-2 rounded-full ${TABLE_STATUS_DOT[table.status]}`} />
-                Table #{table.number}
-              </span>
-              <span className="flex items-center gap-1 text-xs text-neutral-500">
-                <Armchair className="h-3 w-3" /> {table.capacity}
-                {table.status === "on-dine" && (
-                  <span className="ml-1 flex items-center gap-0.5">
-                    <Users className="h-3 w-3" /> {table.seated}
+            <div key={table.id} className="relative">
+              <button
+                onClick={() => onSelect(table)}
+                className={`flex w-full flex-col items-center justify-center gap-1 rounded-2xl border-2 p-4 transition-transform hover:scale-[1.02] ${
+                  TABLE_STATUS_CARD[table.status]
+                } ${table.id === cartTableId ? "ring-2 ring-teal-500" : ""}`}
+              >
+                <span className="flex items-center gap-1.5 text-sm font-semibold text-neutral-800">
+                  <span className={`h-2 w-2 rounded-full ${TABLE_STATUS_DOT[table.status]}`} />
+                  Table #{table.number}
+                </span>
+                <span className="flex items-center gap-1 text-xs text-neutral-500">
+                  <Armchair className="h-3 w-3" /> {table.capacity}
+                  {table.status === "on-dine" && (
+                    <span className="ml-1 flex items-center gap-0.5">
+                      <Users className="h-3 w-3" /> {table.seated}
+                    </span>
+                  )}
+                </span>
+                {table.status === "on-dine" && table.seatedAt && (
+                  <span className="flex items-center gap-1 text-[11px] font-semibold text-teal-700">
+                    <Clock className="h-3 w-3" /> {formatOccupiedTime(now - table.seatedAt)}
                   </span>
                 )}
-              </span>
-              {order && (
-                <span className={`mt-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[order.status]}`}>
-                  {isMergedIn ? `Merged → #${order.tableNumber}` : `#${order.orderNumber} · ${order.status}`}
-                </span>
+                {order && (
+                  <span className={`mt-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[order.status]}`}>
+                    {isMergedIn ? `Merged → #${order.tableNumber}` : `#${order.orderNumber} · ${order.status}`}
+                  </span>
+                )}
+                {canClear && <span className="mt-1 text-[10px] font-medium text-neutral-400">No order yet</span>}
+              </button>
+              {canClear && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClear(table);
+                  }}
+                  title="Customer left — clear this table"
+                  className="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-rose-500 text-white shadow-sm hover:bg-rose-600"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
               )}
-            </button>
+            </div>
           );
         })}
         {areaTables.length === 0 && (
@@ -1668,42 +2007,28 @@ function TablesOverview({
   );
 }
 
-function MenuTab({
-  active,
-  icon,
-  label,
-  count,
-  onClick,
-}: {
-  active: boolean;
-  icon: string;
-  label: string;
-  count: number;
-  onClick: () => void;
-}) {
+function MenuTab({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className={`flex shrink-0 flex-col items-start gap-2 rounded-2xl border px-4 py-3 text-left transition-colors ${
-        active ? "border-teal-600 bg-teal-50" : "border-neutral-200 bg-white hover:bg-neutral-50"
+      className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition-colors ${
+        active ? "border-[var(--brand)] bg-[var(--brand)] text-white" : "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
       }`}
     >
-      <span className={`flex h-7 w-7 items-center justify-center rounded-lg ${active ? "bg-teal-600 text-white" : "bg-neutral-100 text-neutral-500"}`}>
-        {icon === "all" ? <LayoutGrid className="h-4 w-4" /> : <CategoryIconView icon={icon} className="h-4 w-4" />}
-      </span>
-      <span className="text-sm font-semibold text-neutral-800">{label}</span>
-      <span className="text-xs text-neutral-400">{count} items</span>
+      {label}
     </button>
   );
 }
 
 function PaymentButton({
   icon: Icon,
+  logoUrl,
   label,
   active,
   onClick,
 }: {
   icon: typeof Wallet;
+  logoUrl?: string | null;
   label: string;
   active: boolean;
   onClick: () => void;
@@ -1712,10 +2037,10 @@ function PaymentButton({
     <button
       onClick={onClick}
       className={`flex flex-col items-center gap-1.5 rounded-xl border py-2.5 text-xs font-medium transition-colors ${
-        active ? "border-teal-600 bg-teal-50 text-teal-700" : "border-neutral-200 text-neutral-500 hover:bg-neutral-50"
+        active ? "border-[var(--brand)] bg-[var(--brand-light)] text-[var(--brand-dark)]" : "border-neutral-200 text-neutral-500 hover:bg-neutral-50"
       }`}
     >
-      <Icon className="h-4 w-4" />
+      {logoUrl ? <img src={logoUrl} alt="" className="h-4 w-4 rounded object-contain" /> : <Icon className="h-4 w-4" />}
       {label}
     </button>
   );
@@ -1744,7 +2069,7 @@ function StatusStepper({ status, onAdvance }: { status: Order["status"]; onAdvan
       disabled={!next}
       onClick={() => next && onAdvance(next)}
       className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
-        next ? "bg-teal-600 text-white hover:bg-teal-700" : "bg-neutral-200 text-neutral-500"
+        next ? "bg-[var(--brand)] text-white hover:bg-[var(--brand-dark)]" : "bg-neutral-200 text-neutral-500"
       }`}
     >
       {STATUS_ACTION_LABEL[status]}

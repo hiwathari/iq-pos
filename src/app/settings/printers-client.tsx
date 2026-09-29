@@ -54,7 +54,7 @@ export function PrintersClient({ printers }: { printers: Printer[] }) {
         </div>
         <button
           onClick={() => setModalOpen(true)}
-          className="flex shrink-0 items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-700"
+          className="flex shrink-0 items-center gap-2 rounded-xl bg-[var(--brand)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)]"
         >
           <Plus className="h-4 w-4" /> Add Printer
         </button>
@@ -212,7 +212,7 @@ function AddPrinterModal({ onClose }: { onClose: () => void }) {
           <button
             onClick={save}
             disabled={!name.trim()}
-            className="flex-1 rounded-xl bg-teal-600 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex-1 rounded-xl bg-[var(--brand)] py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             Add Printer
           </button>

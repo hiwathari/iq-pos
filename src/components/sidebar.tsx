@@ -15,6 +15,9 @@ import {
   ChefHat as KitchenIcon,
   BarChart3,
   Tags,
+  TicketPercent,
+  CreditCard,
+  Package,
 } from "lucide-react";
 import { Logo } from "./logo";
 import clsx from "clsx";
@@ -28,6 +31,9 @@ const NAV = [
   { href: "/manage-table", label: "Manage Table", icon: Table2, roles: ["admin", "staff"] as Role[] },
   { href: "/manage-dishes", label: "Manage Dishes", icon: ChefHat, roles: ["admin"] as Role[] },
   { href: "/pricing", label: "Channel Pricing", icon: Tags, roles: ["admin"] as Role[] },
+  { href: "/coupons", label: "Coupons", icon: TicketPercent, roles: ["admin"] as Role[] },
+  { href: "/loyalty", label: "Loyalty Cards", icon: CreditCard, roles: ["admin"] as Role[] },
+  { href: "/inventory", label: "Inventory", icon: Package, roles: ["admin"] as Role[] },
   { href: "/customers", label: "Customers", icon: Users, roles: ["admin", "staff"] as Role[] },
   { href: "/reports", label: "Reports", icon: BarChart3, roles: ["admin"] as Role[] },
   { href: "/settings", label: "Settings", icon: Settings, roles: ["admin"] as Role[] },
@@ -39,7 +45,7 @@ export function Sidebar({ role, name }: { role: Role; name: string }) {
   const items = role === "super_admin" ? [] : NAV.filter((item) => item.roles.includes(role));
 
   return (
-    <aside className="hidden md:flex md:w-60 shrink-0 flex-col border-r border-neutral-200 bg-white px-4 py-5">
+    <aside className="hidden md:flex md:w-60 shrink-0 flex-col border-r border-neutral-200 bg-white px-4 py-5 print:hidden">
       <div className="px-2 mb-8">
         <Logo />
       </div>
@@ -50,7 +56,7 @@ export function Sidebar({ role, name }: { role: Role; name: string }) {
             className={clsx(
               "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
               pathname === "/super-admin"
-                ? "bg-teal-600 text-white shadow-sm shadow-teal-200"
+                ? "bg-[var(--brand)] text-white shadow-sm"
                 : "text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800"
             )}
           >
@@ -68,7 +74,7 @@ export function Sidebar({ role, name }: { role: Role; name: string }) {
               className={clsx(
                 "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
                 active
-                  ? "bg-teal-600 text-white shadow-sm shadow-teal-200"
+                  ? "bg-[var(--brand)] text-white shadow-sm"
                   : "text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800"
               )}
             >
