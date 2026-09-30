@@ -42,6 +42,12 @@ export const restaurants = sqliteTable("restaurants", {
   // on in Settings. Once on, each menu category's own taxRatePercent (see categories below) is
   // what actually gets applied, not a single restaurant-wide rate.
   taxEnabled: int("tax_enabled", { mode: "boolean" }).notNull().default(false),
+  // The starting cash float declared by whoever opens the till for the current day/shift — null
+  // until someone does (see openTillAction). Carried into the next End Day close as that shift's
+  // openingBalance, then cleared back to null so the following day has to declare its own.
+  pendingOpeningBalance: real("pending_opening_balance"),
+  openingBalanceSetByName: text("opening_balance_set_by_name"),
+  openingBalanceSetAt: int("opening_balance_set_at"),
   createdAt: timestamp("created_at"),
 },
   (table) => [uniqueIndex("restaurants_custom_domain_idx").on(table.customDomain)]
@@ -393,8 +399,10 @@ export const shifts = sqliteTable("shifts", {
   orderCount: int("order_count").notNull().default(0),
   voidCount: int("void_count").notNull().default(0),
   voidAmount: real("void_amount").notNull().default(0),
-  // What the drawer should hold in cash given cashSales above (assumes it started at zero for
-  // the shift — a starting float can be folded in via notes until a dedicated field is needed).
+  // The starting cash float declared when the till was opened for this shift (see
+  // restaurants.pendingOpeningBalance / openTillAction) — 0 if nobody declared one.
+  openingBalance: real("opening_balance").notNull().default(0),
+  // What the drawer should hold in cash: openingBalance + cashSales - cashExpenses.
   expectedCash: real("expected_cash").notNull().default(0),
   // What the manager actually counted in the drawer at close — compared against expectedCash
   // on the report to flag any over/short.

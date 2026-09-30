@@ -12,6 +12,7 @@ import { listLowStockItems } from "@/lib/data/inventory";
 import { formatMoney, formatOrderTimestamp } from "@/lib/types";
 import { DashboardCharts } from "./dashboard-charts";
 import { EndShiftButton } from "./end-shift-button";
+import { OpenTillButton } from "./open-till-button";
 import { AutoVoidNotice } from "./auto-void-notice";
 import { AUTO_VOID_REASON } from "@/lib/order-helpers";
 import { DollarSign, ClipboardList, Table2, Users, TrendingUp, TrendingDown, Receipt, FileText, AlertTriangle } from "lucide-react";
@@ -64,7 +65,14 @@ export default async function DashboardPage() {
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-xl font-semibold text-neutral-900">Dashboard</h1>
           {canEndDay && (
-            <EndShiftButton currencySymbol={currencySymbol} terminalNames={paymentTerminals.filter((t) => t.active).map((t) => t.name)} />
+            <div className="flex items-center gap-2">
+              <OpenTillButton
+                currencySymbol={currencySymbol}
+                pendingOpeningBalance={restaurant?.pendingOpeningBalance ?? null}
+                openingBalanceSetByName={restaurant?.openingBalanceSetByName ?? null}
+              />
+              <EndShiftButton currencySymbol={currencySymbol} terminalNames={paymentTerminals.filter((t) => t.active).map((t) => t.name)} />
+            </div>
           )}
         </div>
 

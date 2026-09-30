@@ -1,10 +1,41 @@
 "use server";
 
 import { asc, desc, eq } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { orders, restaurants, shifts } from "@/db/schema";
 import { assertPermission, requireRestaurantContext } from "@/lib/scope";
 import { summarizeShiftWindow } from "@/lib/data/shifts";
+
+export interface OpenTillState {
+  error?: string;
+}
+
+// Declares the starting cash float for the day/shift that's about to begin — any staff member
+// with the end-day permission can do this, not just admins (it's the opening half of the same
+// till-reconciliation workflow as End Day Closing). Stored on the restaurant itself rather than
+// a dedicated session table since a restaurant only ever runs one till period at a time; consumed
+// and cleared by endShiftAction so the next day has to declare its own.
+export async function openTillAction(openingBalance: number): Promise<OpenTillState> {
+  const { session, restaurantId } = await requireRestaurantContext();
+  await assertPermission(session, "end-day");
+
+  if (!Number.isFinite(openingBalance) || openingBalance < 0) {
+    return { error: "Enter a valid opening balance." };
+  }
+
+  await db
+    .update(restaurants)
+    .set({
+      pendingOpeningBalance: openingBalance,
+      openingBalanceSetByName: session.name,
+      openingBalanceSetAt: Date.now(),
+    })
+    .where(eq(restaurants.id, restaurantId));
+
+  revalidatePath("/dashboard");
+  return {};
+}
 
 export interface EndShiftState {
   error?: string;
@@ -30,6 +61,9 @@ export async function endShiftAction(input: EndShiftInput): Promise<EndShiftStat
   const { session, restaurantId } = await requireRestaurantContext();
   await assertPermission(session, "end-day");
 
+  const [restaurant] = await db.select().from(restaurants).where(eq(restaurants.id, restaurantId));
+  const openingBalance = restaurant?.pendingOpeningBalance ?? 0;
+
   const [previousShift] = await db
     .select({ closedAt: shifts.closedAt })
     .from(shifts)
@@ -48,7 +82,6 @@ export async function endShiftAction(input: EndShiftInput): Promise<EndShiftStat
       .where(eq(orders.restaurantId, restaurantId))
       .orderBy(asc(orders.createdAt))
       .limit(1);
-    const [restaurant] = await db.select({ createdAt: restaurants.createdAt }).from(restaurants).where(eq(restaurants.id, restaurantId));
     sinceTs = (firstOrder?.createdAt ?? restaurant?.createdAt ?? Date.now()) - 1;
   }
 
@@ -68,14 +101,23 @@ export async function endShiftAction(input: EndShiftInput): Promise<EndShiftStat
       closedByName: session.name,
       notes: input.notes.trim() || null,
       cashCounted: input.cashCounted,
+      openingBalance,
       cashExpenses,
       cardExpenses,
       terminalCounts: input.terminalCounts,
       ...summary,
-      // Expected cash accounts for cash that left the till as an expense during the shift.
-      expectedCash: summary.expectedCash - cashExpenses,
+      // Expected cash starts from the declared float, adds cash sales, and subtracts whatever
+      // cash left the till as an expense during the shift.
+      expectedCash: openingBalance + summary.expectedCash - cashExpenses,
     })
     .returning();
+
+  // The float that was just reconciled no longer applies — the next day/shift has to declare
+  // its own before it closes.
+  await db
+    .update(restaurants)
+    .set({ pendingOpeningBalance: null, openingBalanceSetByName: null, openingBalanceSetAt: null })
+    .where(eq(restaurants.id, restaurantId));
 
   return { shiftId: shift.id };
 }

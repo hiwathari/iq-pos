@@ -104,6 +104,7 @@ export function ShiftReportClient({
 
       <h2 className="mb-2 text-sm font-bold text-neutral-900">Cash Reconciliation</h2>
       <div className="mb-6 overflow-hidden rounded-xl border border-neutral-200">
+        <Row label="Opening Balance" value={shift.openingBalance} currencySymbol={currencySymbol} />
         <Row label="Cash Sales" value={shift.cashSales} currencySymbol={currencySymbol} />
         {shift.cashExpenses > 0 && (
           <div className="flex items-center justify-between border-t border-neutral-100 px-4 py-3 text-sm text-neutral-600">
