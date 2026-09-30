@@ -1,13 +1,27 @@
 import "server-only";
 import { Resend } from "resend";
 
-// Requires RESEND_API_KEY (and optionally RESEND_FROM_EMAIL, once a sending domain is verified
-// in Resend) in the environment. Until then, magic links are logged instead of emailed so the
-// sign-in flow stays testable without a configured provider.
+// Requires RESEND_API_KEY in the environment. Until then, magic links are logged instead of
+// emailed so the sign-in flow stays testable without a configured provider.
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+
+// One verified Resend domain serves every tenant — each restaurant sends as its own address on
+// it (e.g. "Al Zayt <alzayt@mail.luvder.com>") rather than all tenants sharing one generic
+// sender, so a customer's inbox shows which restaurant actually emailed them.
+const SENDING_DOMAIN = process.env.RESEND_SENDING_DOMAIN || "mail.luvder.com";
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
+}
+
+function emailLocalPart(restaurantName: string) {
+  return restaurantName.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 40) || "restaurant";
+}
+
+// A display name sits unquoted before <...> in a From header, so strip characters that would
+// break or spoof that syntax rather than trying to quote-escape them.
+function sanitizeDisplayName(name: string) {
+  return name.replace(/["<>\r\n]/g, "").trim() || "IQ POS";
 }
 
 // `code` is optional so the admin-facing loyalty-lookup login (my-card) and the customer
@@ -20,7 +34,7 @@ export async function sendLoyaltyMagicLinkEmail(input: { to: string; restaurantN
     return;
   }
 
-  const from = process.env.RESEND_FROM_EMAIL || "IQ POS <onboarding@resend.dev>";
+  const from = `${sanitizeDisplayName(input.restaurantName)} <${emailLocalPart(input.restaurantName)}@${SENDING_DOMAIN}>`;
   await resend.emails.send({
     from,
     to: input.to,
