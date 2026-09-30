@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import { db } from "@/db/client";
-import { orders } from "@/db/schema";
+import { orders, restaurants } from "@/db/schema";
 import { AUTO_VOID_REASON, freeTableIfNoLiveOrders } from "@/lib/order-helpers";
 
 // There's no background job runner in this app, so — like releaseStaleTables in
@@ -41,4 +41,17 @@ async function autoVoidStaleOrders(restaurantId: string) {
 export async function listOrders(restaurantId: string) {
   await autoVoidStaleOrders(restaurantId);
   return db.select().from(orders).where(eq(orders.restaurantId, restaurantId)).orderBy(desc(orders.createdAt));
+}
+
+// Order IDs are unguessable UUIDs, so this doubles as the public invoice page's access
+// control — anyone with the link (or who scans the QR on their printed/emailed receipt) can view
+// it, same trust model as a Stripe/PayPal receipt link, without a customer login.
+export async function getOrderWithRestaurant(orderId: string) {
+  const [row] = await db
+    .select({ order: orders, restaurant: restaurants })
+    .from(orders)
+    .innerJoin(restaurants, eq(orders.restaurantId, restaurants.id))
+    .where(eq(orders.id, orderId))
+    .limit(1);
+  return row ?? null;
 }

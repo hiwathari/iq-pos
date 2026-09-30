@@ -27,6 +27,10 @@ export interface TicketData {
   invoiceWebsite?: string;
   invoiceLogoUrl?: string;
   invoiceFooterText: string;
+  // The order's public /invoice/[id] link, when one exists (i.e. the order has been saved) —
+  // QR-encoded on the printed receipt so the customer can scan it to get their own shareable,
+  // downloadable copy instead of keeping the paper slip.
+  invoiceUrl?: string;
 }
 
 // Opens a small formatted invoice in a new window and triggers the browser's print dialog.
@@ -50,9 +54,11 @@ export async function printTicket(ticket: TicketData) {
     ?.map((p) => `<tr><td>Paid — ${escapeHtml(p.method)}</td><td class="right">${money(p.amount)}</td></tr>`)
     .join("");
 
-  // QR points at the restaurant's website when one is set, otherwise falls back to a plain
-  // vCard-style contact block so scanning the invoice is still useful without a website.
+  // QR prefers the order's own shareable invoice link (customer scans it to get a downloadable
+  // copy), falling back to the restaurant's website, then a plain vCard-style contact block, so
+  // scanning is still useful for a not-yet-saved order or a restaurant with no website.
   const qrTarget =
+    ticket.invoiceUrl ||
     ticket.invoiceWebsite ||
     (ticket.invoicePhone ? `TEL:${ticket.invoicePhone}` : null);
   const qrDataUrl = qrTarget
@@ -79,6 +85,7 @@ export async function printTicket(ticket: TicketData) {
   .total { font-weight: bold; font-size: 15px; }
   .qr-wrap { text-align: center; margin-top: 14px; }
   .qr-wrap img { width: 100px; height: 100px; }
+  .qr-caption { font-size: 10px; color: #777; margin-top: 3px; }
   .footer { text-align: center; font-size: 11px; color: #777; margin-top: 10px; white-space: pre-wrap; }
 </style>
 </head>
@@ -129,7 +136,13 @@ export async function printTicket(ticket: TicketData) {
         </table>`
       : ""
   }
-  ${qrDataUrl ? `<div class="qr-wrap"><img src="${qrDataUrl}" alt="QR code" /></div>` : ""}
+  ${
+    qrDataUrl
+      ? `<div class="qr-wrap"><img src="${qrDataUrl}" alt="QR code" />${
+          ticket.invoiceUrl ? `<div class="qr-caption">Scan for a digital copy</div>` : ""
+        }</div>`
+      : ""
+  }
   <div class="footer">${escapeHtml(ticket.invoiceFooterText)}</div>
   <script>window.onload = () => { window.print(); }<\/script>
 </body>

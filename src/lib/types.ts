@@ -85,11 +85,19 @@ export const CURRENCY_OPTIONS = [
 // discount / coupon reduces the taxable amount proportionally across every line, the same way a
 // single flat rate always did — it just adds up per-item now instead of multiplying once.
 export function orderTotal(order: Pick<Order, "items" | "extraDiscount" | "couponDiscount">) {
+  return orderBreakdown(order).total;
+}
+
+// Same per-item, proportional-discount math as orderTotal, but exposing every component — used
+// wherever a full breakdown needs to be displayed (e.g. a printed/shared invoice) rather than
+// just the bottom-line figure.
+export function orderBreakdown(order: Pick<Order, "items" | "extraDiscount" | "couponDiscount">) {
   const subtotal = order.items.reduce((sum, i) => sum + i.price * i.qty, 0);
   const discount = Math.min(subtotal, (order.extraDiscount ?? 0) + (order.couponDiscount ?? 0));
   const discountFactor = subtotal > 0 ? (subtotal - discount) / subtotal : 0;
   const rawTax = order.items.reduce((sum, i) => sum + i.price * i.qty * ((i.taxRate ?? 0) / 100), 0);
-  return subtotal - discount + rawTax * discountFactor;
+  const tax = rawTax * discountFactor;
+  return { subtotal, discount, tax, total: subtotal - discount + tax };
 }
 
 // Resolves a coupon's percent/fixed value into an actual currency amount against a given

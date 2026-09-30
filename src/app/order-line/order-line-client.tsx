@@ -28,6 +28,7 @@ import type { LoyaltyContactType } from "@/lib/types";
 import { setTableStatusAction } from "@/lib/actions/tables";
 import { setDishStockAction } from "@/lib/actions/menu";
 import { printTicket } from "@/lib/print-ticket";
+import { tableOrderQrDataUrl } from "@/lib/table-qr";
 import { TableLayoutPicker } from "@/components/table-layout-picker";
 import {
   ChevronLeft,
@@ -203,6 +204,7 @@ export function OrderLineClient({
   const [tableActionError, setTableActionError] = useState<string | null>(null);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
   const [voidModalOpen, setVoidModalOpen] = useState(false);
+  const [shareInvoiceOpen, setShareInvoiceOpen] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
   const [loyaltyError, setLoyaltyError] = useState<string | null>(null);
 
@@ -603,6 +605,7 @@ export function OrderLineClient({
     printTicket({
       orderNumber: editingOrder?.orderNumber ?? "NEW",
       createdAt: editingOrder?.createdAt ?? Date.now(),
+      invoiceUrl: cart.editingOrderId ? `${window.location.origin}/invoice/${cart.editingOrderId}` : undefined,
       tableNumber: cart.tableNumber,
       channel: cart.channel,
       items: cart.items,
@@ -672,6 +675,7 @@ export function OrderLineClient({
       setTableActionMode("merge");
     },
     onVoidClick: () => setVoidModalOpen(true),
+    onShareInvoiceClick: () => setShareInvoiceOpen(true),
     onClose: () => setMobileCartOpen(false),
   };
 
@@ -984,6 +988,9 @@ export function OrderLineClient({
       )}
 
       {voidModalOpen && <VoidModal onCancel={() => setVoidModalOpen(false)} onConfirm={handleVoid} />}
+      {shareInvoiceOpen && cart.editingOrderId && (
+        <ShareInvoiceModal orderId={cart.editingOrderId} onClose={() => setShareInvoiceOpen(false)} />
+      )}
       {customItemModalOpen && (
         <CustomItemModal
           onClose={() => setCustomItemModalOpen(false)}
@@ -1058,6 +1065,7 @@ interface CartPanelProps {
   onSwapTableClick: () => void;
   onMergeTableClick: () => void;
   onVoidClick: () => void;
+  onShareInvoiceClick: () => void;
   onClose: () => void;
   showClose: boolean;
 }
@@ -1100,6 +1108,7 @@ function CartPanel({
   onSwapTableClick,
   onMergeTableClick,
   onVoidClick,
+  onShareInvoiceClick,
   onClose,
   showClose,
 }: CartPanelProps) {
@@ -1180,6 +1189,15 @@ function CartPanel({
           >
             <Printer className="h-4 w-4" />
           </button>
+          {cart.editingOrderId && (
+            <button
+              onClick={onShareInvoiceClick}
+              className="rounded-lg border border-neutral-200 p-1.5 text-neutral-400 hover:bg-neutral-50 hover:text-teal-600"
+              title="Share invoice QR"
+            >
+              <QrCode className="h-4 w-4" />
+            </button>
+          )}
           <button
             onClick={() => setTableEditorOpen((v) => !v)}
             className="rounded-lg border border-neutral-200 p-1.5 text-neutral-400 hover:bg-neutral-50 hover:text-teal-600"
@@ -1660,6 +1678,54 @@ function CartPanel({
             </button>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Lets staff hand the customer a digital copy on the spot — no printer needed — by showing a QR
+// that opens their public /invoice/[id] receipt, where they can view, download as PDF, or share it
+// onward themselves.
+function ShareInvoiceModal({ orderId, onClose }: { orderId: string; onClose: () => void }) {
+  const [dataUrl, setDataUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const url = typeof window !== "undefined" ? `${window.location.origin}/invoice/${orderId}` : "";
+
+  useEffect(() => {
+    let cancelled = false;
+    if (url) tableOrderQrDataUrl(url).then((v) => !cancelled && setDataUrl(v));
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+
+  async function copyLink() {
+    await navigator.clipboard.writeText(url).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
+      <div className="w-full max-w-xs rounded-2xl bg-white p-6 text-center shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-neutral-900">Share Invoice</h2>
+          <button onClick={onClose} className="rounded-full p-1 text-neutral-400 hover:bg-neutral-100">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        {dataUrl ? (
+          <img src={dataUrl} alt="Invoice QR" className="mx-auto mb-4 h-48 w-48" />
+        ) : (
+          <div className="mx-auto mb-4 flex h-48 w-48 items-center justify-center text-sm text-neutral-400">Generating…</div>
+        )}
+        <p className="mb-3 text-xs text-neutral-400">Have the customer scan this to view or download their invoice as a PDF.</p>
+        <button
+          onClick={copyLink}
+          className="w-full rounded-xl border border-neutral-200 py-2.5 text-sm font-medium text-neutral-600 hover:bg-neutral-50"
+        >
+          {copied ? "Link Copied!" : "Copy Link"}
+        </button>
       </div>
     </div>
   );

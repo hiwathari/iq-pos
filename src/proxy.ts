@@ -4,10 +4,11 @@ import { getRestaurantByCustomDomain } from "@/lib/data/restaurants";
 
 const PUBLIC_PATHS = ["/login", "/till-login", "/kitchen-login"];
 
-// Customer-facing pages that use their own session cookie (see src/lib/loyalty-session.ts),
-// checked per-page — never the staff/admin session below. Also reachable from a restaurant's
-// custom ordering domain, rewritten in here — see resolveCustomDomain.
-const CUSTOMER_FACING_PREFIXES = ["/my-card", "/order"];
+// Customer-facing pages that don't use the staff/admin session below — /my-card and /order use
+// their own session cookie (see src/lib/loyalty-session.ts), checked per-page; /invoice/[orderId]
+// needs no session at all, gated only by knowing the order's unguessable id. Also reachable from a
+// restaurant's custom ordering domain, rewritten in here — see resolveCustomDomain.
+const CUSTOMER_FACING_PREFIXES = ["/my-card", "/order", "/invoice"];
 
 // Proxy defaults to the Node.js runtime in Next.js 16 (not Edge), so a real DB lookup here is
 // fine — this only ever runs for a Host header that isn't the platform's own domain, i.e. almost
