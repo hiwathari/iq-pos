@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { categories, dishes } from "@/db/schema";
-import { assertAdmin, requireRestaurantContext } from "@/lib/scope";
+import { assertPermission, requireRestaurantContext } from "@/lib/scope";
 
 export interface CreateCategoryInput {
   name: string;
@@ -15,7 +15,7 @@ export interface CreateCategoryInput {
 
 export async function createCategoryAction(input: CreateCategoryInput) {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "manage-dishes");
   if (!input.name.trim()) return;
   await db.insert(categories).values({
     id: crypto.randomUUID(),
@@ -39,7 +39,7 @@ export interface UpdateCategoryInput {
 
 export async function updateCategoryAction(categoryId: string, input: UpdateCategoryInput) {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "manage-dishes");
   if (!input.name.trim()) return;
   await db
     .update(categories)
@@ -68,7 +68,7 @@ export interface DishInput {
 
 export async function createDishAction(input: DishInput) {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "manage-dishes");
   await db.insert(dishes).values({
     id: crypto.randomUUID(),
     restaurantId,
@@ -89,7 +89,7 @@ export async function createDishAction(input: DishInput) {
 
 export async function updateDishAction(dishId: string, input: DishInput) {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "manage-dishes");
   await db
     .update(dishes)
     .set({
@@ -110,7 +110,7 @@ export async function updateDishAction(dishId: string, input: DishInput) {
 
 export async function deleteDishAction(dishId: string) {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "manage-dishes");
   await db.delete(dishes).where(and(eq(dishes.id, dishId), eq(dishes.restaurantId, restaurantId)));
   revalidatePath("/manage-dishes");
   revalidatePath("/order-line");
@@ -131,7 +131,7 @@ export async function setDishStockAction(dishId: string, outOfStock: boolean) {
 
 export async function setChannelPriceAction(dishId: string, channel: string, price: number | null) {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "pricing");
   const [dish] = await db.select().from(dishes).where(and(eq(dishes.id, dishId), eq(dishes.restaurantId, restaurantId)));
   if (!dish) return;
   const next = { ...(dish.channelPrices ?? {}) };

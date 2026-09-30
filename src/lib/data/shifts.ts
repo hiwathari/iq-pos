@@ -30,6 +30,7 @@ export async function summarizeShiftWindow(restaurantId: string, sinceTs: number
   let cashSales = 0;
   let cardSales = 0;
   let otherSales = 0;
+  const byMethod = new Map<string, number>();
 
   for (const o of liveOrders) {
     const total = orderTotal(o);
@@ -41,11 +42,13 @@ export async function summarizeShiftWindow(restaurantId: string, sinceTs: number
     for (const line of methodLines) {
       if (line.method === "Cash") cashSales += line.amount;
       else cardSales += line.amount;
+      byMethod.set(line.method, (byMethod.get(line.method) ?? 0) + line.amount);
     }
   }
 
   const totalSales = cashSales + cardSales + otherSales;
   const voidAmount = voidedOrders.reduce((sum, o) => sum + orderTotal(o), 0);
+  const terminalSales = [...byMethod.entries()].map(([method, amount]) => ({ method, amount }));
 
   return {
     totalSales,
@@ -56,5 +59,6 @@ export async function summarizeShiftWindow(restaurantId: string, sinceTs: number
     voidCount: voidedOrders.length,
     voidAmount,
     expectedCash: cashSales,
+    terminalSales,
   };
 }

@@ -5,6 +5,7 @@ import type { Role } from "@/lib/session";
 
 const ROLE_LABEL: Record<Role, string> = {
   super_admin: "Super Admin",
+  regional_admin: "Regional Admin",
   admin: "Admin",
   staff: "Staff",
   till: "Till",

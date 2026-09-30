@@ -1,12 +1,11 @@
 import { AppShell } from "@/components/app-shell";
-import { assertAdmin, requireRestaurantContext } from "@/lib/scope";
+import { requirePermission } from "@/lib/scope";
 import { listCoupons } from "@/lib/data/coupons";
 import { getRestaurant } from "@/lib/data/restaurants";
 import { CouponsClient } from "./coupons-client";
 
 export default async function CouponsPage() {
-  const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  const { restaurantId } = await requirePermission("coupons");
   const [coupons, restaurant] = await Promise.all([listCoupons(restaurantId), getRestaurant(restaurantId)]);
 
   return (

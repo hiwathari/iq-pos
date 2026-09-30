@@ -1,7 +1,21 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Building2, ChefHat, Check, Copy, Globe, Palette, Plus, ShoppingBag, Table2, Users, X } from "lucide-react";
+import {
+  Building2,
+  ChefHat,
+  Check,
+  Copy,
+  Globe,
+  Palette,
+  Plus,
+  ShieldCheck,
+  ShoppingBag,
+  Table2,
+  UserCog,
+  Users,
+  X,
+} from "lucide-react";
 import {
   impersonateRestaurantAction,
   toggleRestaurantActiveAction,
@@ -9,6 +23,12 @@ import {
   updateRestaurantOnlineOrderingAction,
   type OnlineOrderingSettingsInput,
 } from "@/lib/actions/restaurants";
+import {
+  createRegionalAdminAction,
+  toggleRegionalAdminActiveAction,
+  updateRegionalAdminAccessAction,
+  type CreateRegionalAdminState,
+} from "@/lib/actions/regional-admins";
 import { DEFAULT_BRAND_COLOR, isValidHexColor } from "@/lib/color";
 import { CreateRestaurantForm } from "./create-restaurant-form";
 
@@ -29,34 +49,61 @@ interface RestaurantRow {
   customDomain: string | null;
 }
 
+interface RegionalAdminRow {
+  id: string;
+  name: string;
+  email: string;
+  active: boolean;
+  restaurantIds: string[];
+  restaurantNames: string[];
+}
+
 export function SuperAdminClient({
   restaurants,
   totals,
+  isSuperAdmin,
+  regionalAdmins,
 }: {
   restaurants: RestaurantRow[];
   totals: { restaurantCount: number; userCount: number; orderCount: number };
+  isSuperAdmin: boolean;
+  regionalAdmins: RegionalAdminRow[];
 }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [brandingTarget, setBrandingTarget] = useState<RestaurantRow | null>(null);
   const [orderingTarget, setOrderingTarget] = useState<RestaurantRow | null>(null);
+  const [regionalAdminModalOpen, setRegionalAdminModalOpen] = useState(false);
+  const [accessTarget, setAccessTarget] = useState<RegionalAdminRow | null>(null);
 
   return (
     <div className="p-6">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-neutral-900">Super Admin</h1>
-        <button
-          onClick={() => setModalOpen(true)}
-          className="flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-700"
-        >
-          <Plus className="h-4 w-4" /> Add Restaurant
-        </button>
+        <h1 className="text-xl font-semibold text-neutral-900">{isSuperAdmin ? "Super Admin" : "Regional Admin"}</h1>
+        {isSuperAdmin && (
+          <div className="flex gap-2">
+            <button
+              onClick={() => setRegionalAdminModalOpen(true)}
+              className="flex items-center gap-2 rounded-xl border border-neutral-200 px-4 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
+            >
+              <UserCog className="h-4 w-4" /> Add Regional Admin
+            </button>
+            <button
+              onClick={() => setModalOpen(true)}
+              className="flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-700"
+            >
+              <Plus className="h-4 w-4" /> Add Restaurant
+            </button>
+          </div>
+        )}
       </div>
 
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard icon={Building2} label="Restaurants" value={String(totals.restaurantCount)} tint="bg-teal-50 text-teal-600" />
-        <StatCard icon={Users} label="Platform Users" value={String(totals.userCount)} tint="bg-indigo-50 text-indigo-600" />
-        <StatCard icon={ShoppingBag} label="Orders Placed" value={String(totals.orderCount)} tint="bg-amber-50 text-amber-600" />
-      </div>
+      {isSuperAdmin && (
+        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <StatCard icon={Building2} label="Restaurants" value={String(totals.restaurantCount)} tint="bg-teal-50 text-teal-600" />
+          <StatCard icon={Users} label="Platform Users" value={String(totals.userCount)} tint="bg-indigo-50 text-indigo-600" />
+          <StatCard icon={ShoppingBag} label="Orders Placed" value={String(totals.orderCount)} tint="bg-amber-50 text-amber-600" />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
         {restaurants.map((r) => (
@@ -145,6 +192,70 @@ export function SuperAdminClient({
         )}
       </div>
 
+      {isSuperAdmin && (
+        <div className="mt-8">
+          <div className="mb-3 flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-neutral-400" />
+            <h2 className="text-sm font-semibold text-neutral-900">Regional Admins</h2>
+          </div>
+          <p className="mb-4 text-xs text-neutral-400">
+            A regional admin gets full admin-level control — including changing staff permissions — but only over the
+            restaurants assigned to them below. They never see or affect any other restaurant on the platform.
+          </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {regionalAdmins.map((a) => (
+              <div key={a.id} className="flex flex-col rounded-2xl border border-neutral-200 bg-white p-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold text-neutral-900">{a.name}</div>
+                    <div className="text-xs text-neutral-400">{a.email}</div>
+                  </div>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                      a.active ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-500"
+                    }`}
+                  >
+                    {a.active ? "Active" : "Disabled"}
+                  </span>
+                </div>
+                <div className="mb-3 flex flex-wrap gap-1.5">
+                  {a.restaurantNames.length === 0 ? (
+                    <span className="text-xs text-neutral-400">No restaurants assigned yet</span>
+                  ) : (
+                    a.restaurantNames.map((name) => (
+                      <span key={name} className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600">
+                        {name}
+                      </span>
+                    ))
+                  )}
+                </div>
+                <div className="mt-auto flex gap-2">
+                  <button
+                    onClick={() => setAccessTarget(a)}
+                    className="flex-1 rounded-xl border border-neutral-200 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50"
+                  >
+                    Edit Access
+                  </button>
+                  <form action={toggleRegionalAdminActiveAction.bind(null, a.id, !a.active)}>
+                    <button
+                      type="submit"
+                      className="rounded-xl border border-neutral-200 px-3 py-2 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
+                    >
+                      {a.active ? "Disable" : "Enable"}
+                    </button>
+                  </form>
+                </div>
+              </div>
+            ))}
+            {regionalAdmins.length === 0 && (
+              <div className="col-span-full rounded-2xl border border-dashed border-neutral-300 py-10 text-center text-sm text-neutral-400">
+                No regional admins yet.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => setModalOpen(false)}>
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
@@ -161,6 +272,167 @@ export function SuperAdminClient({
 
       {brandingTarget && <BrandingModal restaurant={brandingTarget} onClose={() => setBrandingTarget(null)} />}
       {orderingTarget && <OnlineOrderingModal restaurant={orderingTarget} onClose={() => setOrderingTarget(null)} />}
+      {regionalAdminModalOpen && (
+        <RegionalAdminModal restaurants={restaurants} onClose={() => setRegionalAdminModalOpen(false)} />
+      )}
+      {accessTarget && (
+        <EditAccessModal admin={accessTarget} restaurants={restaurants} onClose={() => setAccessTarget(null)} />
+      )}
+    </div>
+  );
+}
+
+function RegionalAdminModal({ restaurants, onClose }: { restaurants: RestaurantRow[]; onClose: () => void }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [selected, setSelected] = useState<string[]>([]);
+  const [state, setState] = useState<CreateRegionalAdminState>({});
+  const [pending, startTransition] = useTransition();
+
+  function toggle(id: string) {
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  function submit() {
+    const formData = new FormData();
+    formData.set("name", name.trim());
+    formData.set("email", email.trim());
+    formData.set("password", password);
+    for (const id of selected) formData.append("restaurantIds", id);
+    startTransition(async () => {
+      const result = await createRegionalAdminAction(undefined, formData);
+      if (result.error) {
+        setState(result);
+        return;
+      }
+      onClose();
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
+      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-neutral-900">Add Regional Admin</h2>
+          <button onClick={onClose} className="rounded-full p-1 text-neutral-400 hover:bg-neutral-100">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-neutral-500">Name</label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-neutral-500">Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-neutral-500">Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="At least 8 characters"
+              className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-neutral-500">Restaurants this admin can access</label>
+            <div className="max-h-48 space-y-1.5 overflow-y-auto rounded-xl border border-neutral-200 p-2">
+              {restaurants.map((r) => (
+                <label key={r.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-neutral-50">
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(r.id)}
+                    onChange={() => toggle(r.id)}
+                    className="h-4 w-4 accent-teal-600"
+                  />
+                  {r.name}
+                </label>
+              ))}
+              {restaurants.length === 0 && <p className="px-2 py-1.5 text-xs text-neutral-400">No restaurants yet.</p>}
+            </div>
+          </div>
+        </div>
+        {state.error && <p className="mt-3 text-xs font-medium text-rose-600">{state.error}</p>}
+        <button
+          onClick={submit}
+          disabled={pending || !name.trim() || !email.trim() || !password}
+          className="mt-5 w-full rounded-xl bg-teal-600 py-3 text-sm font-bold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {pending ? "Creating…" : "Create Regional Admin"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function EditAccessModal({
+  admin,
+  restaurants,
+  onClose,
+}: {
+  admin: RegionalAdminRow;
+  restaurants: RestaurantRow[];
+  onClose: () => void;
+}) {
+  const [selected, setSelected] = useState<string[]>(admin.restaurantIds);
+  const [, startTransition] = useTransition();
+
+  function toggle(id: string) {
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  function submit() {
+    startTransition(async () => {
+      await updateRegionalAdminAccessAction(admin.id, selected);
+      onClose();
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
+      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-5 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-neutral-900">Edit Access</h2>
+            <p className="text-xs text-neutral-400">{admin.name}</p>
+          </div>
+          <button onClick={onClose} className="rounded-full p-1 text-neutral-400 hover:bg-neutral-100">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="max-h-64 space-y-1.5 overflow-y-auto rounded-xl border border-neutral-200 p-2">
+          {restaurants.map((r) => (
+            <label key={r.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-neutral-50">
+              <input
+                type="checkbox"
+                checked={selected.includes(r.id)}
+                onChange={() => toggle(r.id)}
+                className="h-4 w-4 accent-teal-600"
+              />
+              {r.name}
+            </label>
+          ))}
+        </div>
+        <button
+          onClick={submit}
+          className="mt-5 w-full rounded-xl bg-teal-600 py-3 text-sm font-bold text-white hover:bg-teal-700"
+        >
+          Save Access
+        </button>
+      </div>
     </div>
   );
 }

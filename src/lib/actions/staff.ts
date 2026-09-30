@@ -92,6 +92,18 @@ export async function updateStaffCredentialsAction(
   return { success: true };
 }
 
+// Which pages/sections a staff member's login can reach — see lib/permissions.ts. No-op for
+// non-staff accounts, which always have full access regardless of this field.
+export async function updateStaffPermissionsAction(userId: string, permissions: string[]) {
+  const { session, restaurantId } = await requireRestaurantContext();
+  assertAdmin(session);
+  await db
+    .update(users)
+    .set({ permissions })
+    .where(and(eq(users.id, userId), eq(users.restaurantId, restaurantId)));
+  revalidatePath("/settings");
+}
+
 export async function toggleStaffActiveAction(userId: string, active: boolean) {
   const { session, restaurantId } = await requireRestaurantContext();
   assertAdmin(session);

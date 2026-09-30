@@ -1,5 +1,5 @@
 import { AppShell } from "@/components/app-shell";
-import { assertAdmin, requireRestaurantContext } from "@/lib/scope";
+import { requirePermission } from "@/lib/scope";
 import { getReportData, getDailySummary } from "@/lib/data/reports";
 import { getRestaurant } from "@/lib/data/restaurants";
 import { listOrders } from "@/lib/data/orders";
@@ -23,8 +23,7 @@ function resolveRange(params: ReportsSearchParams) {
 
 export default async function ReportsPage({ searchParams }: { searchParams: Promise<ReportsSearchParams> }) {
   const params = await searchParams;
-  const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  const { restaurantId } = await requirePermission("reports");
 
   const tab = params.tab ?? "overview";
   const { fromStr, toStr, from, to } = resolveRange(params);

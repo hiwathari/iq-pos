@@ -38,7 +38,7 @@ export async function loginAction(_prevState: LoginState | undefined, formData: 
     restaurantId: user.restaurantId,
   });
 
-  redirect(user.role === "super_admin" ? "/super-admin" : "/dashboard");
+  redirect(user.role === "super_admin" || user.role === "regional_admin" ? "/super-admin" : "/dashboard");
 }
 
 export async function logoutAction() {

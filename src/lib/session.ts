@@ -4,7 +4,8 @@ import { SignJWT, jwtVerify } from "jose";
 
 // "till" and "kitchen_display" are ephemeral device sessions minted by a 6-digit PIN
 // (see lib/actions/pin-auth.ts) — they never correspond to a stored user role.
-export type Role = "super_admin" | "admin" | "staff" | "till" | "kitchen_display";
+// "regional_admin" is a scoped super_admin — see restaurantAccess in db/schema.ts.
+export type Role = "super_admin" | "regional_admin" | "admin" | "staff" | "till" | "kitchen_display";
 
 export interface SessionPayload {
   userId: string;

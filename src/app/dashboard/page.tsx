@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
-import { requireRestaurantContext } from "@/lib/scope";
+import { getUserPermissions, requirePermission } from "@/lib/scope";
+import { hasPermission } from "@/lib/permissions";
 import { listTables, listReservations } from "@/lib/data/tables";
 import { listOrders } from "@/lib/data/orders";
 import { getRestaurant } from "@/lib/data/restaurants";
+import { listPaymentTerminals } from "@/lib/data/printers";
 import { getReportData } from "@/lib/data/reports";
 import { listShifts } from "@/lib/data/shifts";
 import { listLowStockItems } from "@/lib/data/inventory";
@@ -15,8 +17,8 @@ import { AUTO_VOID_REASON } from "@/lib/order-helpers";
 import { DollarSign, ClipboardList, Table2, Users, TrendingUp, TrendingDown, Receipt, FileText, AlertTriangle } from "lucide-react";
 
 export default async function DashboardPage() {
-  const { session, restaurantId } = await requireRestaurantContext();
-  const [orders, tables, reservations, restaurant, report, shifts, lowStockItems] = await Promise.all([
+  const { session, restaurantId } = await requirePermission("dashboard");
+  const [orders, tables, reservations, restaurant, report, shifts, lowStockItems, paymentTerminals, permissions] = await Promise.all([
     listOrders(restaurantId),
     listTables(restaurantId),
     listReservations(restaurantId),
@@ -24,8 +26,11 @@ export default async function DashboardPage() {
     getReportData(restaurantId),
     listShifts(restaurantId),
     listLowStockItems(restaurantId),
+    listPaymentTerminals(restaurantId),
+    session.role === "staff" ? getUserPermissions(session.userId) : Promise.resolve(null),
   ]);
   const currencySymbol = restaurant?.currencySymbol ?? "£";
+  const canEndDay = hasPermission(session.role, permissions, "end-day");
 
   const revenue = orders.reduce((sum, o) => sum + o.items.reduce((s, i) => s + i.price * i.qty, 0), 0);
   const onDine = tables.filter((t) => t.status === "on-dine").length;
@@ -58,10 +63,12 @@ export default async function DashboardPage() {
       <div className="p-6">
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-xl font-semibold text-neutral-900">Dashboard</h1>
-          {session.role !== "staff" && <EndShiftButton currencySymbol={currencySymbol} />}
+          {canEndDay && (
+            <EndShiftButton currencySymbol={currencySymbol} terminalNames={paymentTerminals.filter((t) => t.active).map((t) => t.name)} />
+          )}
         </div>
 
-        {session.role !== "staff" && <AutoVoidNotice orders={carriedOverOrders} />}
+        <AutoVoidNotice orders={carriedOverOrders} />
 
         <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard icon={DollarSign} label="Today's Revenue" value={formatMoney(revenue, currencySymbol)} tint="bg-teal-50 text-teal-600" />

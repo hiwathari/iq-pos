@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { AppShell } from "@/components/app-shell";
-import { requireRestaurantContext } from "@/lib/scope";
+import { requirePermission } from "@/lib/scope";
 import { listOrders } from "@/lib/data/orders";
 import { listCategories, listDishes } from "@/lib/data/menu";
 import { listPrinters } from "@/lib/data/printers";
@@ -17,7 +17,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = { themeColor: "#d97706" };
 
 export default async function KitchenPage() {
-  const { restaurantId } = await requireRestaurantContext();
+  const { restaurantId } = await requirePermission("kitchen");
   const [orders, categories, dishes, printers, restaurant] = await Promise.all([
     listOrders(restaurantId),
     listCategories(restaurantId),

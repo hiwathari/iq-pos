@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { integrations, paymentTerminals, printers } from "@/db/schema";
 import type { IntegrationProvider, PrinterConnection, PrinterStation } from "@/lib/types";
-import { assertAdmin, requireRestaurantContext } from "@/lib/scope";
+import { assertPermission, requireRestaurantContext } from "@/lib/scope";
 
 export interface CreatePrinterInput {
   name: string;
@@ -16,7 +16,7 @@ export interface CreatePrinterInput {
 
 export async function createPrinterAction(input: CreatePrinterInput) {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "settings");
   if (!input.name.trim()) return;
   await db.insert(printers).values({
     id: crypto.randomUUID(),
@@ -31,7 +31,7 @@ export async function createPrinterAction(input: CreatePrinterInput) {
 
 export async function togglePrinterActiveAction(printerId: string, active: boolean) {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "settings");
   await db
     .update(printers)
     .set({ active })
@@ -41,14 +41,14 @@ export async function togglePrinterActiveAction(printerId: string, active: boole
 
 export async function deletePrinterAction(printerId: string) {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "settings");
   await db.delete(printers).where(and(eq(printers.id, printerId), eq(printers.restaurantId, restaurantId)));
   revalidatePath("/settings");
 }
 
 export async function setDefaultPrinterAction(printerId: string) {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "settings");
   await db.update(printers).set({ isDefault: false }).where(eq(printers.restaurantId, restaurantId));
   await db
     .update(printers)
@@ -60,7 +60,7 @@ export async function setDefaultPrinterAction(printerId: string) {
 
 export async function createPaymentTerminalAction(name: string, logoUrl?: string) {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "settings");
   if (!name.trim()) return;
   await db.insert(paymentTerminals).values({
     id: crypto.randomUUID(),
@@ -74,7 +74,7 @@ export async function createPaymentTerminalAction(name: string, logoUrl?: string
 
 export async function updatePaymentTerminalAction(terminalId: string, name: string, logoUrl?: string) {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "settings");
   if (!name.trim()) return;
   await db
     .update(paymentTerminals)
@@ -86,7 +86,7 @@ export async function updatePaymentTerminalAction(terminalId: string, name: stri
 
 export async function togglePaymentTerminalActiveAction(terminalId: string, active: boolean) {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "settings");
   await db
     .update(paymentTerminals)
     .set({ active })
@@ -97,7 +97,7 @@ export async function togglePaymentTerminalActiveAction(terminalId: string, acti
 
 export async function deletePaymentTerminalAction(terminalId: string) {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "settings");
   await db
     .delete(paymentTerminals)
     .where(and(eq(paymentTerminals.id, terminalId), eq(paymentTerminals.restaurantId, restaurantId)));
@@ -110,7 +110,7 @@ export async function setIntegrationAction(
   input: { enabled: boolean; storeId: string; apiKey: string }
 ) {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "settings");
   const [existing] = await db
     .select()
     .from(integrations)

@@ -43,15 +43,12 @@ async function resolveCustomDomain(request: NextRequest) {
   return NextResponse.rewrite(url);
 }
 
-// Pages only an admin (or an impersonating super admin) may reach — staff are blocked.
-const ADMIN_ONLY_PREFIXES = ["/manage-dishes", "/settings", "/reports", "/pricing", "/shift-report", "/coupons", "/loyalty", "/inventory"];
-
 function isPublic(pathname: string) {
   return PUBLIC_PATHS.some((p) => pathname === p);
 }
 
 function homeFor(role: Role) {
-  if (role === "super_admin") return "/super-admin";
+  if (role === "super_admin" || role === "regional_admin") return "/super-admin";
   if (role === "till") return "/order-line";
   if (role === "kitchen_display") return "/kitchen";
   return "/dashboard";
@@ -100,21 +97,23 @@ export async function proxy(request: NextRequest) {
   }
 
   const isSuperAdminPath = pathname.startsWith("/super-admin");
+  const isSuperOrRegional = session.role === "super_admin" || session.role === "regional_admin";
 
-  if (isSuperAdminPath && session.role !== "super_admin") {
+  if (isSuperAdminPath && !isSuperOrRegional) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
-  if (!isSuperAdminPath && session.role === "super_admin") {
+  if (!isSuperAdminPath && isSuperOrRegional) {
     const impersonating = request.cookies.get(IMPERSONATION_COOKIE_NAME)?.value;
     if (!impersonating) {
       return NextResponse.redirect(new URL("/super-admin", request.url));
     }
   }
 
-  if (session.role === "staff" && ADMIN_ONLY_PREFIXES.some((p) => pathname.startsWith(p))) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
-  }
+  // Per-page access for "staff" (which admin-only sections they can reach, e.g. Reports,
+  // Settings, Manage Dishes) is enforced server-side by requirePermission() in each page, not
+  // here — permissions live in the database and this middleware runs on the edge without a DB
+  // round trip, so it can't know a given staff member's grants without one.
 
   return NextResponse.next();
 }

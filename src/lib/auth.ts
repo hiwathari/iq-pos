@@ -68,9 +68,9 @@ export async function getImpersonatedRestaurantId(): Promise<string | null> {
   return store.get(IMPERSONATION_COOKIE_NAME)?.value ?? null;
 }
 
-/** The restaurant the current request should operate on: the user's own for admin/staff, or the impersonated one for super admins. */
+/** The restaurant the current request should operate on: the user's own for admin/staff, or the impersonated one for super/regional admins. */
 export async function getActiveRestaurantId(session: SessionPayload): Promise<string | null> {
-  if (session.role === "super_admin") {
+  if (session.role === "super_admin" || session.role === "regional_admin") {
     return getImpersonatedRestaurantId();
   }
   return session.restaurantId;

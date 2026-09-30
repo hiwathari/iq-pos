@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { coupons } from "@/db/schema";
-import { assertAdmin, requireRestaurantContext } from "@/lib/scope";
+import { assertPermission, requireRestaurantContext } from "@/lib/scope";
 import { findActiveCoupon } from "@/lib/data/coupons";
 import { resolveCouponDiscount } from "@/lib/types";
 import type { CouponType } from "@/lib/types";
@@ -15,7 +15,7 @@ export interface CouponFormState {
 
 export async function createCouponAction(input: { code: string; type: CouponType; value: number }): Promise<CouponFormState> {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "coupons");
 
   const code = input.code.trim().toUpperCase();
   if (!code) return { error: "Enter a code." };
@@ -37,7 +37,7 @@ export async function createCouponAction(input: { code: string; type: CouponType
 
 export async function toggleCouponActiveAction(couponId: string, active: boolean) {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "coupons");
   await db.update(coupons).set({ active }).where(and(eq(coupons.id, couponId), eq(coupons.restaurantId, restaurantId)));
   revalidatePath("/coupons");
   revalidatePath("/order-line");
@@ -45,7 +45,7 @@ export async function toggleCouponActiveAction(couponId: string, active: boolean
 
 export async function deleteCouponAction(couponId: string) {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "coupons");
   await db.delete(coupons).where(and(eq(coupons.id, couponId), eq(coupons.restaurantId, restaurantId)));
   revalidatePath("/coupons");
   revalidatePath("/order-line");

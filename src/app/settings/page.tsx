@@ -1,5 +1,5 @@
 import { AppShell } from "@/components/app-shell";
-import { assertAdmin, requireRestaurantContext } from "@/lib/scope";
+import { requirePermission } from "@/lib/scope";
 import { listStaff } from "@/lib/data/staff";
 import { getRestaurant } from "@/lib/data/restaurants";
 import { listIntegrations, listPaymentTerminals, listPrinters } from "@/lib/data/printers";
@@ -11,8 +11,7 @@ import { RestaurantClient } from "./restaurant-client";
 import { InvoiceDetailsClient } from "./invoice-details-client";
 
 export default async function SettingsPage() {
-  const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  const { restaurantId } = await requirePermission("settings");
 
   const [staff, restaurant, printers, paymentTerminals, integrations] = await Promise.all([
     listStaff(restaurantId),

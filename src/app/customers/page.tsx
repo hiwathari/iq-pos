@@ -1,10 +1,10 @@
 import { AppShell } from "@/components/app-shell";
-import { requireRestaurantContext } from "@/lib/scope";
+import { requirePermission } from "@/lib/scope";
 import { listReservations } from "@/lib/data/tables";
 import { Users } from "lucide-react";
 
 export default async function CustomersPage() {
-  const { restaurantId } = await requireRestaurantContext();
+  const { restaurantId } = await requirePermission("customers");
   const reservations = await listReservations(restaurantId);
 
   const map = new Map<string, { name: string; phone: string | null; visits: number }>();

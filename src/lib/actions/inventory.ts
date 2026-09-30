@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { inventoryItems } from "@/db/schema";
-import { assertAdmin, requireRestaurantContext } from "@/lib/scope";
+import { assertPermission, requireRestaurantContext } from "@/lib/scope";
 import { findInventoryItem } from "@/lib/data/inventory";
 
 export interface InventoryItemInput {
@@ -20,7 +20,7 @@ export interface InventoryFormState {
 
 export async function createInventoryItemAction(input: InventoryItemInput): Promise<InventoryFormState> {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "inventory");
 
   const name = input.name.trim();
   if (!name) return { error: "Enter an item name." };
@@ -40,7 +40,7 @@ export async function createInventoryItemAction(input: InventoryItemInput): Prom
 
 export async function updateInventoryItemAction(itemId: string, input: InventoryItemInput): Promise<InventoryFormState> {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "inventory");
 
   const name = input.name.trim();
   if (!name) return { error: "Enter an item name." };
@@ -62,7 +62,7 @@ export async function updateInventoryItemAction(itemId: string, input: Inventory
 // Clamped so quantity never reads negative on the UI.
 export async function adjustInventoryStockAction(itemId: string, delta: number): Promise<InventoryFormState> {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "inventory");
   if (!Number.isFinite(delta) || delta === 0) return { error: "Enter a non-zero amount." };
 
   const item = await findInventoryItem(restaurantId, itemId);
@@ -77,7 +77,7 @@ export async function adjustInventoryStockAction(itemId: string, delta: number):
 
 export async function deleteInventoryItemAction(itemId: string) {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "inventory");
   await db.delete(inventoryItems).where(and(eq(inventoryItems.id, itemId), eq(inventoryItems.restaurantId, restaurantId)));
   revalidatePath("/inventory");
   revalidatePath("/dashboard");

@@ -6,7 +6,8 @@ import { db } from "@/db/client";
 import { orders, tables } from "@/db/schema";
 import type { Order, OrderChannel, OrderItem, OrderStatus, PaymentLine, ThirdPartyProvider } from "@/lib/types";
 import { resolveCouponDiscount } from "@/lib/types";
-import { requireRestaurantContext } from "@/lib/scope";
+import { getUserPermissions, requireRestaurantContext } from "@/lib/scope";
+import { hasPermission } from "@/lib/permissions";
 import { findActiveCoupon } from "@/lib/data/coupons";
 import { findLoyaltyMemberById } from "@/lib/data/loyalty";
 import { decrementInventoryForOrder, freeTableIfNoLiveOrders, isOrderLive, nextOrderNumber } from "@/lib/order-helpers";
@@ -59,7 +60,8 @@ export async function placeOrderAction(input: PlaceOrderInput) {
   // controls for Staff) — enforced again here so a Staff session can't just craft a request.
   // A Staff edit to an order a manager already discounted keeps that discount as-is; it can
   // never introduce or change one, since a Staff session's own input value is never trusted.
-  const canDiscount = session.role === "admin" || session.role === "super_admin";
+  const permissions = session.role === "staff" ? await getUserPermissions(session.userId) : null;
+  const canDiscount = hasPermission(session.role, permissions, "till-discount");
   const subtotal = input.items.reduce((sum, i) => sum + i.price * i.qty, 0);
   let extraDiscount: number;
   let couponCode: string | null;

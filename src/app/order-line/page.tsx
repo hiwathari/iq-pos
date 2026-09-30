@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { AppShell } from "@/components/app-shell";
-import { requireRestaurantContext } from "@/lib/scope";
+import { getUserPermissions, requirePermission } from "@/lib/scope";
+import { hasPermission } from "@/lib/permissions";
 import { listCategories, listDishes } from "@/lib/data/menu";
 import { listTables } from "@/lib/data/tables";
 import { listOrders } from "@/lib/data/orders";
@@ -18,23 +19,23 @@ export const metadata: Metadata = {
 export const viewport: Viewport = { themeColor: "#0d9488" };
 
 export default async function OrderLinePage() {
-  const { session, restaurantId } = await requireRestaurantContext();
+  const { session, restaurantId } = await requirePermission("order-line");
 
-  const [categories, dishes, tables, orders, paymentTerminals, restaurant] = await Promise.all([
+  const [categories, dishes, tables, orders, paymentTerminals, restaurant, permissions] = await Promise.all([
     listCategories(restaurantId),
     listDishes(restaurantId),
     listTables(restaurantId),
     listOrders(restaurantId),
     listPaymentTerminals(restaurantId),
     getRestaurant(restaurantId),
+    session.role === "staff" ? getUserPermissions(session.userId) : Promise.resolve(null),
   ]);
 
   const currencySymbol = restaurant?.currencySymbol ?? "£";
   const restaurantName = restaurant?.name ?? "IQ POS";
-  // Discounting an order's total is a manager-level call — only Admin (and Super Admin,
-  // impersonating a restaurant) can see or use the Extra Discount / Coupon controls on the Till.
-  // A plain Staff login gets the same Till otherwise, just without that power.
-  const canDiscount = session.role === "admin" || session.role === "super_admin";
+  // Discounting an order's total is a manager-level call by default — Admin/Super/Regional Admin
+  // always have it; a Staff login only gets it if explicitly granted the till-discount permission.
+  const canDiscount = hasPermission(session.role, permissions, "till-discount");
   const taxEnabled = restaurant?.taxEnabled ?? false;
 
   return (

@@ -54,7 +54,10 @@ export const users = sqliteTable(
     email: text("email").notNull(),
     passwordHash: text("password_hash").notNull(),
     name: text("name").notNull(),
-    role: text("role", { enum: ["super_admin", "admin", "staff"] }).notNull(),
+    // regional_admin: a scoped super-admin — full admin-level control (including permissions)
+    // over only the restaurants assigned to them via restaurantAccess, rather than every
+    // restaurant on the platform like a true super_admin.
+    role: text("role", { enum: ["super_admin", "regional_admin", "admin", "staff"] }).notNull(),
     restaurantId: text("restaurant_id").references(() => restaurants.id, { onDelete: "cascade" }),
     active: int("active", { mode: "boolean" }).notNull().default(true),
     // 6-digit code, set by the restaurant admin, that logs this staff member straight into the Till via /till-login.
@@ -62,6 +65,10 @@ export const users = sqliteTable(
     // 6-digit code, set by the restaurant admin, that logs this staff member straight into the
     // Kitchen Display via /kitchen-login — each staff member gets their own, like the Till PIN.
     kitchenPin: text("kitchen_pin"),
+    // Which sections of the app a "staff" role can see/use, keyed by PermissionKey (see
+    // lib/permissions.ts) — null means DEFAULT_STAFF_PERMISSIONS. Ignored for every other role,
+    // which always has full access to everything within its own scope.
+    permissions: text("permissions", { mode: "json" }).$type<string[]>(),
     createdAt: timestamp("created_at"),
   },
   (table) => [
@@ -69,6 +76,24 @@ export const users = sqliteTable(
     uniqueIndex("users_till_pin_idx").on(table.tillPin),
     uniqueIndex("users_kitchen_pin_idx").on(table.kitchenPin),
   ]
+);
+
+// Which restaurants a regional_admin can see/manage — a super_admin can see and manage every
+// restaurant with no rows needed here; a regional_admin sees only the restaurants listed for
+// their own userId.
+export const restaurantAccess = sqliteTable(
+  "restaurant_access",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at"),
+  },
+  (table) => [uniqueIndex("restaurant_access_user_restaurant_idx").on(table.userId, table.restaurantId)]
 );
 
 export const categories = sqliteTable("categories", {
@@ -374,6 +399,19 @@ export const shifts = sqliteTable("shifts", {
   // What the manager actually counted in the drawer at close — compared against expectedCash
   // on the report to flag any over/short.
   cashCounted: real("cash_counted").notNull().default(0),
+  // Manual cash/card outgoings during the shift (e.g. petty cash spends, supplier payments) —
+  // subtracted from expected cash/card so the drawer count still reconciles even when money left
+  // the till outside of order payments.
+  cashExpenses: real("cash_expenses").notNull().default(0),
+  cardExpenses: real("card_expenses").notNull().default(0),
+  // Per-payment-method breakdown computed from this window's orders — e.g.
+  // [{ method: "Cash", amount: 120 }, { method: "Card 1", amount: 80 }] — one entry per named
+  // payment terminal plus "Cash", so a restaurant with several card machines gets each one
+  // reconciled separately instead of one lumped "Card" figure.
+  terminalSales: text("terminal_sales", { mode: "json" }).$type<{ method: string; amount: number }[]>(),
+  // What the manager counted/settled for each of those same methods at close — compared
+  // line-by-line against terminalSales on the report.
+  terminalCounts: text("terminal_counts", { mode: "json" }).$type<{ method: string; counted: number }[]>(),
   notes: text("notes"),
 });
 

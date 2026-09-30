@@ -12,6 +12,7 @@ export async function listStaff(restaurantId: string) {
       active: users.active,
       tillPin: users.tillPin,
       kitchenPin: users.kitchenPin,
+      permissions: users.permissions,
       createdAt: users.createdAt,
     })
     .from(users)

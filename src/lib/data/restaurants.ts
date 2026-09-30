@@ -1,9 +1,14 @@
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db/client";
-import { dishes, orders, restaurants, tables, users } from "@/db/schema";
+import { dishes, orders, restaurantAccess, restaurants, tables, users } from "@/db/schema";
 
-export async function listRestaurantsWithStats() {
-  const rows = await db.select().from(restaurants).orderBy(restaurants.createdAt);
+// restaurantIds, when given, scopes the list to a regional_admin's assigned restaurants instead
+// of every restaurant on the platform.
+export async function listRestaurantsWithStats(restaurantIds?: string[]) {
+  if (restaurantIds && restaurantIds.length === 0) return [];
+  const rows = restaurantIds
+    ? await db.select().from(restaurants).where(inArray(restaurants.id, restaurantIds)).orderBy(restaurants.createdAt)
+    : await db.select().from(restaurants).orderBy(restaurants.createdAt);
 
   const [userCounts, dishCounts, tableCounts, orderCounts] = await Promise.all([
     db.select({ restaurantId: users.restaurantId, count: sql<number>`count(*)` }).from(users).groupBy(users.restaurantId),
@@ -57,4 +62,30 @@ export async function platformTotals() {
     userCount: Number(userCount),
     orderCount: Number(orderCount),
   };
+}
+
+export async function listAssignedRestaurantIds(userId: string) {
+  const rows = await db.select({ restaurantId: restaurantAccess.restaurantId }).from(restaurantAccess).where(eq(restaurantAccess.userId, userId));
+  return rows.map((r) => r.restaurantId);
+}
+
+// Every regional_admin account plus the restaurants they can currently see/manage — for the
+// true super_admin's own "Regional Admins" panel, where access is granted/revoked.
+export async function listRegionalAdmins() {
+  const admins = await db.select().from(users).where(eq(users.role, "regional_admin")).orderBy(users.createdAt);
+  const access = await db.select().from(restaurantAccess);
+  const allRestaurants = await db.select({ id: restaurants.id, name: restaurants.name }).from(restaurants);
+  const restaurantNameById = new Map(allRestaurants.map((r) => [r.id, r.name]));
+
+  return admins.map((a) => {
+    const restaurantIds = access.filter((row) => row.userId === a.id).map((row) => row.restaurantId);
+    return {
+      id: a.id,
+      name: a.name,
+      email: a.email,
+      active: a.active,
+      restaurantIds,
+      restaurantNames: restaurantIds.map((id) => restaurantNameById.get(id) ?? "Unknown"),
+    };
+  });
 }

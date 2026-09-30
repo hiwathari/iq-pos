@@ -23,26 +23,42 @@ import { Logo } from "./logo";
 import clsx from "clsx";
 import { logoutAction } from "@/lib/actions/auth";
 import type { Role } from "@/lib/session";
+import { hasPermission, type PermissionKey } from "@/lib/permissions";
 
-const NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["admin", "staff"] as Role[] },
-  { href: "/order-line", label: "Till", icon: ClipboardList, roles: ["admin", "staff"] as Role[] },
-  { href: "/kitchen", label: "Kitchen Display", icon: KitchenIcon, roles: ["admin", "staff"] as Role[] },
-  { href: "/manage-table", label: "Manage Table", icon: Table2, roles: ["admin", "staff"] as Role[] },
-  { href: "/manage-dishes", label: "Manage Dishes", icon: ChefHat, roles: ["admin"] as Role[] },
-  { href: "/pricing", label: "Channel Pricing", icon: Tags, roles: ["admin"] as Role[] },
-  { href: "/coupons", label: "Coupons", icon: TicketPercent, roles: ["admin"] as Role[] },
-  { href: "/loyalty", label: "Loyalty Cards", icon: CreditCard, roles: ["admin"] as Role[] },
-  { href: "/inventory", label: "Inventory", icon: Package, roles: ["admin"] as Role[] },
-  { href: "/customers", label: "Customers", icon: Users, roles: ["admin", "staff"] as Role[] },
-  { href: "/reports", label: "Reports", icon: BarChart3, roles: ["admin"] as Role[] },
-  { href: "/settings", label: "Settings", icon: Settings, roles: ["admin"] as Role[] },
-  { href: "/help-center", label: "Help Center", icon: LifeBuoy, roles: ["admin", "staff"] as Role[] },
+const NAV: { href: string; label: string; icon: typeof LayoutDashboard; key: PermissionKey }[] = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, key: "dashboard" },
+  { href: "/order-line", label: "Till", icon: ClipboardList, key: "order-line" },
+  { href: "/kitchen", label: "Kitchen Display", icon: KitchenIcon, key: "kitchen" },
+  { href: "/manage-table", label: "Manage Table", icon: Table2, key: "manage-table" },
+  { href: "/manage-dishes", label: "Manage Dishes", icon: ChefHat, key: "manage-dishes" },
+  { href: "/pricing", label: "Channel Pricing", icon: Tags, key: "pricing" },
+  { href: "/coupons", label: "Coupons", icon: TicketPercent, key: "coupons" },
+  { href: "/loyalty", label: "Loyalty Cards", icon: CreditCard, key: "loyalty" },
+  { href: "/inventory", label: "Inventory", icon: Package, key: "inventory" },
+  { href: "/customers", label: "Customers", icon: Users, key: "customers" },
+  { href: "/reports", label: "Reports", icon: BarChart3, key: "reports" },
+  { href: "/settings", label: "Settings", icon: Settings, key: "settings" },
+  { href: "/help-center", label: "Help Center", icon: LifeBuoy, key: "help-center" },
 ];
 
-export function Sidebar({ role, name }: { role: Role; name: string }) {
+export function Sidebar({
+  role,
+  name,
+  permissions,
+  isImpersonating,
+}: {
+  role: Role;
+  name: string;
+  permissions?: string[] | null;
+  isImpersonating?: boolean;
+}) {
   const pathname = usePathname();
-  const items = role === "super_admin" ? [] : NAV.filter((item) => item.roles.includes(role));
+  const isSuperOrRegional = role === "super_admin" || role === "regional_admin";
+  // While impersonating, a super/regional admin operates with full access to that one
+  // restaurant — same nav as its own admin would see — rather than the empty nav they'd
+  // otherwise get since neither role is ever a page's own restaurantId owner.
+  const effectiveRole: Role = isSuperOrRegional && isImpersonating ? "admin" : role;
+  const items = isSuperOrRegional && !isImpersonating ? [] : NAV.filter((item) => hasPermission(effectiveRole, permissions, item.key));
 
   return (
     <aside className="hidden md:flex md:w-60 shrink-0 flex-col border-r border-neutral-200 bg-white px-4 py-5 print:hidden">
@@ -50,7 +66,7 @@ export function Sidebar({ role, name }: { role: Role; name: string }) {
         <Logo />
       </div>
       <nav className="flex-1 flex flex-col gap-1">
-        {role === "super_admin" && (
+        {isSuperOrRegional && (
           <Link
             href="/super-admin"
             className={clsx(

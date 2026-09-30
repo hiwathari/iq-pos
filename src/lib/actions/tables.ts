@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { reservations, tables } from "@/db/schema";
 import type { ReservationSource, TableArea, TableStatus } from "@/lib/types";
-import { assertAdmin, requireRestaurantContext } from "@/lib/scope";
+import { assertPermission, requireRestaurantContext } from "@/lib/scope";
 
 export interface CreateTableState {
   error?: string;
@@ -16,7 +16,7 @@ export async function createTableAction(
   formData: FormData
 ): Promise<CreateTableState> {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "manage-table");
 
   const number = Number(formData.get("number"));
   const area = String(formData.get("area") || "Ground Floor") as TableArea;
@@ -39,7 +39,7 @@ export async function createTableAction(
 
 export async function deleteTableAction(tableId: string) {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "manage-table");
   await db.delete(tables).where(and(eq(tables.id, tableId), eq(tables.restaurantId, restaurantId)));
   revalidatePath("/manage-table");
   revalidatePath("/order-line");

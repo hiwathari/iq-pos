@@ -20,6 +20,10 @@ export function ShiftReportClient({
   const [shared, setShared] = useState(false);
   const variance = shift.cashCounted - shift.expectedCash;
   const isBalanced = Math.abs(variance) < 0.01;
+  // Every method that either had sales or got a manager-entered count — so a terminal the
+  // manager counted money for still shows up (and reconciles against zero expected) even on a
+  // slow shift with no sales through it.
+  const terminalMethods = [...new Set([...(shift.terminalSales ?? []).map((t) => t.method), ...(shift.terminalCounts ?? []).map((c) => c.method)])];
 
   async function share() {
     const url = window.location.href;
@@ -100,13 +104,57 @@ export function ShiftReportClient({
 
       <h2 className="mb-2 text-sm font-bold text-neutral-900">Cash Reconciliation</h2>
       <div className="mb-6 overflow-hidden rounded-xl border border-neutral-200">
-        <Row label="Expected Cash (from Cash sales)" value={shift.expectedCash} currencySymbol={currencySymbol} />
-        <Row label="Cash Counted in Drawer" value={shift.cashCounted} currencySymbol={currencySymbol} />
+        <Row label="Cash Sales" value={shift.cashSales} currencySymbol={currencySymbol} />
+        {shift.cashExpenses > 0 && (
+          <div className="flex items-center justify-between border-t border-neutral-100 px-4 py-3 text-sm text-neutral-600">
+            <span>Less: Cash Expenses</span>
+            <span className="font-semibold text-neutral-800">-{formatMoney(shift.cashExpenses, currencySymbol)}</span>
+          </div>
+        )}
+        <Row label="Expected Cash in Till" value={shift.expectedCash} currencySymbol={currencySymbol} />
+        <Row label="Cash Counted in Till" value={shift.cashCounted} currencySymbol={currencySymbol} />
         <div className={`flex items-center justify-between px-4 py-3 text-sm font-bold ${isBalanced ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
           <span>{isBalanced ? "Balanced" : variance > 0 ? "Over by" : "Short by"}</span>
           <span>{formatMoney(Math.abs(variance), currencySymbol)}</span>
         </div>
       </div>
+
+      {terminalMethods.length > 0 && (
+        <>
+          <h2 className="mb-2 text-sm font-bold text-neutral-900">Card Machine Reconciliation</h2>
+          <div className="mb-6 overflow-hidden rounded-xl border border-neutral-200">
+            {terminalMethods.map((method) => {
+              const expected = shift.terminalSales?.find((t) => t.method === method)?.amount ?? 0;
+              const counted = shift.terminalCounts?.find((c) => c.method === method)?.counted ?? 0;
+              const termVariance = counted - expected;
+              const termBalanced = Math.abs(termVariance) < 0.01;
+              return (
+                <div key={method} className="border-t border-neutral-100 px-4 py-3 text-sm first:border-t-0">
+                  <div className="mb-1.5 flex items-center justify-between font-semibold text-neutral-800">
+                    <span>{method}</span>
+                    {!termBalanced && (
+                      <span className={termVariance > 0 ? "text-emerald-600" : "text-rose-600"}>
+                        {termVariance > 0 ? "Over" : "Short"} {formatMoney(Math.abs(termVariance), currencySymbol)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex justify-between text-xs text-neutral-500">
+                    <span>Expected: {formatMoney(expected, currencySymbol)}</span>
+                    <span>Counted: {formatMoney(counted, currencySymbol)}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {shift.cardExpenses > 0 && (
+        <div className="mb-6 flex items-center justify-between rounded-xl border border-neutral-200 px-4 py-3 text-sm">
+          <span className="text-neutral-600">Card Expenses</span>
+          <span className="font-semibold text-neutral-800">{formatMoney(shift.cardExpenses, currencySymbol)}</span>
+        </div>
+      )}
 
       {shift.notes && (
         <div className="mb-6">

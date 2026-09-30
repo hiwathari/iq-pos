@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/db/client";
 import { categories, paymentTerminals, printers, restaurants, users } from "@/db/schema";
 import { hashPassword, setImpersonatedRestaurant } from "@/lib/auth";
-import { assertAdmin, requireRestaurantContext, requireSession } from "@/lib/scope";
+import { assertPermission, assertRestaurantAccess, requireRestaurantContext, requireSession } from "@/lib/scope";
 import { isValidHexColor } from "@/lib/color";
 
 function slugify(name: string) {
@@ -86,7 +86,7 @@ export async function createRestaurantAction(
 
 export async function updateRestaurantCurrencyAction(currencySymbol: string) {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "settings");
   if (!currencySymbol.trim()) return;
   await db.update(restaurants).set({ currencySymbol: currencySymbol.trim() }).where(eq(restaurants.id, restaurantId));
   revalidatePath("/settings");
@@ -99,7 +99,7 @@ export async function updateRestaurantCurrencyAction(currencySymbol: string) {
 
 export async function updateRestaurantTaxEnabledAction(enabled: boolean) {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "settings");
   await db.update(restaurants).set({ taxEnabled: enabled }).where(eq(restaurants.id, restaurantId));
   revalidatePath("/settings");
   revalidatePath("/order-line");
@@ -110,7 +110,7 @@ export async function updateRestaurantTaxEnabledAction(enabled: boolean) {
 
 export async function updateKitchenTimerLimitAction(minutes: number) {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "settings");
   const clamped = Math.min(120, Math.max(1, Math.round(minutes)));
   await db.update(restaurants).set({ kitchenTimerLimitMinutes: clamped }).where(eq(restaurants.id, restaurantId));
   revalidatePath("/settings");
@@ -121,7 +121,7 @@ export async function updateKitchenTimerLimitAction(minutes: number) {
 // who happens to be logged in when it appears.
 export async function dismissAutoVoidNoticeAction() {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "dashboard");
   await db.update(restaurants).set({ autoVoidNoticeDismissedAt: Date.now() }).where(eq(restaurants.id, restaurantId));
   revalidatePath("/dashboard");
 }
@@ -136,7 +136,7 @@ export interface InvoiceDetailsInput {
 
 export async function updateInvoiceDetailsAction(input: InvoiceDetailsInput) {
   const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
+  await assertPermission(session, "settings");
   await db
     .update(restaurants)
     .set({
@@ -241,14 +241,15 @@ export async function toggleRestaurantActiveAction(restaurantId: string, active:
 
 export async function impersonateRestaurantAction(restaurantId: string) {
   const session = await requireSession();
-  if (session.role !== "super_admin") throw new Error("Forbidden");
+  if (session.role !== "super_admin" && session.role !== "regional_admin") throw new Error("Forbidden");
+  await assertRestaurantAccess(session, restaurantId);
   await setImpersonatedRestaurant(restaurantId);
   redirect("/dashboard");
 }
 
 export async function stopImpersonationAction() {
   const session = await requireSession();
-  if (session.role !== "super_admin") throw new Error("Forbidden");
+  if (session.role !== "super_admin" && session.role !== "regional_admin") throw new Error("Forbidden");
   await setImpersonatedRestaurant(null);
   redirect("/super-admin");
 }

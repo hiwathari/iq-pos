@@ -1,17 +1,19 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
-import { KeyRound, Pencil, Plus, X } from "lucide-react";
+import { KeyRound, Pencil, Plus, ShieldCheck, X } from "lucide-react";
 import {
   createStaffAction,
   generateKitchenPinAction,
   generateTillPinAction,
   toggleStaffActiveAction,
   updateStaffCredentialsAction,
+  updateStaffPermissionsAction,
   type CreateStaffState,
   type UpdateStaffState,
 } from "@/lib/actions/staff";
 import type { Role } from "@/lib/session";
+import { DEFAULT_STAFF_PERMISSIONS, PERMISSION_KEYS, PERMISSION_LABELS } from "@/lib/permissions";
 
 interface StaffRow {
   id: string;
@@ -21,6 +23,7 @@ interface StaffRow {
   active: boolean;
   tillPin: string | null;
   kitchenPin: string | null;
+  permissions: string[] | null;
 }
 
 const initialState: CreateStaffState = {};
@@ -28,6 +31,7 @@ const initialEditState: UpdateStaffState = {};
 
 export function StaffClient({ staff }: { staff: StaffRow[] }) {
   const [, startTransition] = useTransition();
+  const [permissionsTarget, setPermissionsTarget] = useState<StaffRow | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<StaffRow | null>(null);
 
@@ -131,6 +135,14 @@ export function StaffClient({ staff }: { staff: StaffRow[] }) {
                     >
                       <KeyRound className="h-3.5 w-3.5" /> {s.kitchenPin ? "Regen Kitchen" : "Kitchen PIN"}
                     </button>
+                    {s.role === "staff" && (
+                      <button
+                        onClick={() => setPermissionsTarget(s)}
+                        className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
+                      >
+                        <ShieldCheck className="h-3.5 w-3.5" /> Permissions
+                      </button>
+                    )}
                     <button
                       onClick={() => handleToggle(s.id, !s.active)}
                       className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
@@ -154,6 +166,60 @@ export function StaffClient({ staff }: { staff: StaffRow[] }) {
 
       {modalOpen && <AddStaffModal onClose={() => setModalOpen(false)} />}
       {editingStaff && <EditStaffModal staff={editingStaff} onClose={() => setEditingStaff(null)} />}
+      {permissionsTarget && <PermissionsModal staff={permissionsTarget} onClose={() => setPermissionsTarget(null)} />}
+    </div>
+  );
+}
+
+function PermissionsModal({ staff, onClose }: { staff: StaffRow; onClose: () => void }) {
+  const [selected, setSelected] = useState<string[]>(staff.permissions ?? DEFAULT_STAFF_PERMISSIONS);
+  const [pending, startTransition] = useTransition();
+
+  function toggle(key: string) {
+    setSelected((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+  }
+
+  function submit() {
+    startTransition(async () => {
+      await updateStaffPermissionsAction(staff.id, selected);
+      onClose();
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-1 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-neutral-900">Permissions</h2>
+          <button onClick={onClose} className="rounded-full p-1 text-neutral-400 hover:bg-neutral-100">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <p className="mb-4 text-xs text-neutral-400">
+          What {staff.name} can see and use. Unchecked sections are hidden from their sidebar and blocked if they try
+          to reach them directly.
+        </p>
+        <div className="max-h-80 space-y-1 overflow-y-auto">
+          {PERMISSION_KEYS.map((key) => (
+            <label key={key} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm hover:bg-neutral-50">
+              <input
+                type="checkbox"
+                checked={selected.includes(key)}
+                onChange={() => toggle(key)}
+                className="h-4 w-4 accent-teal-600"
+              />
+              {PERMISSION_LABELS[key]}
+            </label>
+          ))}
+        </div>
+        <button
+          onClick={submit}
+          disabled={pending}
+          className="mt-5 w-full rounded-xl bg-[var(--brand)] py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] disabled:opacity-50"
+        >
+          {pending ? "Saving…" : "Save Permissions"}
+        </button>
+      </div>
     </div>
   );
 }

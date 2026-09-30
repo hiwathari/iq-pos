@@ -1,5 +1,6 @@
 import { getActiveRestaurantId, getImpersonatedRestaurantId, getSession } from "@/lib/auth";
 import { getRestaurant } from "@/lib/data/restaurants";
+import { getUserPermissions } from "@/lib/scope";
 import { brandCssVars } from "@/lib/color";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
@@ -22,13 +23,17 @@ export async function AppShell({ children, title }: { children: React.ReactNode;
     );
   }
 
-  const isImpersonating = session.role === "super_admin" && Boolean(await getImpersonatedRestaurantId());
+  const isImpersonating =
+    (session.role === "super_admin" || session.role === "regional_admin") && Boolean(await getImpersonatedRestaurantId());
+  const permissions = session.role === "staff" ? await getUserPermissions(session.userId) : null;
 
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-neutral-50" style={brandCssVars(restaurant?.brandColor)}>
-      <Sidebar role={session.role} name={session.name} />
+      <Sidebar role={session.role} name={session.name} permissions={permissions} isImpersonating={isImpersonating} />
       <div className="flex min-w-0 flex-1 flex-col">
-        {isImpersonating && restaurant && <ImpersonationBanner restaurantName={restaurant.name} />}
+        {isImpersonating && restaurant && (
+          <ImpersonationBanner restaurantName={restaurant.name} label={session.role === "regional_admin" ? "Regional Admin" : "Super Admin"} />
+        )}
         <Topbar title={restaurant ? `${title ?? ""}${title ? " · " : ""}${restaurant.name}` : title} name={session.name} role={session.role} />
         <main className="flex-1 overflow-y-auto">{children}</main>
       </div>
