@@ -23,7 +23,7 @@ import {
   voidOrderAction,
 } from "@/lib/actions/orders";
 import { validateCouponAction } from "@/lib/actions/coupons";
-import { lookupOrCreateLoyaltyMemberAction } from "@/lib/actions/loyalty";
+import { lookupLoyaltyMemberByCodeAction, lookupOrCreateLoyaltyMemberAction } from "@/lib/actions/loyalty";
 import type { LoyaltyContactType } from "@/lib/types";
 import { setTableStatusAction } from "@/lib/actions/tables";
 import { setDishStockAction } from "@/lib/actions/menu";
@@ -332,12 +332,32 @@ export function OrderLineClient({
     setCart((prev) => ({ ...prev, couponCode: "", appliedCoupon: null }));
   }
 
+  // A loyalty code is 7 characters, letters+digits, no "@" — distinct enough from a phone number
+  // (all digits/+/-/spaces) or an email to tell apart without asking the user which one they're
+  // typing.
+  function looksLikeLoyaltyCode(value: string) {
+    return /^[A-Z0-9]{5,10}$/i.test(value) && !/^[\d+\-\s]+$/.test(value);
+  }
+
   function findOrEnrollLoyalty() {
     const contact = cart.loyaltyContact.trim();
     if (!contact) return;
-    const contactType: LoyaltyContactType = contact.includes("@") ? "email" : "phone";
     setLoyaltyError(null);
     startTransition(async () => {
+      if (looksLikeLoyaltyCode(contact)) {
+        const result = await lookupLoyaltyMemberByCodeAction(contact);
+        if (result.error || !result.member) {
+          setLoyaltyError(result.error ?? "No loyalty member found with that code.");
+          return;
+        }
+        setCart((prev) => ({
+          ...prev,
+          loyaltyMember: { id: result.member!.id, code: result.member!.code, name: result.member!.name },
+        }));
+        return;
+      }
+
+      const contactType: LoyaltyContactType = contact.includes("@") ? "email" : "phone";
       const result = await lookupOrCreateLoyaltyMemberAction({
         contactType,
         contactValue: contact,
@@ -1410,7 +1430,7 @@ function CartPanel({
             <input
               value={cart.loyaltyContact}
               onChange={(e) => setCart((prev) => ({ ...prev, loyaltyContact: e.target.value }))}
-              placeholder="Phone or email"
+              placeholder="Phone, email, or card code"
               className="flex-1 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm outline-none focus:border-teal-500"
             />
             <button
