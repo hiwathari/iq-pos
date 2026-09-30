@@ -35,7 +35,7 @@ export async function sendLoyaltyMagicLinkEmail(input: { to: string; restaurantN
   }
 
   const from = `${sanitizeDisplayName(input.restaurantName)} <${emailLocalPart(input.restaurantName)}@${SENDING_DOMAIN}>`;
-  await resend.emails.send({
+  const { error } = await resend.emails.send({
     from,
     to: input.to,
     subject: `Sign in to ${input.restaurantName}`,
@@ -50,4 +50,11 @@ export async function sendLoyaltyMagicLinkEmail(input: { to: string; restaurantN
       <p style="color:#888;font-size:13px">This expires in 15 minutes. If you didn't request this, you can ignore this email.</p>
     `,
   });
+  // Resend's SDK reports a send failure (e.g. a not-yet-verified domain) via this `error` field
+  // rather than throwing — surfaced here as a loud server log (findable in Vercel's runtime logs)
+  // instead of an unhandled exception, so a misconfigured/pending domain degrades to "the customer
+  // didn't get the email" rather than breaking the whole sign-in action.
+  if (error) {
+    console.error(`[magic-link] Resend failed to send to ${input.to} from ${from}:`, error);
+  }
 }
