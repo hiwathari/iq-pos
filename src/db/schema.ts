@@ -428,6 +428,23 @@ export const shifts = sqliteTable("shifts", {
   notes: text("notes"),
 });
 
+// In-app alerts for the restaurant's admin (the Topbar bell) — nothing staff/till/kitchen see.
+// Currently only ever written by endShiftAction when a day's close doesn't balance, so the admin
+// finds out about a cash/card discrepancy without having to open every shift report by hand.
+export const notifications = sqliteTable("notifications", {
+  id: id(),
+  restaurantId: text("restaurant_id")
+    .notNull()
+    .references(() => restaurants.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  // Where clicking the notification should take the admin — a relative in-app path (e.g. a
+  // shift report), or null for one with nowhere specific to go.
+  link: text("link"),
+  createdAt: timestamp("created_at"),
+  readAt: int("read_at"),
+});
+
 // A tracked stock item (an ingredient/supply, not necessarily a sellable dish). `quantity` is
 // adjusted manually from /inventory and automatically when a dish linked via
 // dishes.inventoryItemId is sold — see decrementInventoryForOrder in lib/actions/orders.ts.
