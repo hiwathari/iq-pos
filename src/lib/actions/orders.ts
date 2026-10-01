@@ -3,7 +3,7 @@
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
-import { orders, tables } from "@/db/schema";
+import { orders, restaurants, tables } from "@/db/schema";
 import type { Order, OrderChannel, OrderItem, OrderStatus, PaymentLine, ThirdPartyProvider } from "@/lib/types";
 import { resolveCouponDiscount } from "@/lib/types";
 import { getUserPermissions, requireRestaurantContext } from "@/lib/scope";
@@ -128,6 +128,22 @@ export async function placeOrderAction(input: PlaceOrderInput) {
       .where(and(eq(orders.id, input.editingOrderId), eq(orders.restaurantId, restaurantId)));
   } else {
     const orderNumber = await nextOrderNumber(restaurantId);
+
+    // Counter-service places with no kitchen ticket step (see directServeMode on restaurants)
+    // skip "In Kitchen"/"Ready" for a new order that's already paid in full — it's created
+    // straight as Served, the same end state the normal flow reaches via the kitchen board.
+    let status: OrderStatus = input.channel === "Wait List" ? "Wait List" : "In Kitchen";
+    let servedAt: number | null = null;
+    let closedOutAt: number | null = null;
+    if (status === "In Kitchen" && paymentMethod) {
+      const [restaurant] = await db.select({ directServeMode: restaurants.directServeMode }).from(restaurants).where(eq(restaurants.id, restaurantId));
+      if (restaurant?.directServeMode) {
+        status = "Served";
+        servedAt = Date.now();
+        closedOutAt = Date.now();
+      }
+    }
+
     await db.insert(orders).values({
       id: crypto.randomUUID(),
       restaurantId,
@@ -137,7 +153,9 @@ export async function placeOrderAction(input: PlaceOrderInput) {
       guests: input.guests,
       channel: input.channel,
       thirdPartyProvider: input.channel === "Third Party" ? input.thirdPartyProvider : null,
-      status: input.channel === "Wait List" ? "Wait List" : "In Kitchen",
+      status,
+      servedAt,
+      closedOutAt,
       items: input.items,
       paymentMethod,
       payments,

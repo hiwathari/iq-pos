@@ -1,11 +1,14 @@
 import { getActiveRestaurantId, getImpersonatedRestaurantId, getSession } from "@/lib/auth";
 import { getRestaurant } from "@/lib/data/restaurants";
+import { listPaymentTerminals } from "@/lib/data/printers";
 import { getUserPermissions } from "@/lib/scope";
 import { brandCssVars } from "@/lib/color";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 import { ImpersonationBanner } from "./impersonation-banner";
 import { LockedShell } from "./locked-shell";
+import { OpenTillButton } from "@/app/dashboard/open-till-button";
+import { EndShiftButton } from "@/app/dashboard/end-shift-button";
 
 export async function AppShell({ children, title }: { children: React.ReactNode; title?: string }) {
   const session = await getSession();
@@ -16,8 +19,23 @@ export async function AppShell({ children, title }: { children: React.ReactNode;
 
   if (session.role === "till" || session.role === "kitchen_display") {
     const label = session.role === "till" ? `Till · ${session.name}` : "Kitchen Display";
+    const currencySymbol = restaurant?.currencySymbol ?? "£";
+    const endDaySection =
+      session.role === "till" && restaurant ? (
+        <div className="flex items-center gap-2">
+          <OpenTillButton
+            currencySymbol={currencySymbol}
+            pendingOpeningBalance={restaurant.pendingOpeningBalance}
+            openingBalanceSetByName={restaurant.openingBalanceSetByName}
+          />
+          <EndShiftButton
+            currencySymbol={currencySymbol}
+            terminalNames={(await listPaymentTerminals(restaurant.id)).filter((t) => t.active).map((t) => t.name)}
+          />
+        </div>
+      ) : null;
     return (
-      <LockedShell restaurantName={restaurant?.name} label={label} brandColor={restaurant?.brandColor}>
+      <LockedShell restaurantName={restaurant?.name} label={label} brandColor={restaurant?.brandColor} endDaySection={endDaySection}>
         {children}
       </LockedShell>
     );

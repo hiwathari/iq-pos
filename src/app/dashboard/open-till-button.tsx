@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { openTillAction } from "@/lib/actions/shifts";
 import { formatMoney } from "@/lib/types";
+import { DenominationInput, denominationTotal, type DenominationCounts } from "@/components/denomination-input";
 import { Wallet, X } from "lucide-react";
 
 export function OpenTillButton({
@@ -17,7 +18,7 @@ export function OpenTillButton({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [amount, setAmount] = useState("");
+  const [counts, setCounts] = useState<DenominationCounts>({});
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -32,9 +33,9 @@ export function OpenTillButton({
   }
 
   function submit() {
-    const value = Number(amount);
-    if (amount.trim() === "" || Number.isNaN(value) || value < 0) {
-      setError("Enter the starting cash float.");
+    const value = denominationTotal(counts);
+    if (value <= 0) {
+      setError("Count at least some cash to set the opening float.");
       return;
     }
     setError(null);
@@ -45,6 +46,7 @@ export function OpenTillButton({
         return;
       }
       setOpen(false);
+      setCounts({});
       router.refresh();
     });
   }
@@ -60,7 +62,7 @@ export function OpenTillButton({
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+          <div className="max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-bold text-neutral-900">Open Till</h2>
               <button onClick={() => setOpen(false)} className="rounded-lg p-1 text-neutral-400 hover:bg-neutral-100">
@@ -68,25 +70,15 @@ export function OpenTillButton({
               </button>
             </div>
             <p className="mb-4 text-xs text-neutral-400">
-              Declare the starting cash float in the drawer before service begins — carried into today&apos;s End Day
+              Count the starting cash float in the drawer before service begins — carried into today&apos;s End Day
               reconciliation automatically.
             </p>
-            <label className="mb-1 block text-xs font-semibold text-neutral-500">Opening Balance ({currencySymbol})</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              autoFocus
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="0.00"
-              className="mb-3 w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm focus:border-teal-500 focus:outline-none"
-            />
-            {error && <p className="mb-3 text-xs font-medium text-rose-600">{error}</p>}
+            <DenominationInput currencySymbol={currencySymbol} counts={counts} onChange={setCounts} autoFocusFirst />
+            {error && <p className="mb-3 mt-3 text-xs font-medium text-rose-600">{error}</p>}
             <button
               onClick={submit}
               disabled={pending}
-              className="w-full rounded-xl bg-[var(--brand)] py-3 text-sm font-bold text-white hover:bg-[var(--brand-dark)] disabled:opacity-50"
+              className="mt-3 w-full rounded-xl bg-[var(--brand)] py-3 text-sm font-bold text-white hover:bg-[var(--brand-dark)] disabled:opacity-50"
             >
               {pending ? "Opening…" : "Open Till"}
             </button>

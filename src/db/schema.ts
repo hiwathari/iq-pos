@@ -42,6 +42,11 @@ export const restaurants = sqliteTable("restaurants", {
   // on in Settings. Once on, each menu category's own taxRatePercent (see categories below) is
   // what actually gets applied, not a single restaurant-wide rate.
   taxEnabled: int("tax_enabled", { mode: "boolean" }).notNull().default(false),
+  // For a counter-service place with no kitchen ticket workflow (e.g. a cafe that takes the
+  // order and payment together at the counter) — a brand-new, fully-paid order skips "In
+  // Kitchen"/"Ready" entirely and is created straight as "Served". Off by default: every
+  // existing restaurant keeps the normal send-to-kitchen-then-serve flow.
+  directServeMode: int("direct_serve_mode", { mode: "boolean" }).notNull().default(false),
   // The starting cash float declared by whoever opens the till for the current day/shift — null
   // until someone does (see openTillAction). Carried into the next End Day close as that shift's
   // openingBalance, then cleared back to null so the following day has to declare its own.

@@ -1,11 +1,12 @@
 "use server";
 
-import { asc, desc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
-import { orders, restaurants, shifts } from "@/db/schema";
+import { restaurants, shifts } from "@/db/schema";
 import { assertPermission, requireRestaurantContext } from "@/lib/scope";
-import { summarizeShiftWindow } from "@/lib/data/shifts";
+import { findShiftIssues, listShifts, resolveShiftWindowStart, summarizeShiftWindow, type ShiftIssue } from "@/lib/data/shifts";
+import { getReportData } from "@/lib/data/reports";
 
 export interface OpenTillState {
   error?: string;
@@ -64,27 +65,7 @@ export async function endShiftAction(input: EndShiftInput): Promise<EndShiftStat
   const [restaurant] = await db.select().from(restaurants).where(eq(restaurants.id, restaurantId));
   const openingBalance = restaurant?.pendingOpeningBalance ?? 0;
 
-  const [previousShift] = await db
-    .select({ closedAt: shifts.closedAt })
-    .from(shifts)
-    .where(eq(shifts.restaurantId, restaurantId))
-    .orderBy(desc(shifts.closedAt))
-    .limit(1);
-
-  let sinceTs = previousShift?.closedAt ?? null;
-  if (sinceTs === null) {
-    // No prior shift — this is the restaurant's first one, so it should cover every order ever
-    // placed. The window below is exclusive of `sinceTs`, so start it 1ms before the earliest
-    // order (or the restaurant's creation time, if it has no orders yet) rather than at it.
-    const [firstOrder] = await db
-      .select({ createdAt: orders.createdAt })
-      .from(orders)
-      .where(eq(orders.restaurantId, restaurantId))
-      .orderBy(asc(orders.createdAt))
-      .limit(1);
-    sinceTs = (firstOrder?.createdAt ?? restaurant?.createdAt ?? Date.now()) - 1;
-  }
-
+  const sinceTs = await resolveShiftWindowStart(restaurantId, restaurant?.createdAt ?? Date.now());
   const uptoTs = Date.now();
   const summary = await summarizeShiftWindow(restaurantId, sinceTs, uptoTs);
 
@@ -120,4 +101,55 @@ export async function endShiftAction(input: EndShiftInput): Promise<EndShiftStat
     .where(eq(restaurants.id, restaurantId));
 
   return { shiftId: shift.id };
+}
+
+export interface ShiftPreview {
+  openingBalance: number;
+  sinceTs: number;
+  totalSales: number;
+  cashSales: number;
+  cardSales: number;
+  otherSales: number;
+  orderCount: number;
+  voidCount: number;
+  voidAmount: number;
+  expectedCash: number;
+  terminalSales: { method: string; amount: number }[];
+  itemSales: { name: string; qty: number; total: number }[];
+  issues: ShiftIssue[];
+  recentShifts: { id: string; closedAt: number; totalSales: number; variance: number }[];
+}
+
+// A read-only look at "if I closed the day right now" — the same numbers endShiftAction would
+// freeze into a shift row, computed live with nothing written. Lets staff see the running
+// totals, the item-wise breakdown, and anything that needs resolving (findShiftIssues) before
+// they commit to actually ending the day.
+export async function previewShiftSummaryAction(): Promise<ShiftPreview> {
+  const { session, restaurantId } = await requireRestaurantContext();
+  await assertPermission(session, "end-day");
+
+  const [restaurant] = await db.select().from(restaurants).where(eq(restaurants.id, restaurantId));
+  const openingBalance = restaurant?.pendingOpeningBalance ?? 0;
+
+  const sinceTs = await resolveShiftWindowStart(restaurantId, restaurant?.createdAt ?? Date.now());
+  const uptoTs = Date.now();
+
+  const [summary, report, issues, pastShifts] = await Promise.all([
+    summarizeShiftWindow(restaurantId, sinceTs, uptoTs),
+    getReportData(restaurantId, { from: sinceTs, to: uptoTs + 1 }),
+    findShiftIssues(restaurantId, sinceTs, uptoTs),
+    listShifts(restaurantId),
+  ]);
+
+  const revenueByName = new Map(report.itemWiseRevenue.map((r) => [r.name, r.revenue]));
+  const itemSales = report.itemWiseSoldQty.map((i) => ({ name: i.name, qty: i.qty, total: revenueByName.get(i.name) ?? 0 }));
+
+  return {
+    openingBalance,
+    sinceTs,
+    ...summary,
+    itemSales,
+    issues,
+    recentShifts: pastShifts.slice(0, 3).map((s) => ({ id: s.id, closedAt: s.closedAt, totalSales: s.totalSales, variance: s.cashCounted - s.expectedCash })),
+  };
 }

@@ -108,6 +108,15 @@ export async function updateRestaurantTaxEnabledAction(enabled: boolean) {
   revalidatePath("/dashboard");
 }
 
+export async function updateDirectServeModeAction(enabled: boolean) {
+  const { session, restaurantId } = await requireRestaurantContext();
+  await assertPermission(session, "settings");
+  await db.update(restaurants).set({ directServeMode: enabled }).where(eq(restaurants.id, restaurantId));
+  revalidatePath("/settings");
+  revalidatePath("/order-line");
+  revalidatePath("/kitchen");
+}
+
 export async function updateKitchenTimerLimitAction(minutes: number) {
   const { session, restaurantId } = await requireRestaurantContext();
   await assertPermission(session, "settings");

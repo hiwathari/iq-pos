@@ -9,18 +9,24 @@ export function LockedShell({
   restaurantName,
   label,
   brandColor,
+  endDaySection,
 }: {
   children: React.ReactNode;
   restaurantName?: string;
   label: string;
   brandColor?: string | null;
+  // Open Till / Report & End Day, for a till-login session only (never kitchen display) — the
+  // whole point is that a PIN-only till device can run and close its own day without anyone
+  // having to log into the full admin Dashboard, which this device can't reach at all.
+  endDaySection?: React.ReactNode;
 }) {
   return (
     <div className="flex h-dvh w-full flex-col overflow-hidden bg-neutral-50" style={brandCssVars(brandColor)}>
-      <header className="flex items-center justify-between border-b border-neutral-200 bg-white px-5 py-3">
+      <header className="flex items-center justify-between gap-3 border-b border-neutral-200 bg-white px-5 py-3">
         <div className="text-sm font-semibold text-neutral-900">{restaurantName ?? "IQ POS"}</div>
-        <div className="flex items-center gap-3">
-          <span className="text-xs font-medium text-neutral-400">{label}</span>
+        <div className="flex items-center gap-2">
+          {endDaySection}
+          <span className="hidden text-xs font-medium text-neutral-400 sm:inline">{label}</span>
           <form action={logoutAction}>
             <button
               type="submit"
