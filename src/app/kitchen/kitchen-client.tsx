@@ -461,9 +461,12 @@ function formatElapsed(elapsedMs: number) {
   return `${mins}:${String(secs).padStart(2, "0")}`;
 }
 
-// A compact row for the Completed column — order number, time, items, table — rather than the
-// full interactive OrderTicket card, so a busy day's worth of finished tickets stays scannable
-// in a narrow, scrolling column instead of turning into a wall of oversized cards.
+// A read-only rundown for the Completed column — order number, time, table/channel, customer
+// info, items with their customization notes, void reason — everything OrderTicket shows on an
+// active ticket except the ready-checkboxes and advance buttons, which no longer apply once it's
+// done. Not the full interactive OrderTicket card itself, so a busy day's worth of finished
+// tickets stays scannable in a narrow, scrolling column instead of turning into a wall of
+// oversized, mostly-disabled cards.
 function CompletedOrderRow({
   order,
   itemMatchesStation,
@@ -472,12 +475,9 @@ function CompletedOrderRow({
   itemMatchesStation?: (item: OrderItem) => boolean;
 }) {
   const visibleItems = itemMatchesStation ? order.items.filter(itemMatchesStation) : order.items;
-  const tint =
-    order.status === "Voided"
-      ? "border-rose-200 bg-rose-50"
-      : order.status === "Ready"
-        ? "border-amber-200 bg-amber-50"
-        : "border-emerald-200 bg-emerald-50";
+  const isVoided = order.status === "Voided";
+  const tint = isVoided ? "border-rose-200 bg-rose-50" : order.status === "Ready" ? "border-amber-200 bg-amber-50" : "border-emerald-200 bg-emerald-50";
+  const hasCustomerInfo = order.customerName || order.customerPhone || order.customerAddress;
 
   return (
     <div className={`rounded-xl border px-3 py-2.5 text-sm ${tint}`}>
@@ -485,18 +485,39 @@ function CompletedOrderRow({
         <span className="font-bold text-neutral-900">#{order.orderNumber}</span>
         <span className="text-xs text-neutral-500">{formatOrderTimestamp(order.createdAt)}</span>
       </div>
-      <div className="mt-0.5 text-xs font-medium text-neutral-500">
-        {order.tableNumber
-          ? `Table ${String(order.tableNumber).padStart(2, "0")}${
-              order.mergedTableNumbers?.length ? ` + ${order.mergedTableNumbers.join(" + ")}` : ""
-            }`
-          : order.channel}
-        {order.status === "Voided" ? " · Voided" : order.status === "Ready" ? " · Ready for pickup" : ""}
+      <div className="mt-0.5 flex flex-wrap items-center gap-1 text-xs font-medium text-neutral-500">
+        <span>
+          {order.tableNumber
+            ? `Table ${String(order.tableNumber).padStart(2, "0")}${
+                order.mergedTableNumbers?.length ? ` + ${order.mergedTableNumbers.join(" + ")}` : ""
+              }`
+            : order.channel}
+          {order.thirdPartyProvider ? ` · ${order.thirdPartyProvider}` : ""}
+        </span>
+        {order.placedVia !== "staff" && (
+          <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">
+            {order.placedVia === "kiosk" ? "KIOSK" : "ONLINE"}
+          </span>
+        )}
       </div>
-      <div className="mt-1 space-y-0.5 text-xs text-neutral-600">
-        {visibleItems.map((item) => (
-          <div key={item.lineId ?? item.dishId}>
-            {item.qty}x {item.name}
+      {isVoided && (
+        <div className="mt-1 text-xs font-semibold text-rose-600">Voided{order.voidReason ? ` — ${order.voidReason}` : ""}</div>
+      )}
+      {order.status === "Ready" && <div className="mt-1 text-xs font-semibold text-amber-600">Ready for pickup</div>}
+      {hasCustomerInfo && (
+        <div className="mt-1 space-y-0.5 rounded-lg bg-white/60 px-2 py-1.5 text-xs text-neutral-600">
+          {order.customerName && <div className="font-semibold text-neutral-800">{order.customerName}</div>}
+          {order.customerPhone && <div>{order.customerPhone}</div>}
+          {order.customerAddress && <div>{order.customerAddress}</div>}
+        </div>
+      )}
+      <div className="mt-1 space-y-1 text-xs text-neutral-600">
+        {visibleItems.map((item, idx) => (
+          <div key={item.lineId ?? `${item.dishId}-${idx}`}>
+            <span className={isVoided ? "line-through decoration-rose-300" : undefined}>
+              {item.qty}x {item.name}
+            </span>
+            {item.note && <div className="font-semibold italic text-amber-600">↳ {item.note}</div>}
           </div>
         ))}
       </div>
