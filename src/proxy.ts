@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { IMPERSONATION_COOKIE_NAME, SESSION_COOKIE_NAME, verifySessionToken, type Role } from "@/lib/session";
 import { getRestaurantByCustomDomain } from "@/lib/data/restaurants";
 
-const PUBLIC_PATHS = ["/login", "/till-login", "/kitchen-login"];
+const PUBLIC_PATHS = ["/login", "/till-login", "/kitchen-login", "/staff-login"];
 
 // Customer-facing pages that don't use the staff/admin session below — /my-card and /order use
 // their own session cookie (see src/lib/loyalty-session.ts), checked per-page; /invoice/[orderId]
