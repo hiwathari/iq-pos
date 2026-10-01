@@ -1,7 +1,8 @@
 "use client";
 
-import { Bell, Search } from "lucide-react";
+import { Bell, LogOut, Search } from "lucide-react";
 import type { Role } from "@/lib/session";
+import { logoutAction } from "@/lib/actions/auth";
 
 const ROLE_LABEL: Record<Role, string> = {
   super_admin: "Super Admin",
@@ -47,6 +48,17 @@ export function Topbar({ title, name, role }: { title?: string; name: string; ro
             <div className="text-xs text-neutral-400">{ROLE_LABEL[role]}</div>
           </div>
         </div>
+        {/* The Sidebar (with its own Logout) is desktop-only (hidden below md) — without this,
+            a signed-in user on a phone has no way to log out at all. */}
+        <form action={logoutAction} className="md:hidden">
+          <button
+            type="submit"
+            title="Logout"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-neutral-200 text-neutral-500 hover:bg-neutral-50"
+          >
+            <LogOut className="h-[18px] w-[18px]" />
+          </button>
+        </form>
       </div>
     </header>
   );
