@@ -41,14 +41,17 @@ import {
 const STATION_ORDER: PrinterStation[] = ["Kitchen", "Bar", "Expo", "Receipt"];
 const STATION_KEY = "kds-station";
 
-// Served and voided tickets share one "Completed" column (green for served, red for voided)
-// and each only needs a brief moment there for staff to double-check — 30 seconds after being
-// done, a ticket drops off on its own so the column doesn't pile up with old tickets. The
-// Till's history keeps the full audit trail indefinitely regardless.
-const DONE_RETENTION_MS = 30_000;
-
+// Served and voided tickets share one "Completed" column (green for served, red for voided) —
+// every one from today stays listed there, scrollable, so staff can look back at what went out
+// without leaving this screen. Resets at midnight UTC (matching the day-rollover elsewhere, e.g.
+// autoVoidStaleOrders) rather than growing forever; the Till's history keeps the full audit trail
+// indefinitely regardless.
 function doneAt(order: Order) {
   return order.status === "Voided" ? (order.voidedAt ?? order.createdAt) : (order.servedAt ?? order.createdAt);
+}
+
+function todayStartUTC(now: number) {
+  return new Date(new Date(now).toISOString().slice(0, 10)).getTime();
 }
 
 // How much bigger/smaller the whole board renders — a per-device preference (not tied to the
@@ -58,9 +61,9 @@ const FONT_SCALE_STEPS = [0.85, 1, 1.15, 1.3, 1.5, 1.7];
 const DEFAULT_FONT_SCALE_INDEX = 1;
 
 // Kitchen only needs two boards: tickets still to prep ("Pending" — Wait List + In Kitchen) and
-// a brief Completed strip (Served + Voided) for a last glance. "Ready" isn't its own board — once
+// everything finished today ("Completed" — Served + Voided). "Ready" isn't its own board — once
 // every item is ticked and the cook hits "Mark Order Ready", the ticket hands off to the Till/expo
-// and drops off here; voiding likewise only happens from the Till, never from this screen.
+// and moves to Completed here; voiding likewise only happens from the Till, never from this screen.
 const PENDING_STATUSES: OrderStatus[] = ["Wait List", "In Kitchen"];
 const COMPLETED_STATUSES: OrderStatus[] = ["Served", "Voided"];
 
@@ -233,8 +236,9 @@ export function KitchenClient({
   // Already newest-first (listOrders sorts by createdAt desc), so the first pending ticket is
   // always the most recently placed one — that's the one flagged "major" below.
   let pendingOrders = orders.filter((o) => PENDING_STATUSES.includes(o.status));
+  const todayStart = todayStartUTC(now);
   let completedOrders = orders
-    .filter((o) => COMPLETED_STATUSES.includes(o.status) && now - doneAt(o) < DONE_RETENTION_MS)
+    .filter((o) => COMPLETED_STATUSES.includes(o.status) && doneAt(o) >= todayStart)
     .sort((a, b) => doneAt(b) - doneAt(a));
   // A ticket only belongs on this station's screen if it has at least one item that routes here
   // (or is unrouted) — an all-drinks order never shows up on the Kitchen screen.
@@ -357,23 +361,12 @@ export function KitchenClient({
               {completedOrders.length}
             </span>
           </div>
-          <div className="flex-1 space-y-3 overflow-y-auto p-3">
+          <div className="flex-1 space-y-2 overflow-y-auto p-3">
             {completedOrders.length === 0 && (
               <div className="flex h-24 items-center justify-center text-sm text-neutral-300">No orders</div>
             )}
             {completedOrders.map((order) => (
-              <OrderTicket
-                key={order.id}
-                order={order}
-                now={null}
-                timerLimitMinutes={timerLimitMinutes}
-                station={station}
-                itemMatchesStation={itemMatchesStation}
-                itemSortIndex={itemSortIndex}
-                major={false}
-                onAdvance={(status) => advance(order.id, status)}
-                onToggleItem={(itemKey, ready) => toggleItem(order.id, itemKey, ready)}
-              />
+              <CompletedOrderRow key={order.id} order={order} itemMatchesStation={station !== "All" ? itemMatchesStation : undefined} />
             ))}
           </div>
         </div>
@@ -465,6 +458,44 @@ function formatElapsed(elapsedMs: number) {
   const mins = Math.floor(totalSeconds / 60);
   const secs = totalSeconds % 60;
   return `${mins}:${String(secs).padStart(2, "0")}`;
+}
+
+// A compact row for the Completed column — order number, time, items, table — rather than the
+// full interactive OrderTicket card, so a busy day's worth of finished tickets stays scannable
+// in a narrow, scrolling column instead of turning into a wall of oversized cards.
+function CompletedOrderRow({
+  order,
+  itemMatchesStation,
+}: {
+  order: Order;
+  itemMatchesStation?: (item: OrderItem) => boolean;
+}) {
+  const visibleItems = itemMatchesStation ? order.items.filter(itemMatchesStation) : order.items;
+  const isVoided = order.status === "Voided";
+
+  return (
+    <div className={`rounded-xl border px-3 py-2.5 text-sm ${isVoided ? "border-rose-200 bg-rose-50" : "border-emerald-200 bg-emerald-50"}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-bold text-neutral-900">#{order.orderNumber}</span>
+        <span className="text-xs text-neutral-500">{formatOrderTimestamp(order.createdAt)}</span>
+      </div>
+      <div className="mt-0.5 text-xs font-medium text-neutral-500">
+        {order.tableNumber
+          ? `Table ${String(order.tableNumber).padStart(2, "0")}${
+              order.mergedTableNumbers?.length ? ` + ${order.mergedTableNumbers.join(" + ")}` : ""
+            }`
+          : order.channel}
+        {isVoided ? " · Voided" : ""}
+      </div>
+      <div className="mt-1 space-y-0.5 text-xs text-neutral-600">
+        {visibleItems.map((item) => (
+          <div key={item.lineId ?? item.dishId}>
+            {item.qty}x {item.name}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function OrderTicket({
