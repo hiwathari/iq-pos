@@ -15,7 +15,13 @@ export default function LoginPage() {
           <LoginForm />
         </div>
 
-        <div className="mt-5 flex gap-3 text-center text-xs">
+        <div className="mt-5 flex flex-wrap gap-3 text-center text-xs">
+          <Link
+            href="/staff-login"
+            className="flex-1 rounded-xl border border-neutral-200 bg-white py-2.5 font-medium text-neutral-500 hover:bg-neutral-50"
+          >
+            Staff? Enter PIN →
+          </Link>
           <Link
             href="/till-login"
             className="flex-1 rounded-xl border border-neutral-200 bg-white py-2.5 font-medium text-neutral-500 hover:bg-neutral-50"

@@ -114,9 +114,12 @@ export async function toggleStaffActiveAction(userId: string, active: boolean) {
   revalidatePath("/settings");
 }
 
-// Till PINs are looked up with no restaurant context (the till-login screen only has a
-// 6-digit code to go on), so they must be unique across the whole platform.
-export async function generateTillPinAction(userId: string) {
+// One PIN per staff member unlocks the Till (/till-login), the Kitchen Display
+// (/kitchen-login), and their own full dashboard (/staff-login) — stored in both tillPin and
+// kitchenPin (kept as two columns for now rather than a schema migration; always written
+// together so they're never out of sync) since each PIN-login screen looks a code up with no
+// restaurant context and needs it unique across the whole platform.
+export async function generateStaffPinAction(userId: string) {
   const { session, restaurantId } = await requireRestaurantContext();
   assertAdmin(session);
 
@@ -129,47 +132,17 @@ export async function generateTillPinAction(userId: string) {
 
   await db
     .update(users)
-    .set({ tillPin: pin })
+    .set({ tillPin: pin, kitchenPin: pin })
     .where(and(eq(users.id, userId), eq(users.restaurantId, restaurantId)));
   revalidatePath("/settings");
 }
 
-export async function clearTillPinAction(userId: string) {
+export async function clearStaffPinAction(userId: string) {
   const { session, restaurantId } = await requireRestaurantContext();
   assertAdmin(session);
   await db
     .update(users)
-    .set({ tillPin: null })
-    .where(and(eq(users.id, userId), eq(users.restaurantId, restaurantId)));
-  revalidatePath("/settings");
-}
-
-// Kitchen Display PINs are looked up with no restaurant context (the kitchen-login screen
-// only has a 6-digit code to go on), so they must be unique across the whole platform.
-export async function generateKitchenPinAction(userId: string) {
-  const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
-
-  let pin = generatePin();
-  for (let attempt = 0; attempt < 10; attempt++) {
-    const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.kitchenPin, pin)).limit(1);
-    if (!existing) break;
-    pin = generatePin();
-  }
-
-  await db
-    .update(users)
-    .set({ kitchenPin: pin })
-    .where(and(eq(users.id, userId), eq(users.restaurantId, restaurantId)));
-  revalidatePath("/settings");
-}
-
-export async function clearKitchenPinAction(userId: string) {
-  const { session, restaurantId } = await requireRestaurantContext();
-  assertAdmin(session);
-  await db
-    .update(users)
-    .set({ kitchenPin: null })
+    .set({ tillPin: null, kitchenPin: null })
     .where(and(eq(users.id, userId), eq(users.restaurantId, restaurantId)));
   revalidatePath("/settings");
 }

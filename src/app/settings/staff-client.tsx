@@ -4,8 +4,7 @@ import { useActionState, useEffect, useRef, useState, useTransition } from "reac
 import { KeyRound, Pencil, Plus, ShieldCheck, X } from "lucide-react";
 import {
   createStaffAction,
-  generateKitchenPinAction,
-  generateTillPinAction,
+  generateStaffPinAction,
   toggleStaffActiveAction,
   updateStaffCredentialsAction,
   updateStaffPermissionsAction,
@@ -41,15 +40,9 @@ export function StaffClient({ staff }: { staff: StaffRow[] }) {
     });
   }
 
-  function handleGenerateTillPin(userId: string) {
+  function handleGeneratePin(userId: string) {
     startTransition(async () => {
-      await generateTillPinAction(userId);
-    });
-  }
-
-  function handleGenerateKitchenPin(userId: string) {
-    startTransition(async () => {
-      await generateKitchenPinAction(userId);
+      await generateStaffPinAction(userId);
     });
   }
 
@@ -59,10 +52,11 @@ export function StaffClient({ staff }: { staff: StaffRow[] }) {
         <div>
           <h2 className="text-lg font-semibold text-neutral-900">Team</h2>
           <p className="text-sm text-neutral-500">
-            Give a staff member a Till PIN and a Kitchen PIN so they can unlock the Till (
-            <span className="font-mono text-neutral-700">/till-login</span>) or the Kitchen Display (
-            <span className="font-mono text-neutral-700">/kitchen-login</span>) on a shared device without a full
-            sign-in.
+            Give a staff member a PIN so they can unlock the Till (
+            <span className="font-mono text-neutral-700">/till-login</span>), the Kitchen Display (
+            <span className="font-mono text-neutral-700">/kitchen-login</span>), or sign into their own dashboard (
+            <span className="font-mono text-neutral-700">/staff-login</span>) on a shared device without typing a
+            password — the same PIN works everywhere for that person.
           </p>
         </div>
         <button
@@ -81,8 +75,7 @@ export function StaffClient({ staff }: { staff: StaffRow[] }) {
               <th className="px-5 py-3">Email</th>
               <th className="px-5 py-3">Role</th>
               <th className="px-5 py-3">Status</th>
-              <th className="px-5 py-3">Till PIN</th>
-              <th className="px-5 py-3">Kitchen PIN</th>
+              <th className="px-5 py-3">PIN</th>
               <th className="px-5 py-3 text-right">Actions</th>
             </tr>
           </thead>
@@ -108,13 +101,6 @@ export function StaffClient({ staff }: { staff: StaffRow[] }) {
                     <span className="text-xs text-neutral-400">Not set</span>
                   )}
                 </td>
-                <td className="px-5 py-3">
-                  {s.kitchenPin ? (
-                    <span className="font-mono text-sm font-semibold tracking-widest text-neutral-800">{s.kitchenPin}</span>
-                  ) : (
-                    <span className="text-xs text-neutral-400">Not set</span>
-                  )}
-                </td>
                 <td className="px-5 py-3 text-right">
                   <div className="flex flex-wrap justify-end gap-2">
                     <button
@@ -124,16 +110,10 @@ export function StaffClient({ staff }: { staff: StaffRow[] }) {
                       <Pencil className="h-3.5 w-3.5" /> Edit
                     </button>
                     <button
-                      onClick={() => handleGenerateTillPin(s.id)}
+                      onClick={() => handleGeneratePin(s.id)}
                       className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
                     >
-                      <KeyRound className="h-3.5 w-3.5" /> {s.tillPin ? "Regen Till" : "Till PIN"}
-                    </button>
-                    <button
-                      onClick={() => handleGenerateKitchenPin(s.id)}
-                      className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
-                    >
-                      <KeyRound className="h-3.5 w-3.5" /> {s.kitchenPin ? "Regen Kitchen" : "Kitchen PIN"}
+                      <KeyRound className="h-3.5 w-3.5" /> {s.tillPin ? "Regen PIN" : "Set PIN"}
                     </button>
                     {s.role === "staff" && (
                       <button

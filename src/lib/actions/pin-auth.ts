@@ -72,3 +72,31 @@ export async function kitchenPinLoginAction(
 
   redirect("/kitchen");
 }
+
+// Lets a staff member sign into their own full dashboard — same permissions as their normal
+// email/password login — with the same PIN that unlocks the Till and Kitchen Display for them,
+// so there's only ever one code to remember. Regular session length (not the shared-device
+// duration above), since this is signing into a personal account, not unlocking shared hardware.
+export async function staffPinLoginAction(
+  _prevState: PinLoginState | undefined,
+  formData: FormData
+): Promise<PinLoginState> {
+  const pin = readPin(formData);
+  if (!pin) return { error: "Enter the 6-digit code." };
+
+  const [staff] = await db.select().from(users).where(eq(users.tillPin, pin)).limit(1);
+  if (!staff || !staff.active || !staff.restaurantId) return { error: "Incorrect code." };
+
+  const [restaurant] = await db.select().from(restaurants).where(eq(restaurants.id, staff.restaurantId)).limit(1);
+  if (!restaurant || !restaurant.active) return { error: "Incorrect code." };
+
+  await createSession({
+    userId: staff.id,
+    email: staff.email,
+    name: staff.name,
+    role: staff.role,
+    restaurantId: staff.restaurantId,
+  });
+
+  redirect("/dashboard");
+}
