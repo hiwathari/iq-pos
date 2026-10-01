@@ -41,11 +41,12 @@ import {
 const STATION_ORDER: PrinterStation[] = ["Kitchen", "Bar", "Expo", "Receipt"];
 const STATION_KEY = "kds-station";
 
-// Served and voided tickets share one "Completed" column (green for served, red for voided) —
-// every one from today stays listed there, scrollable, so staff can look back at what went out
+// Ready, served, and voided tickets all share one "Completed" column (amber/green/red) — every
+// one from today stays listed there, scrollable, so staff can look back at what left the kitchen
 // without leaving this screen. Resets at midnight UTC (matching the day-rollover elsewhere, e.g.
 // autoVoidStaleOrders) rather than growing forever; the Till's history keeps the full audit trail
-// indefinitely regardless.
+// indefinitely regardless. A Ready order has no "became ready" timestamp of its own yet, so it
+// sorts and ages by when it was placed until the Till serves or voids it.
 function doneAt(order: Order) {
   return order.status === "Voided" ? (order.voidedAt ?? order.createdAt) : (order.servedAt ?? order.createdAt);
 }
@@ -61,11 +62,11 @@ const FONT_SCALE_STEPS = [0.85, 1, 1.15, 1.3, 1.5, 1.7];
 const DEFAULT_FONT_SCALE_INDEX = 1;
 
 // Kitchen only needs two boards: tickets still to prep ("Pending" — Wait List + In Kitchen) and
-// everything finished today ("Completed" — Served + Voided). "Ready" isn't its own board — once
-// every item is ticked and the cook hits "Mark Order Ready", the ticket hands off to the Till/expo
-// and moves to Completed here; voiding likewise only happens from the Till, never from this screen.
+// everything finished today ("Completed" — Ready + Served + Voided). "Ready" isn't its own board
+// — once every item is ticked and the cook hits "Mark Order Ready", the ticket hands off to the
+// Till/expo and moves to Completed here, same as once the Till serves/voids it.
 const PENDING_STATUSES: OrderStatus[] = ["Wait List", "In Kitchen"];
-const COMPLETED_STATUSES: OrderStatus[] = ["Served", "Voided"];
+const COMPLETED_STATUSES: OrderStatus[] = ["Ready", "Served", "Voided"];
 
 export function KitchenClient({
   orders,
@@ -471,10 +472,15 @@ function CompletedOrderRow({
   itemMatchesStation?: (item: OrderItem) => boolean;
 }) {
   const visibleItems = itemMatchesStation ? order.items.filter(itemMatchesStation) : order.items;
-  const isVoided = order.status === "Voided";
+  const tint =
+    order.status === "Voided"
+      ? "border-rose-200 bg-rose-50"
+      : order.status === "Ready"
+        ? "border-amber-200 bg-amber-50"
+        : "border-emerald-200 bg-emerald-50";
 
   return (
-    <div className={`rounded-xl border px-3 py-2.5 text-sm ${isVoided ? "border-rose-200 bg-rose-50" : "border-emerald-200 bg-emerald-50"}`}>
+    <div className={`rounded-xl border px-3 py-2.5 text-sm ${tint}`}>
       <div className="flex items-center justify-between gap-2">
         <span className="font-bold text-neutral-900">#{order.orderNumber}</span>
         <span className="text-xs text-neutral-500">{formatOrderTimestamp(order.createdAt)}</span>
@@ -485,7 +491,7 @@ function CompletedOrderRow({
               order.mergedTableNumbers?.length ? ` + ${order.mergedTableNumbers.join(" + ")}` : ""
             }`
           : order.channel}
-        {isVoided ? " · Voided" : ""}
+        {order.status === "Voided" ? " · Voided" : order.status === "Ready" ? " · Ready for pickup" : ""}
       </div>
       <div className="mt-1 space-y-0.5 text-xs text-neutral-600">
         {visibleItems.map((item) => (
