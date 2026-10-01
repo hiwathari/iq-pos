@@ -1,8 +1,10 @@
 "use client";
 
-// Two short, synthesized alert tones for the Kitchen Display — generated with the Web Audio
-// API rather than shipped as audio files, so there's nothing to host or license. Browsers block
-// audio before any user gesture on the page, so `unlockKitchenAudio` is wired to the first tap.
+// Two short, synthesized alert tones shared by the Kitchen Display and the Till — generated with
+// the Web Audio API rather than shipped as audio files, so there's nothing to host or license.
+// Browsers block audio before any user gesture on the page, so `unlockOrderAudio` is wired to the
+// first tap on whichever screen is using it; each page gets its own AudioContext since nothing is
+// shared across tabs/devices.
 
 let audioCtx: AudioContext | null = null;
 
@@ -31,7 +33,7 @@ function tone(startTime: number, freq: number, duration: number, type: Oscillato
   osc.stop(t0 + duration + 0.02);
 }
 
-export function unlockKitchenAudio() {
+export function unlockOrderAudio() {
   getAudioContext();
 }
 

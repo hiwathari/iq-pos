@@ -29,6 +29,7 @@ import { setTableStatusAction } from "@/lib/actions/tables";
 import { setDishStockAction } from "@/lib/actions/menu";
 import { printTicket } from "@/lib/print-ticket";
 import { tableOrderQrDataUrl } from "@/lib/table-qr";
+import { unlockOrderAudio, playNewOrderChime, playOrderReadyChime } from "@/lib/order-sounds";
 import { TableLayoutPicker } from "@/components/table-layout-picker";
 import {
   ChevronLeft,
@@ -217,6 +218,14 @@ export function OrderLineClient({
     return () => clearInterval(id);
   }, [router]);
 
+  // Most browsers block audio before the page has seen a user gesture — the first tap anywhere
+  // on the Till (adding an item, picking a table, etc.) unlocks it for the rest of the session.
+  useEffect(() => {
+    const unlock = () => unlockOrderAudio();
+    window.addEventListener("pointerdown", unlock, { once: true });
+    return () => window.removeEventListener("pointerdown", unlock);
+  }, []);
+
   const [notifications, setNotifications] = useState<{ id: string; text: string; status: OrderStatus }[]>([]);
   const knownStatusRef = useRef<Map<string, OrderStatus> | null>(null);
 
@@ -224,15 +233,23 @@ export function OrderLineClient({
     const known = knownStatusRef.current;
     if (known) {
       const newlyChanged: { id: string; text: string; status: OrderStatus }[] = [];
+      let hasNewOnlineOrder = false;
+      let hasNewlyReady = false;
       for (const order of orders) {
         const prevStatus = known.get(order.id);
-        if (prevStatus && prevStatus !== order.status) {
+        if (prevStatus === undefined) {
+          // A brand-new order — a customer placing it themselves is the case nobody at the
+          // till is already watching for, so that's what gets the chime (a staff-rung-up order
+          // is already visible to whoever just rang it up).
+          if (order.placedVia === "online") hasNewOnlineOrder = true;
+        } else if (prevStatus !== order.status) {
           const where = order.tableNumber ? `Table ${String(order.tableNumber).padStart(2, "0")}` : order.channel;
           newlyChanged.push({
             id: `${order.id}-${order.status}-${Date.now()}`,
             text: `Order #${order.orderNumber} · ${where} is now ${order.status}`,
             status: order.status,
           });
+          if (prevStatus !== "Ready" && order.status === "Ready") hasNewlyReady = true;
         }
       }
       if (newlyChanged.length > 0) {
@@ -242,6 +259,8 @@ export function OrderLineClient({
           setTimeout(() => setNotifications((prev) => prev.filter((x) => x.id !== n.id)), 7000);
         });
       }
+      if (hasNewOnlineOrder) playNewOrderChime();
+      if (hasNewlyReady) playOrderReadyChime();
     }
     knownStatusRef.current = new Map(orders.map((o) => [o.id, o.status]));
   }, [orders]);

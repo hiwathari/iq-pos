@@ -15,7 +15,7 @@ import {
 } from "@/lib/types";
 import { setOrderStatusAction, toggleOrderItemReadyAction } from "@/lib/actions/orders";
 import { setDishStockAction } from "@/lib/actions/menu";
-import { unlockKitchenAudio, playNewOrderChime, playOrderReadyChime } from "@/lib/kitchen-sounds";
+import { unlockOrderAudio, playNewOrderChime, playOrderReadyChime } from "@/lib/order-sounds";
 import {
   Ban,
   Bike,
@@ -178,7 +178,7 @@ export function KitchenClient({
   // Most browsers block audio until the page has seen a user gesture — the first tap anywhere
   // on this screen (ticking an item, switching stations, etc.) unlocks it for the whole session.
   useEffect(() => {
-    const unlock = () => unlockKitchenAudio();
+    const unlock = () => unlockOrderAudio();
     window.addEventListener("pointerdown", unlock, { once: true });
     return () => window.removeEventListener("pointerdown", unlock);
   }, []);
