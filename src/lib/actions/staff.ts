@@ -88,6 +88,16 @@ export async function updateStaffCredentialsAction(
     .set(updates)
     .where(and(eq(users.id, userId), eq(users.restaurantId, restaurantId)));
 
+  // Keeps the restaurant's auto-created "accounts" login's password mirroring its admin's —
+  // see createRestaurantAction. Only triggers on an actual admin whose password just changed,
+  // never for the accounts user editing itself or a plain staff account.
+  if (updates.passwordHash && target.role === "admin") {
+    await db
+      .update(users)
+      .set({ passwordHash: updates.passwordHash })
+      .where(and(eq(users.restaurantId, restaurantId), eq(users.role, "accounts")));
+  }
+
   revalidatePath("/settings");
   return { success: true };
 }

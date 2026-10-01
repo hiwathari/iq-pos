@@ -15,6 +15,7 @@ const ROLE_LABEL: Record<Role, string> = {
   staff: "Staff",
   till: "Till",
   kitchen_display: "Kitchen Display",
+  accounts: "Accounts",
 };
 
 interface NotificationRow {

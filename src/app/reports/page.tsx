@@ -5,6 +5,8 @@ import { getRestaurant } from "@/lib/data/restaurants";
 import { listOrders } from "@/lib/data/orders";
 import { listReservations } from "@/lib/data/tables";
 import { listPettyCashEntries } from "@/lib/data/petty-cash";
+import { listPaymentTerminals } from "@/lib/data/printers";
+import { filterOrdersForAccountsRole } from "@/lib/accounts-filter";
 import { ReportsClient, type ReportsSearchParams } from "./reports-client";
 
 function todayStr() {
@@ -23,22 +25,27 @@ function resolveRange(params: ReportsSearchParams) {
 
 export default async function ReportsPage({ searchParams }: { searchParams: Promise<ReportsSearchParams> }) {
   const params = await searchParams;
-  const { restaurantId } = await requirePermission("reports");
+  const { session, restaurantId } = await requirePermission("reports");
 
   const tab = params.tab ?? "overview";
   const { fromStr, toStr, from, to } = resolveRange(params);
   const dateStr = params.date || todayStr();
 
-  const [report, restaurant, allOrders, allReservations, pettyCash, dailySummary] = await Promise.all([
-    getReportData(restaurantId, { from, to }),
+  const paymentTerminals = await listPaymentTerminals(restaurantId);
+  const accountsFilter =
+    session.role === "accounts" ? { defaultTerminalName: paymentTerminals.find((t) => t.isDefault)?.name ?? null } : undefined;
+
+  const [report, restaurant, rawOrders, allReservations, pettyCash, dailySummary] = await Promise.all([
+    getReportData(restaurantId, { from, to }, accountsFilter),
     getRestaurant(restaurantId),
     listOrders(restaurantId),
     listReservations(restaurantId),
     listPettyCashEntries(restaurantId, from, to),
-    tab === "daily" ? getDailySummary(restaurantId, dateStr) : Promise.resolve(null),
+    tab === "daily" ? getDailySummary(restaurantId, dateStr, accountsFilter) : Promise.resolve(null),
   ]);
   const currencySymbol = restaurant?.currencySymbol ?? "£";
 
+  const allOrders = accountsFilter ? filterOrdersForAccountsRole(rawOrders, accountsFilter.defaultTerminalName) : rawOrders;
   const ordersInRange = allOrders.filter((o) => o.createdAt >= from && o.createdAt < to);
   const reservationsInRange = allReservations.filter((r) => r.createdAt >= from && r.createdAt < to);
 

@@ -6,6 +6,7 @@ import { CreditCard, Pencil, Plus, Trash2, X } from "lucide-react";
 import {
   createPaymentTerminalAction,
   deletePaymentTerminalAction,
+  setDefaultPaymentTerminalAction,
   togglePaymentTerminalActiveAction,
   updatePaymentTerminalAction,
 } from "@/lib/actions/printers";
@@ -20,6 +21,13 @@ export function PaymentTerminalsClient({ terminals }: { terminals: PaymentTermin
   function toggle(id: string, active: boolean) {
     startTransition(async () => {
       await togglePaymentTerminalActiveAction(id, active);
+      router.refresh();
+    });
+  }
+
+  function makeDefault(id: string) {
+    startTransition(async () => {
+      await setDefaultPaymentTerminalAction(id);
       router.refresh();
     });
   }
@@ -61,13 +69,25 @@ export function PaymentTerminalsClient({ terminals }: { terminals: PaymentTermin
                 )}
                 <span className="font-semibold text-neutral-900">{t.name}</span>
               </div>
-              <span
-                className={`mt-2 inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
-                  t.active ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-500"
-                }`}
-              >
-                {t.active ? "Active" : "Disabled"}
-              </span>
+              <div className="flex flex-wrap gap-1.5">
+                <span
+                  className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
+                    t.active ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-500"
+                  }`}
+                >
+                  {t.active ? "Active" : "Disabled"}
+                </span>
+                {t.isDefault && (
+                  <span className="inline-block rounded-full bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700">
+                    Default
+                  </span>
+                )}
+              </div>
+              <p className="mt-2 max-w-[20ch] text-[11px] text-neutral-400">
+                {t.isDefault
+                  ? "Shown in full to the Accounts login, same as Cash."
+                  : "Accounts login only sees this terminal's last 14 days."}
+              </p>
             </div>
             <div className="flex flex-col gap-1.5">
               <button
@@ -77,6 +97,14 @@ export function PaymentTerminalsClient({ terminals }: { terminals: PaymentTermin
               >
                 <Pencil className="h-3.5 w-3.5" />
               </button>
+              {!t.isDefault && (
+                <button
+                  onClick={() => makeDefault(t.id)}
+                  className="rounded-lg border border-neutral-200 px-2.5 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
+                >
+                  Make Default
+                </button>
+              )}
               <button
                 onClick={() => toggle(t.id, !t.active)}
                 className="rounded-lg border border-neutral-200 px-2.5 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-50"

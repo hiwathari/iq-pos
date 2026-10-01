@@ -2,12 +2,19 @@ import { and, eq, gte, lt } from "drizzle-orm";
 import { db } from "@/db/client";
 import { categories, dishes, orders, pettyCashEntries, reservations } from "@/db/schema";
 import { orderTotal, orderSequence } from "@/lib/types";
+import { filterOrdersForAccountsRole } from "@/lib/accounts-filter";
 
 export type ReportData = Awaited<ReturnType<typeof getReportData>>;
 
 // `from`/`to` are optional timestamps (from inclusive, to exclusive) — omitting both keeps the
 // original all-time behavior the Dashboard relies on; the Reports page's date filter passes them.
-export async function getReportData(restaurantId: string, range?: { from?: number; to?: number }) {
+// `accountsFilter` restricts the order set for the "accounts" role (see lib/accounts-filter.ts)
+// before anything below aggregates it — every number this function returns already reflects it.
+export async function getReportData(
+  restaurantId: string,
+  range?: { from?: number; to?: number },
+  accountsFilter?: { defaultTerminalName: string | null }
+) {
   const orderConditions = [eq(orders.restaurantId, restaurantId)];
   const reservationConditions = [eq(reservations.restaurantId, restaurantId)];
   if (range?.from !== undefined) {
@@ -19,12 +26,13 @@ export async function getReportData(restaurantId: string, range?: { from?: numbe
     reservationConditions.push(lt(reservations.createdAt, range.to));
   }
 
-  const [allOrders, allReservations, allDishes, allCategories] = await Promise.all([
+  const [fetchedOrders, allReservations, allDishes, allCategories] = await Promise.all([
     db.select().from(orders).where(and(...orderConditions)),
     db.select().from(reservations).where(and(...reservationConditions)),
     db.select().from(dishes).where(eq(dishes.restaurantId, restaurantId)),
     db.select().from(categories).where(eq(categories.restaurantId, restaurantId)),
   ]);
+  const allOrders = accountsFilter ? filterOrdersForAccountsRole(fetchedOrders, accountsFilter.defaultTerminalName) : fetchedOrders;
 
   const categoryNameById = new Map(allCategories.map((c) => [c.id, c.name]));
   const categoryNameByDishId = new Map(allDishes.map((d) => [d.id, categoryNameById.get(d.categoryId) ?? "Other"]));
@@ -169,11 +177,11 @@ export type DailySummary = Awaited<ReturnType<typeof getDailySummary>>;
 // movement, anything cancelled, then a reconciliation block a manager can check the till against.
 // There's no opening-float carry-forward yet, so openingBalance is always 0 — a restaurant that
 // starts its drawer with a float would need to fold that in manually for now.
-export async function getDailySummary(restaurantId: string, dateStr: string) {
+export async function getDailySummary(restaurantId: string, dateStr: string, accountsFilter?: { defaultTerminalName: string | null }) {
   const from = new Date(`${dateStr}T00:00:00.000Z`).getTime();
   const to = from + 24 * 60 * 60 * 1000;
 
-  const [dayOrders, dayPettyCash, dayReservations] = await Promise.all([
+  const [fetchedDayOrders, dayPettyCash, dayReservations] = await Promise.all([
     db
       .select()
       .from(orders)
@@ -187,6 +195,7 @@ export async function getDailySummary(restaurantId: string, dateStr: string) {
       .from(reservations)
       .where(and(eq(reservations.restaurantId, restaurantId), gte(reservations.createdAt, from), lt(reservations.createdAt, to))),
   ]);
+  const dayOrders = accountsFilter ? filterOrdersForAccountsRole(fetchedDayOrders, accountsFilter.defaultTerminalName) : fetchedDayOrders;
 
   const liveOrders = dayOrders.filter((o) => o.status !== "Voided");
   const voidedOrders = dayOrders.filter((o) => o.status === "Voided");

@@ -48,7 +48,8 @@ export async function createRestaurantAction(
   }
 
   const restaurantId = crypto.randomUUID();
-  await db.insert(restaurants).values({ id: restaurantId, name, slug: slugify(name) });
+  const slug = slugify(name);
+  await db.insert(restaurants).values({ id: restaurantId, name, slug });
 
   const passwordHash = await hashPassword(adminPassword);
   await db.insert(users).values({
@@ -60,6 +61,26 @@ export async function createRestaurantAction(
     restaurantId,
   });
 
+  // Every restaurant gets a restricted "accounts" login alongside its admin — same password
+  // (kept in sync by updateStaffCredentialsAction whenever the admin's changes), same page
+  // access, but a filtered view of sales data (see lib/accounts-filter.ts). accounts@<the
+  // admin's own domain> when that's free; otherwise disambiguated with the restaurant's slug,
+  // since two unrelated restaurants' admins can land on the same free-mail-provider domain.
+  const domain = adminEmail.split("@")[1];
+  if (domain) {
+    const plainAccountsEmail = `accounts@${domain}`;
+    const [domainTaken] = await db.select({ id: users.id }).from(users).where(eq(users.email, plainAccountsEmail)).limit(1);
+    const accountsEmail = domainTaken ? `accounts+${slug}@${domain}` : plainAccountsEmail;
+    await db.insert(users).values({
+      id: crypto.randomUUID(),
+      email: accountsEmail,
+      passwordHash,
+      name: `${name} Accounts`,
+      role: "accounts",
+      restaurantId,
+    });
+  }
+
   const kitchenPrinterId = crypto.randomUUID();
   await db.insert(printers).values({
     id: kitchenPrinterId,
@@ -70,7 +91,7 @@ export async function createRestaurantAction(
     isDefault: true,
   });
 
-  await db.insert(paymentTerminals).values({ id: crypto.randomUUID(), restaurantId, name: "Card 1" });
+  await db.insert(paymentTerminals).values({ id: crypto.randomUUID(), restaurantId, name: "Card 1", isDefault: true });
 
   await db.insert(categories).values({
     id: crypto.randomUUID(),
