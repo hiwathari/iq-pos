@@ -186,6 +186,7 @@ export function OrderLineClient({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
+  const [placingOrder, setPlacingOrder] = useState(false);
 
   const [cart, setCart] = useState<CartState>(() => {
     const tableId = searchParams.get("tableId");
@@ -549,31 +550,38 @@ export function OrderLineClient({
   const changeDue = cashLine && cashReceivedAmount > cashLine.amount ? cashReceivedAmount - cashLine.amount : 0;
 
   function handlePlaceOrder() {
-    if (cart.items.length === 0) return;
+    // Guard against double/triple-tapping the button (or a slow network making someone tap
+    // again before it visibly responds) firing this twice and creating duplicate orders.
+    if (cart.items.length === 0 || placingOrder) return;
+    setPlacingOrder(true);
     startTransition(async () => {
-      await placeOrderAction({
-        editingOrderId: cart.editingOrderId,
-        tableId: cart.tableId,
-        tableNumber: cart.tableNumber,
-        guests: cart.guests,
-        channel: cart.channel,
-        thirdPartyProvider: cart.channel === "Third Party" ? cart.thirdPartyProvider : undefined,
-        items: cart.items,
-        payments: cart.payments,
-        cashReceived: cashLine ? cashReceivedAmount || undefined : undefined,
-        extraDiscount: extraDiscountAmount || undefined,
-        couponCode: cart.appliedCoupon?.code,
-        loyaltyMemberId: cart.loyaltyMember?.id,
-        customerName: cart.customerName.trim() || undefined,
-        customerPhone: cart.customerPhone.trim() || undefined,
-        customerAddress: cart.customerAddress.trim() || undefined,
-      });
-      setCart(emptyCart);
-      setCouponError(null);
-      setLoyaltyError(null);
-      setTableEditorOpen(true);
-      setMobileCartOpen(false);
-      router.refresh();
+      try {
+        await placeOrderAction({
+          editingOrderId: cart.editingOrderId,
+          tableId: cart.tableId,
+          tableNumber: cart.tableNumber,
+          guests: cart.guests,
+          channel: cart.channel,
+          thirdPartyProvider: cart.channel === "Third Party" ? cart.thirdPartyProvider : undefined,
+          items: cart.items,
+          payments: cart.payments,
+          cashReceived: cashLine ? cashReceivedAmount || undefined : undefined,
+          extraDiscount: extraDiscountAmount || undefined,
+          couponCode: cart.appliedCoupon?.code,
+          loyaltyMemberId: cart.loyaltyMember?.id,
+          customerName: cart.customerName.trim() || undefined,
+          customerPhone: cart.customerPhone.trim() || undefined,
+          customerAddress: cart.customerAddress.trim() || undefined,
+        });
+        setCart(emptyCart);
+        setCouponError(null);
+        setLoyaltyError(null);
+        setTableEditorOpen(true);
+        setMobileCartOpen(false);
+        router.refresh();
+      } finally {
+        setPlacingOrder(false);
+      }
     });
   }
 
@@ -686,6 +694,7 @@ export function OrderLineClient({
     updateItemNote,
     onAddCustomItem: () => setCustomItemModalOpen(true),
     handlePlaceOrder,
+    placingOrder,
     handleAdvanceStatus,
     handlePrint,
     onSwapTableClick: () => {
@@ -1078,6 +1087,7 @@ interface CartPanelProps {
   updateItemNote: (lineId: string, note: string) => void;
   onAddCustomItem: () => void;
   handlePlaceOrder: () => void;
+  placingOrder: boolean;
   handleAdvanceStatus: (next: OrderStatus) => void;
   handlePrint: () => void;
   onSwapTableClick: () => void;
@@ -1121,6 +1131,7 @@ function CartPanel({
   updateItemNote,
   onAddCustomItem,
   handlePlaceOrder,
+  placingOrder,
   handleAdvanceStatus,
   handlePrint,
   onSwapTableClick,
@@ -1684,7 +1695,7 @@ function CartPanel({
         <div className="flex gap-2 border-t border-neutral-100 pt-4">
           <button
             onClick={handlePlaceOrder}
-            disabled={cart.items.length === 0}
+            disabled={cart.items.length === 0 || placingOrder}
             title={
               !isFullyPaid && cart.payments.length === 0
                 ? "No payment taken yet — order will be sent to the kitchen and can be settled later"

@@ -8,7 +8,7 @@
 
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, gte, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
 import { dishes, loyaltyMembers, orders, tables } from "@/db/schema";
 import { getRestaurantBySlug } from "@/lib/data/restaurants";
@@ -17,6 +17,16 @@ import { decrementInventoryForOrder, nextOrderNumber } from "@/lib/order-helpers
 import { generateLoyaltyCode } from "@/lib/loyalty-code";
 import { LOYALTY_SESSION_COOKIE_NAME, verifyLoyaltySessionToken } from "@/lib/loyalty-session";
 import type { LoyaltyContactType, OrderItem } from "@/lib/types";
+
+// Each submission mints a fresh lineId per item server-side (see the item-building loop below),
+// so two submissions of the same cart never share lineIds — compare everything else instead.
+function itemsMatchIgnoringLineId(a: OrderItem[], b: OrderItem[]) {
+  if (a.length !== b.length) return false;
+  return a.every(
+    (item, i) =>
+      item.dishId === b[i].dishId && item.qty === b[i].qty && item.price === b[i].price && (item.note || "") === (b[i].note || "")
+  );
+}
 
 async function getVerifiedLoyaltySession(restaurantId: string) {
   const cookieStore = await cookies();
@@ -107,6 +117,24 @@ export async function placePublicOrderAction(input: PlacePublicOrderInput): Prom
     const member = await findLoyaltyMemberById(restaurant.id, input.loyaltyMemberId);
     loyaltyMemberId = member?.id ?? null;
   }
+
+  // Guard against a customer double/triple-tapping "Place Order" on a slow connection and getting
+  // charged or fed twice — if an identical order (same phone, channel/table, items) from this
+  // same ordering surface was just placed in the last few seconds, hand back that one instead of
+  // creating a duplicate.
+  const dedupeCutoff = Date.now() - 8000;
+  const recentOrders = await db
+    .select({ orderNumber: orders.orderNumber, tableId: orders.tableId, channel: orders.channel, items: orders.items, customerPhone: orders.customerPhone })
+    .from(orders)
+    .where(and(eq(orders.restaurantId, restaurant.id), eq(orders.placedVia, input.placedVia), gte(orders.createdAt, dedupeCutoff)));
+  const duplicate = recentOrders.find(
+    (o) =>
+      o.channel === input.channel &&
+      o.customerPhone === customerPhone &&
+      o.tableId === tableId &&
+      itemsMatchIgnoringLineId(o.items ?? [], items)
+  );
+  if (duplicate) return { orderNumber: duplicate.orderNumber };
 
   const orderNumber = await nextOrderNumber(restaurant.id);
   await db.insert(orders).values({
