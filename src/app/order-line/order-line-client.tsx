@@ -32,6 +32,7 @@ import { tableOrderQrDataUrl } from "@/lib/table-qr";
 import { unlockOrderAudio, playNewOrderChime, playOrderReadyChime } from "@/lib/order-sounds";
 import { TableLayoutPicker } from "@/components/table-layout-picker";
 import { CategoryIconView } from "@/components/category-icon";
+import { FullscreenButton } from "@/components/fullscreen-button";
 import {
   Minus,
   Plus,
@@ -726,6 +727,7 @@ export function OrderLineClient({
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-xl font-semibold text-neutral-900">Till</h1>
           <div className="flex items-center gap-2">
+            <FullscreenButton className="flex items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-500 hover:bg-neutral-50" />
             <button
               onClick={() => window.location.reload()}
               title="Refresh — reloads the page and clears any cached data"
