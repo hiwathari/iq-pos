@@ -37,14 +37,15 @@ export function unlockOrderAudio() {
   getAudioContext();
 }
 
-// Bright, ascending two-note chime — a new ticket just landed.
+// Bright, ascending two-note chime — a new ticket just landed. Full gain (1.0) so it's audible
+// over a loud, busy kitchen rather than a polite notification tone.
 export function playNewOrderChime() {
-  tone(0, 880, 0.16, "sine", 0.25);
-  tone(0.12, 1318.5, 0.24, "sine", 0.25);
+  tone(0, 880, 0.16, "sine", 1);
+  tone(0.12, 1318.5, 0.24, "sine", 1);
 }
 
-// Lower, descending two-note tone — an order is fully prepped and ready.
+// Lower, descending two-note tone — an order is fully prepped and ready. Same full gain as above.
 export function playOrderReadyChime() {
-  tone(0, 1046.5, 0.14, "triangle", 0.22);
-  tone(0.1, 523.25, 0.26, "triangle", 0.22);
+  tone(0, 1046.5, 0.14, "triangle", 1);
+  tone(0.1, 523.25, 0.26, "triangle", 1);
 }
