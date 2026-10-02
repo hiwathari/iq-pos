@@ -13,13 +13,14 @@ import {
   type Printer,
   type PrinterStation,
 } from "@/lib/types";
-import { setOrderStatusAction, toggleOrderItemReadyAction } from "@/lib/actions/orders";
+import { completeOrderAction, setOrderStatusAction, toggleOrderItemReadyAction } from "@/lib/actions/orders";
 import { setDishStockAction } from "@/lib/actions/menu";
 import { unlockOrderAudio, playNewOrderChime, playOrderReadyChime } from "@/lib/order-sounds";
 import {
   Ban,
   Bike,
   Check,
+  CheckCheck,
   CheckCircle2,
   ChefHat,
   Clock,
@@ -218,6 +219,13 @@ export function KitchenClient({
     });
   }
 
+  function completeOrder(orderId: string) {
+    startTransition(async () => {
+      await completeOrderAction(orderId);
+      router.refresh();
+    });
+  }
+
   function toggleItem(orderId: string, itemKey: string, ready: boolean) {
     startTransition(async () => {
       await toggleOrderItemReadyAction(orderId, itemKey, ready);
@@ -348,6 +356,7 @@ export function KitchenClient({
                     major={idx === 0}
                     onAdvance={(status) => advance(order.id, status)}
                     onToggleItem={(itemKey, ready) => toggleItem(order.id, itemKey, ready)}
+                    onComplete={() => completeOrder(order.id)}
                   />
                 </div>
               ))}
@@ -535,6 +544,7 @@ function OrderTicket({
   major,
   onAdvance,
   onToggleItem,
+  onComplete,
 }: {
   order: Order;
   now: number | null;
@@ -545,6 +555,7 @@ function OrderTicket({
   major: boolean;
   onAdvance: (status: OrderStatus) => void;
   onToggleItem: (itemKey: string, ready: boolean) => void;
+  onComplete: () => void;
 }) {
   const elapsedMs = now !== null ? now - order.createdAt : null;
   const band = elapsedMs !== null ? timerBand(elapsedMs, timerLimitMinutes) : null;
@@ -732,6 +743,13 @@ function OrderTicket({
               Send to Kitchen
             </button>
           )}
+          <button
+            onClick={onComplete}
+            title="Marks every item on this ticket ready and completes the order in one tap"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 py-3 text-sm font-bold text-white active:scale-95"
+          >
+            <CheckCheck className="h-4 w-4" /> Complete Order
+          </button>
         </div>
       )}
     </div>

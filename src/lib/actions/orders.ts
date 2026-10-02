@@ -212,6 +212,24 @@ export async function toggleOrderItemReadyAction(orderId: string, itemKey: strin
   revalidatePath("/order-line");
 }
 
+// One-tap shortcut for a ticket the kitchen doesn't need to track item-by-item — ticks every
+// item ready and takes the order straight to Ready in a single write, from either Wait List or
+// In Kitchen, instead of requiring each item tapped individually first.
+export async function completeOrderAction(orderId: string) {
+  const { restaurantId } = await requireRestaurantContext();
+  const [order] = await db
+    .select()
+    .from(orders)
+    .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)))
+    .limit(1);
+  if (!order) return;
+
+  const items = order.items.map((i) => ({ ...i, ready: true }));
+  await db.update(orders).set({ items, status: "Ready" }).where(eq(orders.id, orderId));
+  revalidatePath("/kitchen");
+  revalidatePath("/order-line");
+}
+
 export async function setOrderStatusAction(orderId: string, status: OrderStatus) {
   const { restaurantId } = await requireRestaurantContext();
   const [order] = await db
