@@ -31,9 +31,8 @@ import { printTicket } from "@/lib/print-ticket";
 import { tableOrderQrDataUrl } from "@/lib/table-qr";
 import { unlockOrderAudio, playNewOrderChime, playOrderReadyChime } from "@/lib/order-sounds";
 import { TableLayoutPicker } from "@/components/table-layout-picker";
+import { CategoryIconView } from "@/components/category-icon";
 import {
-  ChevronLeft,
-  ChevronRight,
   Minus,
   Plus,
   Pencil,
@@ -214,8 +213,6 @@ export function OrderLineClient({
   const [shareInvoiceOpen, setShareInvoiceOpen] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
   const [loyaltyError, setLoyaltyError] = useState<string | null>(null);
-
-  const menuRef = useRef<HTMLDivElement>(null);
 
   // Poll for changes made elsewhere (kitchen marking an order ready, another till voiding
   // one, etc.) so status notifications below stay current without a manual refresh.
@@ -409,10 +406,6 @@ export function OrderLineClient({
   }
 
   const editingOrder = cart.editingOrderId ? orders.find((o) => o.id === cart.editingOrderId) : null;
-
-  function scroll(ref: React.RefObject<HTMLDivElement | null>, dir: 1 | -1) {
-    ref.current?.scrollBy({ left: dir * 260, behavior: "smooth" });
-  }
 
   // Only merges into an existing line for this dish if that line has no note — a line that
   // already carries a comment (e.g. "no onions") never silently absorbs another tap and becomes
@@ -809,20 +802,14 @@ export function OrderLineClient({
                   </button>
                 )}
               </div>
-              <div className="hidden shrink-0 items-center gap-1.5 sm:flex">
-                <button onClick={() => scroll(menuRef, -1)} className="rounded-full border border-neutral-200 p-1.5 hover:bg-neutral-50">
-                  <ChevronLeft className="h-4 w-4 text-neutral-500" />
-                </button>
-                <button onClick={() => scroll(menuRef, 1)} className="rounded-full border border-neutral-200 p-1.5 hover:bg-neutral-50">
-                  <ChevronRight className="h-4 w-4 text-neutral-500" />
-                </button>
-              </div>
             </div>
+            {/* Every category fits on screen at once, wrapping into rows — no sideways
+                scrolling to find one that's off-screen. */}
             {!menuSearch && (
-              <div ref={menuRef} className="mb-6 flex gap-3 overflow-x-auto pb-1 scroll-smooth">
-                <MenuTab active={menuCategory === "all"} label="All Menu" onClick={() => setMenuCategory("all")} />
+              <div className="mb-6 grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+                <CategoryBox active={menuCategory === "all"} label="All Menu" icon="all" onClick={() => setMenuCategory("all")} />
                 {categories.map((c) => (
-                  <MenuTab key={c.id} active={menuCategory === c.id} label={c.name} onClick={() => setMenuCategory(c.id)} />
+                  <CategoryBox key={c.id} active={menuCategory === c.id} label={c.name} icon={c.icon} onClick={() => setMenuCategory(c.id)} />
                 ))}
               </div>
             )}
@@ -992,8 +979,9 @@ export function OrderLineClient({
         )}
       </div>
 
-      {/* Desktop cart panel */}
-      <div className="hidden w-[400px] shrink-0 flex-col border-l border-neutral-200 bg-white p-5 lg:flex min-h-0">
+      {/* Desktop cart panel — dark, deliberately set apart from the light menu area beside it
+          (see .cart-dark in globals.css). */}
+      <div className="cart-dark hidden w-[400px] shrink-0 flex-col border-l border-neutral-800 bg-neutral-900 p-5 lg:flex min-h-0">
         <CartPanel {...cartPanelProps} showClose={false} />
       </div>
 
@@ -1010,7 +998,7 @@ export function OrderLineClient({
 
       {/* Mobile cart drawer */}
       {mobileCartOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-white p-5 lg:hidden">
+        <div className="cart-dark fixed inset-0 z-50 flex flex-col bg-neutral-900 p-5 lg:hidden">
           <CartPanel {...cartPanelProps} showClose />
         </div>
       )}
@@ -2136,15 +2124,18 @@ function TablesOverview({
   );
 }
 
-function MenuTab({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+function CategoryBox({ active, label, icon, onClick }: { active: boolean; label: string; icon: string; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition-colors ${
-        active ? "border-[var(--brand)] bg-[var(--brand)] text-white" : "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
+      className={`flex min-h-[84px] flex-col items-center justify-center gap-1.5 rounded-2xl border p-3 text-center transition-colors ${
+        active
+          ? "border-[var(--brand)] bg-[var(--brand)] text-white shadow-sm"
+          : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50"
       }`}
     >
-      {label}
+      <CategoryIconView icon={icon} className={`h-6 w-6 shrink-0 ${active ? "text-white" : "text-[var(--brand)]"}`} />
+      <span className="line-clamp-2 text-sm font-bold leading-tight">{label}</span>
     </button>
   );
 }
