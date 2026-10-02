@@ -123,8 +123,16 @@ export const categories = sqliteTable("categories", {
     .references(() => restaurants.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   icon: text("icon").notNull().default("all"),
+  // Null = no printer for this category's tickets (that's an explicit, selectable option, not
+  // an unset default).
   printerId: text("printer_id").references(() => printers.id, { onDelete: "set null" }),
-  showOnKitchenDisplay: int("show_on_kitchen_display", { mode: "boolean" }).notNull().default(true),
+  // Which Kitchen Display station(s) this category's items appear on — independent of printerId,
+  // since a category may need a printer but no screen tracking (or vice versa). Null (the default
+  // for every category today) means "automatic": derive it from the category/dish's own printer
+  // station, same as before this field existed. "None" explicitly hides it from every Kitchen
+  // Display station, including "All". Any other value pins it to exactly that station regardless
+  // of printer. See resolveItemDisplayStation in kitchen-client.tsx.
+  kitchenDisplayStation: text("kitchen_display_station", { enum: ["Kitchen", "Bar", "Receipt", "Expo", "None"] }),
   // Only actually charged when the restaurant's own taxEnabled is on (see restaurants above) —
   // kept ready with a sensible default either way, so turning tax on doesn't need a backfill step.
   taxRatePercent: real("tax_rate_percent").notNull().default(20),

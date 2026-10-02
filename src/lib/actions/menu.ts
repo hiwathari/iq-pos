@@ -5,11 +5,12 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { categories, dishes } from "@/db/schema";
 import { assertPermission, requireRestaurantContext } from "@/lib/scope";
+import type { CategoryDisplayOverride } from "@/lib/types";
 
 export interface CreateCategoryInput {
   name: string;
   printerId: string | null;
-  showOnKitchenDisplay: boolean;
+  kitchenDisplayStation: CategoryDisplayOverride;
   taxRatePercent: number;
 }
 
@@ -23,7 +24,7 @@ export async function createCategoryAction(input: CreateCategoryInput) {
     name: input.name.trim(),
     icon: "all",
     printerId: input.printerId,
-    showOnKitchenDisplay: input.showOnKitchenDisplay,
+    kitchenDisplayStation: input.kitchenDisplayStation,
     taxRatePercent: input.taxRatePercent,
   });
   revalidatePath("/manage-dishes");
@@ -33,7 +34,7 @@ export async function createCategoryAction(input: CreateCategoryInput) {
 export interface UpdateCategoryInput {
   name: string;
   printerId: string | null;
-  showOnKitchenDisplay: boolean;
+  kitchenDisplayStation: CategoryDisplayOverride;
   taxRatePercent: number;
 }
 
@@ -46,7 +47,7 @@ export async function updateCategoryAction(categoryId: string, input: UpdateCate
     .set({
       name: input.name.trim(),
       printerId: input.printerId,
-      showOnKitchenDisplay: input.showOnKitchenDisplay,
+      kitchenDisplayStation: input.kitchenDisplayStation,
       taxRatePercent: input.taxRatePercent,
     })
     .where(and(eq(categories.id, categoryId), eq(categories.restaurantId, restaurantId)));

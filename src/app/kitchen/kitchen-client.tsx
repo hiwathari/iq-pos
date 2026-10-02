@@ -85,12 +85,14 @@ export function KitchenClient({
   const [stockModalOpen, setStockModalOpen] = useState(false);
   const [station, setStation] = useState<PrinterStation | "All">("All");
 
-  // Which stations this restaurant actually has printers for — a restaurant running a single
-  // Kitchen printer never sees a selector at all, since there's nothing to route between yet.
-  const availableStations = useMemo(
-    () => STATION_ORDER.filter((s) => printers.some((p) => p.station === s)),
-    [printers]
-  );
+  // Which stations this restaurant actually uses — either a printer assigned to that station, or
+  // a category explicitly pinned to it via kitchenDisplayStation (so a display-only station with
+  // no printer still gets a tab). A restaurant with just one station never sees a selector at
+  // all, since there's nothing to route between yet.
+  const availableStations = useMemo(() => {
+    const pinned = new Set(categories.map((c) => c.kitchenDisplayStation).filter((s): s is PrinterStation => !!s && s !== "None"));
+    return STATION_ORDER.filter((s) => printers.some((p) => p.station === s) || pinned.has(s));
+  }, [printers, categories]);
 
   const dishesById = useMemo(() => new Map(dishes.map((d) => [d.id, d])), [dishes]);
   const categoriesById = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
@@ -105,20 +107,34 @@ export function KitchenClient({
     return categoryOrderIndex.get(dish.categoryId) ?? Number.MAX_SAFE_INTEGER;
   }
 
-  // Resolves the physical station an item routes to — per-dish printer, falling back to its
-  // category's printer, same precedence as everywhere else this pairing is used (Till, Manage
-  // Dishes). A custom/unlisted item resolves to null and is treated as unrouted, never hidden.
-  function resolveItemStation(item: OrderItem): PrinterStation | null {
+  // Resolves which Kitchen Display station an item shows up on. A category's own
+  // kitchenDisplayStation (set in Manage Dishes) wins when set — "None" hides it everywhere,
+  // any station pins it there regardless of printer. Left unset (the default for every category
+  // today), it falls back to the old behavior: per-dish printer, falling back to the category's
+  // printer, same precedence as everywhere else this pairing is used (Till, Manage Dishes). A
+  // custom/unlisted item, or one with no printer either way, resolves to null and is treated as
+  // unrouted — shown on every station, never hidden.
+  function resolveItemDisplayStation(item: OrderItem): PrinterStation | "None" | null {
     const dish = dishesById.get(item.dishId);
-    const printerId = dish?.printerId ?? (dish ? categoriesById.get(dish.categoryId)?.printerId : undefined);
+    const category = dish ? categoriesById.get(dish.categoryId) : undefined;
+    if (category?.kitchenDisplayStation) return category.kitchenDisplayStation as PrinterStation | "None";
+    const printerId = dish?.printerId ?? category?.printerId;
     if (!printerId) return null;
     return printersById.get(printerId)?.station ?? null;
   }
 
+  // Whether an item needs Kitchen Display tracking at all — false only for an explicit "None"
+  // override. Used to keep a no-display item from blocking a ticket's "every item ready" gate,
+  // since it never gets a checkbox to tick on any station's screen.
+  function itemHasDisplay(item: OrderItem) {
+    return resolveItemDisplayStation(item) !== "None";
+  }
+
   function itemMatchesStation(item: OrderItem) {
+    const display = resolveItemDisplayStation(item);
+    if (display === "None") return false;
     if (station === "All") return true;
-    const itemStation = resolveItemStation(item);
-    return itemStation === null || itemStation === station;
+    return display === null || display === station;
   }
 
   useEffect(() => {
@@ -246,11 +262,10 @@ export function KitchenClient({
     .filter((o) => COMPLETED_STATUSES.includes(o.status) && doneAt(o) >= todayStart)
     .sort((a, b) => doneAt(b) - doneAt(a));
   // A ticket only belongs on this station's screen if it has at least one item that routes here
-  // (or is unrouted) — an all-drinks order never shows up on the Kitchen screen.
-  if (station !== "All") {
-    pendingOrders = pendingOrders.filter((o) => o.items.some(itemMatchesStation));
-    completedOrders = completedOrders.filter((o) => o.items.some(itemMatchesStation));
-  }
+  // (or is unrouted) — an all-drinks order never shows up on the Kitchen screen. Applied even on
+  // "All", since that's also where a category explicitly set to "no display" needs to disappear.
+  pendingOrders = pendingOrders.filter((o) => o.items.some(itemMatchesStation));
+  completedOrders = completedOrders.filter((o) => o.items.some(itemMatchesStation));
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-neutral-100 p-4" style={{ zoom: FONT_SCALE_STEPS[fontScaleIndex] }}>
@@ -351,6 +366,7 @@ export function KitchenClient({
                   timerLimitMinutes={timerLimitMinutes}
                   station={station}
                   itemMatchesStation={itemMatchesStation}
+                  itemHasDisplay={itemHasDisplay}
                   itemSortIndex={itemSortIndex}
                   major={idx === 0}
                   onAdvance={(status) => advance(order.id, status)}
@@ -549,6 +565,7 @@ function OrderTicket({
   timerLimitMinutes,
   station,
   itemMatchesStation,
+  itemHasDisplay,
   itemSortIndex,
   major,
   onAdvance,
@@ -560,6 +577,7 @@ function OrderTicket({
   timerLimitMinutes: number;
   station: PrinterStation | "All";
   itemMatchesStation: (item: OrderItem) => boolean;
+  itemHasDisplay: (item: OrderItem) => boolean;
   itemSortIndex: (item: OrderItem) => number;
   major: boolean;
   onAdvance: (status: OrderStatus) => void;
@@ -569,7 +587,9 @@ function OrderTicket({
   const elapsedMs = now !== null ? now - order.createdAt : null;
   const band = elapsedMs !== null ? timerBand(elapsedMs, timerLimitMinutes) : null;
   const itemsCheckable = order.status === "In Kitchen";
-  const allItemsReady = order.items.every((i) => i.ready);
+  // A "no display" item never gets a checkbox anywhere, so it can't block the "every item
+  // ready" gate — it's treated as automatically satisfied.
+  const allItemsReady = order.items.every((i) => !itemHasDisplay(i) || i.ready);
   const isVoided = order.status === "Voided";
   const isDone = order.status === "Served";
   // Flags a ticket that got new items added after it was already sent (including one the
@@ -577,10 +597,11 @@ function OrderTicket({
   // once it's done (Served/Voided), since it no longer matters.
   const wasUpdated = !!order.updatedAt && order.status !== "Served" && order.status !== "Voided";
   // On a single station's screen, only that station's items show — the rest of the ticket
-  // belongs to another screen. Whole-ticket actions (advance) stay in the "All" view only, since
-  // a bar screen shouldn't be the one deciding a whole dine-in order is served. Voiding an order
-  // is a Till-only action — this screen only ever displays the result, crossed out below.
-  const visibleItems = station === "All" ? order.items : order.items.filter(itemMatchesStation);
+  // belongs to another screen. A "no display" item is excluded even on "All" (itemMatchesStation
+  // handles that). Whole-ticket actions (advance) stay in the "All" view only, since a bar screen
+  // shouldn't be the one deciding a whole dine-in order is served. Voiding an order is a
+  // Till-only action — this screen only ever displays the result, crossed out below.
+  const visibleItems = order.items.filter(itemMatchesStation);
   const sortedItems = [...visibleItems].sort((a, b) => itemSortIndex(a) - itemSortIndex(b));
   const hiddenItemCount = order.items.length - visibleItems.length;
   const showTicketActions = station === "All";
@@ -710,7 +731,7 @@ function OrderTicket({
       </ul>
       {hiddenItemCount > 0 && (
         <div className="mb-1.5 text-xs italic text-neutral-400">
-          +{hiddenItemCount} more item{hiddenItemCount === 1 ? "" : "s"} on another station
+          +{hiddenItemCount} more item{hiddenItemCount === 1 ? "" : "s"} not shown here
         </div>
       )}
       {!isVoided && !isDone && showTicketActions && (

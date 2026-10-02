@@ -68,6 +68,10 @@ export type OrderChannel = "Dine in" | "Wait List" | "Take Away" | "Delivery" | 
 export type ThirdPartyProvider = "Uber Eats" | "Deliveroo" | "Just Eat" | "Other";
 export type OrderStatus = "In Kitchen" | "Wait List" | "Ready" | "Served" | "Voided";
 export type PrinterStation = "Kitchen" | "Bar" | "Receipt" | "Expo";
+// A category's Kitchen Display override: null = automatic (derive from its printer's station,
+// the old behavior), "None" = hide from every Kitchen Display station, or pin to one specific
+// station regardless of printer. See kitchen-client.tsx's resolveItemDisplayStation.
+export type CategoryDisplayOverride = PrinterStation | "None" | null;
 export type PrinterConnection = "Bluetooth" | "Network" | "WiFi" | "USB";
 export type IntegrationProvider = "Uber Eats" | "Deliveroo" | "Just Eat";
 

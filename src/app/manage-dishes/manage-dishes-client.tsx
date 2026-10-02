@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CategoryIconView } from "@/components/category-icon";
 import { DishModal } from "@/components/dish-modal";
-import type { Category, Dish, InventoryItem, Printer } from "@/lib/types";
+import type { Category, CategoryDisplayOverride, Dish, InventoryItem, Printer, PrinterStation } from "@/lib/types";
 import { formatMoney } from "@/lib/types";
 import {
   createCategoryAction,
@@ -17,6 +17,8 @@ import {
   type UpdateCategoryInput,
 } from "@/lib/actions/menu";
 import { LayoutGrid, List, Plus, Search, SlidersHorizontal, MoreVertical, Pencil, Trash2, X, Ban } from "lucide-react";
+
+const STATION_OPTIONS: PrinterStation[] = ["Kitchen", "Bar", "Receipt", "Expo"];
 
 export function ManageDishesClient({
   categories,
@@ -472,7 +474,9 @@ function CategoryModal({
   const defaultPrinter = printers.find((p) => p.isDefault) ?? printers[0] ?? null;
   const [name, setName] = useState(category?.name ?? "");
   const [printerId, setPrinterId] = useState<string>(category?.printerId ?? defaultPrinter?.id ?? "");
-  const [showOnKitchenDisplay, setShowOnKitchenDisplay] = useState(category?.showOnKitchenDisplay ?? true);
+  // "auto" (the default for every existing category) follows the printer's own station, same as
+  // before this field existed — only an explicit choice here (a station, or "None") overrides it.
+  const [kitchenDisplayStation, setKitchenDisplayStation] = useState<string>(category?.kitchenDisplayStation ?? "auto");
   const [taxRatePercent, setTaxRatePercent] = useState(String(category?.taxRatePercent ?? 20));
 
   const canSave = name.trim().length > 0;
@@ -514,6 +518,26 @@ function CategoryModal({
             </select>
           </div>
           <div>
+            <label className="mb-1.5 block text-xs font-medium text-neutral-500">Kitchen Display</label>
+            <select
+              value={kitchenDisplayStation}
+              onChange={(e) => setKitchenDisplayStation(e.target.value)}
+              className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+            >
+              <option value="auto">Automatic — follows the printer above</option>
+              <option value="None">No display — hide from Kitchen Display</option>
+              {STATION_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s} screen only
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-neutral-400">
+              Which Kitchen Display screen(s) this category&apos;s items show up on — independent of the printer, so a
+              category can have a printer with no screen tracking, or a screen with no printer.
+            </p>
+          </div>
+          <div>
             <label className="mb-1.5 block text-xs font-medium text-neutral-500">Tax Rate %</label>
             <input
               type="number"
@@ -528,15 +552,6 @@ function CategoryModal({
               Only applied to dishes in this category while tax is turned on in Settings.
             </p>
           </div>
-          <label className="flex items-center gap-2 text-sm text-neutral-600">
-            <input
-              type="checkbox"
-              checked={showOnKitchenDisplay}
-              onChange={(e) => setShowOnKitchenDisplay(e.target.checked)}
-              className="h-3.5 w-3.5 accent-teal-600"
-            />
-            Show on Kitchen Display
-          </label>
         </div>
         <div className="mt-6 flex gap-3">
           <button
@@ -552,7 +567,7 @@ function CategoryModal({
               onSave({
                 name: name.trim(),
                 printerId: printerId || null,
-                showOnKitchenDisplay,
+                kitchenDisplayStation: kitchenDisplayStation === "auto" ? null : (kitchenDisplayStation as CategoryDisplayOverride),
                 taxRatePercent: Math.max(0, Math.min(100, Number(taxRatePercent) || 0)),
               })
             }
