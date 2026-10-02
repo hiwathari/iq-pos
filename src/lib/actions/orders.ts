@@ -183,19 +183,20 @@ export async function toggleOrderItemReadyAction(orderId: string, itemKey: strin
   if (!order) return;
 
   const items = order.items.map((i) => ((i.lineId ?? i.dishId) === itemKey ? { ...i, ready } : i));
-  // Ticking off the last item auto-advances the order to Ready — one less tap for the kitchen.
+  // Ticking off the last item auto-advances the order straight to Served — there's no separate
+  // "Ready, waiting to be marked served" step; ready IS served, one less tap for the kitchen.
   const allReady = items.every((i) => i.ready);
-  const advanceToReady = allReady && order.status === "In Kitchen";
+  const advanceToServed = allReady && order.status === "In Kitchen";
   await db
     .update(orders)
-    .set({ items, status: advanceToReady ? "Ready" : order.status })
+    .set({ items, status: advanceToServed ? "Served" : order.status, servedAt: advanceToServed ? Date.now() : order.servedAt })
     .where(eq(orders.id, orderId));
   revalidatePath("/kitchen");
   revalidatePath("/order-line");
 }
 
 // One-tap shortcut for a ticket the kitchen doesn't need to track item-by-item — ticks every
-// item ready and takes the order straight to Ready in a single write, from either Wait List or
+// item ready and takes the order straight to Served in a single write, from either Wait List or
 // In Kitchen, instead of requiring each item tapped individually first.
 export async function completeOrderAction(orderId: string) {
   const { restaurantId } = await requireRestaurantContext();
@@ -207,7 +208,7 @@ export async function completeOrderAction(orderId: string) {
   if (!order) return;
 
   const items = order.items.map((i) => ({ ...i, ready: true }));
-  await db.update(orders).set({ items, status: "Ready" }).where(eq(orders.id, orderId));
+  await db.update(orders).set({ items, status: "Served", servedAt: Date.now() }).where(eq(orders.id, orderId));
   revalidatePath("/kitchen");
   revalidatePath("/order-line");
 }

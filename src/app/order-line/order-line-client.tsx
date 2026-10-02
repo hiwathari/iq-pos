@@ -2151,9 +2151,12 @@ function PaymentButton({
   );
 }
 
+// There's no separate "mark as served" step — ready IS served, so "In Kitchen" goes straight to
+// Served. "Ready" only still appears here as a fallback for any order that reached that status
+// before this changed (nothing sets it anymore — see completeOrderAction/toggleOrderItemReadyAction).
 const STATUS_FLOW: Record<Order["status"], Order["status"] | null> = {
   "Wait List": "In Kitchen",
-  "In Kitchen": "Ready",
+  "In Kitchen": "Served",
   Ready: "Served",
   Served: null,
   Voided: null,
@@ -2161,7 +2164,7 @@ const STATUS_FLOW: Record<Order["status"], Order["status"] | null> = {
 
 const STATUS_ACTION_LABEL: Record<Order["status"], string> = {
   "Wait List": "Send to Kitchen",
-  "In Kitchen": "Mark Ready",
+  "In Kitchen": "Mark Served",
   Ready: "Mark Served",
   Served: "Done",
   Voided: "Voided",
