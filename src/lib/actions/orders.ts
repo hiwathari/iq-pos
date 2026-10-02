@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, gte } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { orders, restaurants, tables } from "@/db/schema";
@@ -127,6 +127,26 @@ export async function placeOrderAction(input: PlaceOrderInput) {
       })
       .where(and(eq(orders.id, input.editingOrderId), eq(orders.restaurantId, restaurantId)));
   } else {
+    // Guard against double/triple-tapping "Place Order" (or a slow network making someone tap
+    // again) creating duplicate orders — if the same staff member just placed an identical order
+    // for the same table/channel in the last few seconds, treat this as a repeat of that click
+    // rather than a new order.
+    const dedupeCutoff = Date.now() - 8000;
+    const recentOrders = await db
+      .select({ tableId: orders.tableId, channel: orders.channel, items: orders.items })
+      .from(orders)
+      .where(
+        and(
+          eq(orders.restaurantId, restaurantId),
+          eq(orders.createdByUserId, session.userId),
+          gte(orders.createdAt, dedupeCutoff)
+        )
+      );
+    const isDuplicate = recentOrders.some(
+      (o) => o.tableId === input.tableId && o.channel === input.channel && JSON.stringify(o.items) === JSON.stringify(input.items)
+    );
+    if (isDuplicate) return;
+
     const orderNumber = await nextOrderNumber(restaurantId);
 
     // Counter-service places with no kitchen ticket step (see directServeMode on restaurants)
