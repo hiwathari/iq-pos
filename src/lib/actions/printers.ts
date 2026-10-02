@@ -95,6 +95,19 @@ export async function togglePaymentTerminalActiveAction(terminalId: string, acti
   revalidatePath("/order-line");
 }
 
+// The one terminal whose sales the "accounts" role sees in full, same as Cash — see
+// lib/accounts-filter.ts. Only one per restaurant, same unset-then-set pattern as printers.
+export async function setDefaultPaymentTerminalAction(terminalId: string) {
+  const { session, restaurantId } = await requireRestaurantContext();
+  await assertPermission(session, "settings");
+  await db.update(paymentTerminals).set({ isDefault: false }).where(eq(paymentTerminals.restaurantId, restaurantId));
+  await db
+    .update(paymentTerminals)
+    .set({ isDefault: true })
+    .where(and(eq(paymentTerminals.id, terminalId), eq(paymentTerminals.restaurantId, restaurantId)));
+  revalidatePath("/settings");
+}
+
 export async function deletePaymentTerminalAction(terminalId: string) {
   const { session, restaurantId } = await requireRestaurantContext();
   await assertPermission(session, "settings");

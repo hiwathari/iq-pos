@@ -5,7 +5,10 @@ import { SignJWT, jwtVerify } from "jose";
 // "till" and "kitchen_display" are ephemeral device sessions minted by a 6-digit PIN
 // (see lib/actions/pin-auth.ts) — they never correspond to a stored user role.
 // "regional_admin" is a scoped super_admin — see restaurantAccess in db/schema.ts.
-export type Role = "super_admin" | "regional_admin" | "admin" | "staff" | "till" | "kitchen_display";
+// "accounts" is a restricted, auto-created bookkeeping login for a restaurant's own admin — same
+// page access as admin, but Dashboard/Reports only show cash + the default payment terminal in
+// full, with every other terminal limited to the trailing 14 days (see lib/accounts-filter.ts).
+export type Role = "super_admin" | "regional_admin" | "admin" | "staff" | "till" | "kitchen_display" | "accounts";
 
 export interface SessionPayload {
   userId: string;

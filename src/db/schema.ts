@@ -63,7 +63,9 @@ export const users = sqliteTable(
     // regional_admin: a scoped super-admin — full admin-level control (including permissions)
     // over only the restaurants assigned to them via restaurantAccess, rather than every
     // restaurant on the platform like a true super_admin.
-    role: text("role", { enum: ["super_admin", "regional_admin", "admin", "staff"] }).notNull(),
+    // accounts: auto-created alongside a restaurant's admin (see createRestaurantAction) with the
+    // same page access, but a restricted view of sales data — see lib/accounts-filter.ts.
+    role: text("role", { enum: ["super_admin", "regional_admin", "admin", "staff", "accounts"] }).notNull(),
     restaurantId: text("restaurant_id").references(() => restaurants.id, { onDelete: "cascade" }),
     active: int("active", { mode: "boolean" }).notNull().default(true),
     // 6-digit code, set by the restaurant admin, that logs this staff member straight into the Till via /till-login.
@@ -359,6 +361,26 @@ export const paymentTerminals = sqliteTable("payment_terminals", {
   // Optional image URL (e.g. the card network's logo, or a photo of the physical machine) shown
   // instead of the generic card icon so staff can tell terminals apart at a glance on the Till.
   logoUrl: text("logo_url"),
+  // The restaurant's "main" card machine — the one named terminal whose sales the accounts role
+  // (see users.role) can see in full, same as Cash; every other terminal is restricted to the
+  // trailing 14 days for that role. At most one terminal per restaurant should have this set;
+  // enforced in code (setDefaultPaymentTerminalAction), not at the DB level.
+  isDefault: int("is_default", { mode: "boolean" }).default(false),
+});
+
+// Admin-only alerts surfaced via the Topbar bell — currently just a day's close not balancing
+// (see notifyIfShiftDidNotBalance in lib/actions/shifts.ts), but a generic title/body/link shape
+// so future alert types don't need a new table.
+export const notifications = sqliteTable("notifications", {
+  id: id(),
+  restaurantId: text("restaurant_id")
+    .notNull()
+    .references(() => restaurants.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  link: text("link"),
+  createdAt: timestamp("created_at"),
+  readAt: int("read_at"),
 });
 
 export const integrations = sqliteTable("integrations", {

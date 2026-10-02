@@ -6,6 +6,8 @@ import { db } from "@/db/client";
 import { orders, restaurants, shifts } from "@/db/schema";
 import { assertPermission, requireRestaurantContext } from "@/lib/scope";
 import { summarizeShiftWindow } from "@/lib/data/shifts";
+import { createNotification } from "@/lib/data/notifications";
+import { formatMoney } from "@/lib/types";
 
 export interface OpenTillState {
   error?: string;
@@ -119,5 +121,37 @@ export async function endShiftAction(input: EndShiftInput): Promise<EndShiftStat
     .set({ pendingOpeningBalance: null, openingBalanceSetByName: null, openingBalanceSetAt: null })
     .where(eq(restaurants.id, restaurantId));
 
+  await notifyIfShiftDidNotBalance(shift, restaurant?.currencySymbol ?? "£", session.name);
+
   return { shiftId: shift.id };
+}
+
+// Flags it to the admin the moment a day's close doesn't tally — cash short/over, or any named
+// payment terminal's counted total not matching what the system expected — rather than relying
+// on someone opening every shift report by hand to notice. One notification per discrepant
+// close, listing every mismatched line so a multi-terminal restaurant sees all of them at once.
+async function notifyIfShiftDidNotBalance(shift: typeof shifts.$inferSelect, currencySymbol: string, closedByName: string) {
+  const lines: string[] = [];
+
+  const cashVariance = shift.cashCounted - shift.expectedCash;
+  if (Math.abs(cashVariance) >= 0.01) {
+    lines.push(`Cash ${cashVariance > 0 ? "over" : "short"} by ${formatMoney(Math.abs(cashVariance), currencySymbol)}`);
+  }
+
+  for (const method of new Set([...(shift.terminalSales ?? []).map((t) => t.method), ...(shift.terminalCounts ?? []).map((c) => c.method)])) {
+    const expected = shift.terminalSales?.find((t) => t.method === method)?.amount ?? 0;
+    const counted = shift.terminalCounts?.find((c) => c.method === method)?.counted ?? 0;
+    const variance = counted - expected;
+    if (Math.abs(variance) >= 0.01) {
+      lines.push(`${method} ${variance > 0 ? "over" : "short"} by ${formatMoney(Math.abs(variance), currencySymbol)}`);
+    }
+  }
+
+  if (lines.length === 0) return;
+
+  await createNotification(shift.restaurantId, {
+    title: "Day close didn't balance",
+    body: `${closedByName}'s close: ${lines.join("; ")}.`,
+    link: `/shift-report/${shift.id}`,
+  });
 }

@@ -9,6 +9,7 @@ import { listPaymentTerminals } from "@/lib/data/printers";
 import { getReportData } from "@/lib/data/reports";
 import { listShifts } from "@/lib/data/shifts";
 import { listLowStockItems } from "@/lib/data/inventory";
+import { filterOrdersForAccountsRole } from "@/lib/accounts-filter";
 import { formatMoney, formatOrderTimestamp } from "@/lib/types";
 import { DashboardCharts } from "./dashboard-charts";
 import { EndShiftButton } from "./end-shift-button";
@@ -19,12 +20,11 @@ import { DollarSign, ClipboardList, Table2, Users, TrendingUp, TrendingDown, Rec
 
 export default async function DashboardPage() {
   const { session, restaurantId } = await requirePermission("dashboard");
-  const [orders, tables, reservations, restaurant, report, shifts, lowStockItems, paymentTerminals, permissions] = await Promise.all([
+  const [rawOrders, tables, reservations, restaurant, shifts, lowStockItems, paymentTerminals, permissions] = await Promise.all([
     listOrders(restaurantId),
     listTables(restaurantId),
     listReservations(restaurantId),
     getRestaurant(restaurantId),
-    getReportData(restaurantId),
     listShifts(restaurantId),
     listLowStockItems(restaurantId),
     listPaymentTerminals(restaurantId),
@@ -32,6 +32,14 @@ export default async function DashboardPage() {
   ]);
   const currencySymbol = restaurant?.currencySymbol ?? "£";
   const canEndDay = hasPermission(session.role, permissions, "end-day");
+
+  // The "accounts" login (see lib/accounts-filter.ts) only ever sees cash + the default payment
+  // terminal in full, with every other terminal limited to its last 14 days — applied once here
+  // so every stat below (and the charts, via getReportData) is already working from the same
+  // restricted set rather than each one re-deriving it.
+  const defaultTerminalName = paymentTerminals.find((t) => t.isDefault)?.name ?? null;
+  const orders = session.role === "accounts" ? filterOrdersForAccountsRole(rawOrders, defaultTerminalName) : rawOrders;
+  const report = await getReportData(restaurantId, undefined, session.role === "accounts" ? { defaultTerminalName } : undefined);
 
   const revenue = orders.reduce((sum, o) => sum + o.items.reduce((s, i) => s + i.price * i.qty, 0), 0);
   const onDine = tables.filter((t) => t.status === "on-dine").length;
