@@ -37,13 +37,15 @@ import {
 const STATION_ORDER: PrinterStation[] = ["Kitchen", "Bar", "Expo", "Receipt"];
 const STATION_KEY = "kds-station";
 
-// Ready, served, and voided tickets all share one "Completed" column (amber/green/red) — every
-// one from today stays listed there, scrollable, so staff can look back at what left the kitchen
-// without leaving this screen. Resets at the restaurant's business-day boundary (see
-// businessDayStart — follows its configured opening time, matching the day-rollover elsewhere,
-// e.g. autoVoidStaleOrders) rather than growing forever; the Till's history keeps the full audit
-// trail indefinitely regardless. A Ready order has no "became ready" timestamp of its own yet, so
-// it sorts and ages by when it was placed until the Till serves or voids it.
+// Served and voided tickets share one "Completed" column (green/red) — every one from today
+// stays listed there, scrollable, so staff can look back at what left the kitchen without
+// leaving this screen. Resets at the restaurant's business-day boundary (see businessDayStart —
+// follows its configured opening time, matching the day-rollover elsewhere, e.g.
+// autoVoidStaleOrders) rather than growing forever; the Till's history keeps the full audit trail
+// indefinitely regardless. "Ready" is kept in COMPLETED_STATUSES only for any pre-existing order
+// still sitting in that state from before ready-equals-served shipped — nothing sets it anymore
+// (see completeOrderAction/toggleOrderItemReadyAction/the ticket's own action button below, all
+// of which go straight to "Served").
 function doneAt(order: Order) {
   return order.status === "Voided" ? (order.voidedAt ?? order.createdAt) : (order.servedAt ?? order.createdAt);
 }
@@ -55,9 +57,9 @@ const FONT_SCALE_STEPS = [0.85, 1, 1.15, 1.3, 1.5, 1.7];
 const DEFAULT_FONT_SCALE_INDEX = 1;
 
 // Kitchen only needs two boards: tickets still to prep ("Pending" — Wait List + In Kitchen) and
-// everything finished today ("Completed" — Ready + Served + Voided). "Ready" isn't its own board
-// — once every item is ticked and the cook hits "Mark Order Ready", the ticket hands off to the
-// Till/expo and moves to Completed here, same as once the Till serves/voids it.
+// everything finished today ("Completed" — Served + Voided, plus any legacy "Ready" order — see
+// doneAt above). There's no separate "mark as served" step: once every item is ticked and the
+// cook hits the ticket's action button, it's Served immediately and moves to Completed here.
 const PENDING_STATUSES: OrderStatus[] = ["Wait List", "In Kitchen"];
 const COMPLETED_STATUSES: OrderStatus[] = ["Ready", "Served", "Voided"];
 
@@ -451,6 +453,17 @@ const TIMER_STYLES = {
   red: "bg-rose-100 text-rose-700 animate-pulse",
 } as const;
 
+// The whole ticket's background/border, not just the elapsed-time badge — so a cook reads
+// urgency from across the room without finding and focusing on the small timer text. Gets more
+// saturated band by band (green barely tints the card; red fills it and pulses) so the card
+// visibly "fills up" as it nears and then blows past the admin's kitchen timer limit.
+const TICKET_BAND_STYLES = {
+  green: "border-neutral-200",
+  yellow: "border-yellow-300 bg-yellow-50",
+  orange: "border-orange-400 bg-orange-100",
+  red: "border-rose-500 bg-rose-200 animate-pulse",
+} as const;
+
 function timerBand(elapsedMs: number, limitMinutes: number) {
   const fraction = elapsedMs / (limitMinutes * 60_000);
   if (fraction >= 1) return "red";
@@ -582,11 +595,9 @@ function OrderTicket({
           ? "border-rose-200 bg-rose-50/60 opacity-75"
           : isDone
             ? "border-emerald-200 bg-emerald-50/50"
-            : major
-              ? "border-amber-400"
-              : order.channel === "Delivery"
-                ? "border-blue-200 bg-blue-50/40"
-                : "border-neutral-200"
+            : band
+              ? TICKET_BAND_STYLES[band]
+              : "border-neutral-200"
       }`}
     >
       <div className="mb-1 flex items-center justify-between gap-2">
@@ -706,12 +717,12 @@ function OrderTicket({
         <div className="flex gap-1.5">
           {order.status === "In Kitchen" && (
             <button
-              onClick={() => onAdvance("Ready")}
+              onClick={() => onAdvance("Served")}
               disabled={!allItemsReady}
               title={allItemsReady ? undefined : "Tick off every item first"}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[var(--brand)] py-2.5 text-base font-bold text-white active:scale-95 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-400"
             >
-              <CheckCircle2 className="h-5 w-5" /> Ready
+              <CheckCircle2 className="h-5 w-5" /> Served
             </button>
           )}
           {order.status === "Wait List" && (
