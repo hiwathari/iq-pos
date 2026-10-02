@@ -78,9 +78,7 @@ export function PaymentTerminalsClient({ terminals }: { terminals: PaymentTermin
                   {t.active ? "Active" : "Disabled"}
                 </span>
                 {t.isDefault && (
-                  <span className="inline-block rounded-full bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700">
-                    Default
-                  </span>
+                  <span className="inline-block rounded-full bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700">Default</span>
                 )}
               </div>
               <p className="mt-2 max-w-[20ch] text-[11px] text-neutral-400">
