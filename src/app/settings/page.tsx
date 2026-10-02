@@ -33,6 +33,8 @@ export default async function SettingsPage() {
           currencySymbol={restaurant?.currencySymbol ?? "£"}
           kitchenTimerLimitMinutes={restaurant?.kitchenTimerLimitMinutes ?? 30}
           taxEnabled={restaurant?.taxEnabled ?? false}
+          openTime={restaurant?.openTime ?? null}
+          closeTime={restaurant?.closeTime ?? null}
         />
         <div className="border-t border-neutral-100 pt-8">
           <InvoiceDetailsClient

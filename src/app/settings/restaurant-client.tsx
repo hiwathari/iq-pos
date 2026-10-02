@@ -6,6 +6,7 @@ import {
   updateKitchenTimerLimitAction,
   updateRestaurantCurrencyAction,
   updateRestaurantTaxEnabledAction,
+  updateShopHoursAction,
 } from "@/lib/actions/restaurants";
 import { CURRENCY_OPTIONS } from "@/lib/types";
 
@@ -13,15 +14,21 @@ export function RestaurantClient({
   currencySymbol,
   kitchenTimerLimitMinutes,
   taxEnabled,
+  openTime,
+  closeTime,
 }: {
   currencySymbol: string;
   kitchenTimerLimitMinutes: number;
   taxEnabled: boolean;
+  openTime: string | null;
+  closeTime: string | null;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [timerLimit, setTimerLimit] = useState(kitchenTimerLimitMinutes);
   const [taxOn, setTaxOn] = useState(taxEnabled);
+  const [shopOpenTime, setShopOpenTime] = useState(openTime ?? "");
+  const [shopCloseTime, setShopCloseTime] = useState(closeTime ?? "");
 
   function handleCurrencyChange(symbol: string) {
     startTransition(async () => {
@@ -42,6 +49,15 @@ export function RestaurantClient({
     setTaxOn(enabled);
     startTransition(async () => {
       await updateRestaurantTaxEnabledAction(enabled);
+      router.refresh();
+    });
+  }
+
+  function handleShopHoursChange(nextOpen: string, nextClose: string) {
+    setShopOpenTime(nextOpen);
+    setShopCloseTime(nextClose);
+    startTransition(async () => {
+      await updateShopHoursAction(nextOpen, nextClose);
       router.refresh();
     });
   }
@@ -100,6 +116,29 @@ export function RestaurantClient({
           </button>
           <p className="mt-1 text-xs text-neutral-400">
             Off by default. Each category in Manage Dishes has its own tax rate, applied only once this is on.
+          </p>
+        </div>
+        <div className="max-w-xs">
+          <label className="mb-1.5 block text-xs font-medium text-neutral-500">Shop Hours</label>
+          <div className="flex items-center gap-2">
+            <input
+              type="time"
+              value={shopOpenTime}
+              onChange={(e) => handleShopHoursChange(e.target.value, shopCloseTime)}
+              className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+            />
+            <span className="text-xs font-medium text-neutral-400">to</span>
+            <input
+              type="time"
+              value={shopCloseTime}
+              onChange={(e) => handleShopHoursChange(shopOpenTime, e.target.value)}
+              className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+            />
+          </div>
+          <p className="mt-1 text-xs text-neutral-400">
+            When a shift runs past midnight, the opening time is what counts as the start of a new day — for the
+            Kitchen Display&apos;s Completed list and the overnight auto-void cleanup. Times are in UTC, not your
+            local clock. Leave blank to keep the old plain-midnight behavior.
           </p>
         </div>
       </div>
