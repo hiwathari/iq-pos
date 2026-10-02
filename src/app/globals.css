@@ -29,3 +29,98 @@ body {
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* Till cart panel — dark theme, scoped to .cart-dark so the light menu-browsing area next to it
+   is untouched. Every rule here targets the exact utility classes CartPanel already uses in
+   src/app/order-line/order-line-client.tsx, remapped to a dark equivalent — the component's own
+   markup/classNames never needed to change, only how those classes render inside this one
+   subtree. Descendant selectors here (.cart-dark .text-neutral-900) are two classes deep, which
+   already outweighs Tailwind's own single-class utility rules, so no !important is needed. */
+.cart-dark {
+  color: #fafafa;
+}
+
+.cart-dark input:not([type="checkbox"]):not([type="radio"]),
+.cart-dark select,
+.cart-dark textarea {
+  background-color: #262626;
+  color: #fafafa;
+  border-color: #3f3f3f;
+}
+.cart-dark input::placeholder,
+.cart-dark textarea::placeholder {
+  color: #737373;
+}
+
+.cart-dark .bg-white,
+.cart-dark .bg-neutral-50 {
+  background-color: #262626;
+}
+.cart-dark .hover\:bg-neutral-50:hover {
+  background-color: #333333;
+}
+.cart-dark .bg-neutral-200 {
+  background-color: #404040;
+}
+.cart-dark .disabled\:bg-neutral-50:disabled {
+  background-color: #333333;
+}
+
+.cart-dark .text-neutral-900,
+.cart-dark .text-neutral-800,
+.cart-dark .text-neutral-700 {
+  color: #fafafa;
+}
+.cart-dark .text-neutral-600,
+.cart-dark .text-neutral-500 {
+  color: #d4d4d4;
+}
+.cart-dark .text-neutral-400,
+.cart-dark .text-neutral-300,
+.cart-dark .disabled\:text-neutral-400:disabled {
+  color: #9a9a9a;
+}
+
+.cart-dark .border-neutral-100,
+.cart-dark .border-neutral-200,
+.cart-dark .border-neutral-300 {
+  border-color: #3f3f3f;
+}
+
+.cart-dark .bg-rose-50 {
+  background-color: rgba(244, 63, 94, 0.14);
+}
+.cart-dark .bg-rose-100,
+.cart-dark .hover\:bg-rose-50:hover {
+  background-color: rgba(244, 63, 94, 0.2);
+}
+.cart-dark .hover\:bg-rose-100:hover {
+  background-color: rgba(244, 63, 94, 0.28);
+}
+.cart-dark .border-rose-200 {
+  border-color: rgba(244, 63, 94, 0.35);
+}
+.cart-dark .text-rose-600,
+.cart-dark .text-rose-700 {
+  color: #fb7185;
+}
+
+.cart-dark .bg-amber-50 {
+  background-color: rgba(245, 158, 11, 0.14);
+}
+.cart-dark .border-amber-200 {
+  border-color: rgba(245, 158, 11, 0.35);
+}
+.cart-dark .text-amber-600 {
+  color: #fbbf24;
+}
+
+.cart-dark .text-emerald-600 {
+  color: #34d399;
+}
+.cart-dark .text-teal-600 {
+  color: #2dd4bf;
+}
+.cart-dark .text-blue-500 {
+  color: #60a5fa;
+}
