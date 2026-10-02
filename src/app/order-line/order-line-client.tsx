@@ -120,6 +120,11 @@ interface CartState {
   payments: PaymentLine[];
   cashReceived: string;
   extraDiscount: string;
+  // Whether extraDiscount above is a flat currency amount or a percentage of the subtotal — a
+  // UI-only distinction; what actually gets saved (and what orders.extraDiscount always was) is
+  // the computed flat amount, so an order reopened for editing always starts back in "amount"
+  // mode regardless of how the discount was originally entered.
+  extraDiscountMode: "amount" | "percent";
   couponCode: string;
   appliedCoupon: { code: string; discount: number } | null;
   loyaltyContact: string;
@@ -140,6 +145,7 @@ const emptyCart: CartState = {
   payments: [],
   cashReceived: "",
   extraDiscount: "",
+  extraDiscountMode: "amount",
   couponCode: "",
   appliedCoupon: null,
   loyaltyContact: "",
@@ -321,7 +327,9 @@ export function OrderLineClient({
   const qtyFor = (dishId: string) => cart.items.filter((i) => i.dishId === dishId).reduce((sum, i) => sum + i.qty, 0);
 
   const subtotal = cart.items.reduce((sum, i) => sum + i.price * i.qty, 0);
-  const extraDiscountAmount = Math.max(0, Math.min(subtotal, Number(cart.extraDiscount) || 0));
+  const extraDiscountRaw =
+    cart.extraDiscountMode === "percent" ? subtotal * (Math.max(0, Number(cart.extraDiscount) || 0) / 100) : Number(cart.extraDiscount) || 0;
+  const extraDiscountAmount = Math.max(0, Math.min(subtotal, extraDiscountRaw));
   const couponDiscountAmount = cart.appliedCoupon
     ? Math.max(0, Math.min(subtotal - extraDiscountAmount, cart.appliedCoupon.discount))
     : 0;
@@ -486,6 +494,7 @@ export function OrderLineClient({
       payments,
       cashReceived: order.cashReceived ? String(order.cashReceived) : "",
       extraDiscount: order.extraDiscount ? String(order.extraDiscount) : "",
+      extraDiscountMode: "amount",
       couponCode: order.couponCode ?? "",
       appliedCoupon: order.couponCode ? { code: order.couponCode, discount: order.couponDiscount ?? 0 } : null,
       loyaltyContact: "",
@@ -1493,19 +1502,34 @@ function CartPanel({
           {canDiscount && (
             <div className="flex items-center justify-between gap-2 text-sm text-neutral-500">
               <span>Extra Discount</span>
-              <div className="relative w-28">
-                <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-neutral-400">
-                  {currencySymbol}
-                </span>
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={cart.extraDiscount}
-                  onChange={(e) => setCart((prev) => ({ ...prev, extraDiscount: e.target.value }))}
-                  placeholder="0.00"
-                  className="w-full rounded-lg border border-neutral-200 py-1.5 pl-6 pr-2 text-right text-sm outline-none focus:border-teal-500"
-                />
+              <div className="flex items-center gap-1.5">
+                <div className="relative w-24">
+                  <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-neutral-400">
+                    {cart.extraDiscountMode === "percent" ? "%" : currencySymbol}
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={cart.extraDiscount}
+                    onChange={(e) => setCart((prev) => ({ ...prev, extraDiscount: e.target.value }))}
+                    placeholder="0.00"
+                    className="w-full rounded-lg border border-neutral-200 py-1.5 pl-6 pr-2 text-right text-sm outline-none focus:border-teal-500"
+                  />
+                </div>
+                <div className="flex shrink-0 rounded-lg border border-neutral-200 p-0.5">
+                  {(["amount", "percent"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => setCart((prev) => ({ ...prev, extraDiscountMode: mode }))}
+                      className={`rounded-md px-2 py-1 text-xs font-semibold ${
+                        cart.extraDiscountMode === mode ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
+                      }`}
+                    >
+                      {mode === "percent" ? "%" : currencySymbol}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           )}
