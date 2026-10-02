@@ -17,6 +17,7 @@ import { completeOrderAction, setOrderStatusAction, toggleOrderItemReadyAction }
 import { setDishStockAction } from "@/lib/actions/menu";
 import { unlockOrderAudio, playNewOrderChime, playOrderReadyChime } from "@/lib/order-sounds";
 import { businessDayStart } from "@/lib/business-day";
+import { FullscreenButton } from "@/components/fullscreen-button";
 import {
   Check,
   CheckCheck,
@@ -284,6 +285,7 @@ export function KitchenClient({
           )}
         </h1>
         <div className="flex items-center gap-3">
+          <FullscreenButton className="flex items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3.5 py-2 text-sm font-semibold text-neutral-500 hover:bg-neutral-50" />
           <button
             onClick={() => window.location.reload()}
             title="Refresh — reloads the page and clears any cached data"
