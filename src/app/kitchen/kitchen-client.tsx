@@ -16,6 +16,7 @@ import {
 import { completeOrderAction, setOrderStatusAction, toggleOrderItemReadyAction } from "@/lib/actions/orders";
 import { setDishStockAction } from "@/lib/actions/menu";
 import { unlockOrderAudio, playNewOrderChime, playOrderReadyChime } from "@/lib/order-sounds";
+import { businessDayStart } from "@/lib/business-day";
 import {
   Ban,
   Bike,
@@ -44,16 +45,13 @@ const STATION_KEY = "kds-station";
 
 // Ready, served, and voided tickets all share one "Completed" column (amber/green/red) — every
 // one from today stays listed there, scrollable, so staff can look back at what left the kitchen
-// without leaving this screen. Resets at midnight UTC (matching the day-rollover elsewhere, e.g.
-// autoVoidStaleOrders) rather than growing forever; the Till's history keeps the full audit trail
-// indefinitely regardless. A Ready order has no "became ready" timestamp of its own yet, so it
-// sorts and ages by when it was placed until the Till serves or voids it.
+// without leaving this screen. Resets at the restaurant's business-day boundary (see
+// businessDayStart — follows its configured opening time, matching the day-rollover elsewhere,
+// e.g. autoVoidStaleOrders) rather than growing forever; the Till's history keeps the full audit
+// trail indefinitely regardless. A Ready order has no "became ready" timestamp of its own yet, so
+// it sorts and ages by when it was placed until the Till serves or voids it.
 function doneAt(order: Order) {
   return order.status === "Voided" ? (order.voidedAt ?? order.createdAt) : (order.servedAt ?? order.createdAt);
-}
-
-function todayStartUTC(now: number) {
-  return new Date(new Date(now).toISOString().slice(0, 10)).getTime();
 }
 
 // How much bigger/smaller the whole board renders — a per-device preference (not tied to the
@@ -75,12 +73,14 @@ export function KitchenClient({
   dishes,
   printers,
   timerLimitMinutes,
+  openTime,
 }: {
   orders: Order[];
   categories: Category[];
   dishes: Dish[];
   printers: Printer[];
   timerLimitMinutes: number;
+  openTime: string | null;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -245,7 +245,7 @@ export function KitchenClient({
   // Already newest-first (listOrders sorts by createdAt desc), so the first pending ticket is
   // always the most recently placed one — that's the one flagged "major" below.
   let pendingOrders = orders.filter((o) => PENDING_STATUSES.includes(o.status));
-  const todayStart = todayStartUTC(now);
+  const todayStart = businessDayStart(now, openTime);
   let completedOrders = orders
     .filter((o) => COMPLETED_STATUSES.includes(o.status) && doneAt(o) >= todayStart)
     .sort((a, b) => doneAt(b) - doneAt(a));

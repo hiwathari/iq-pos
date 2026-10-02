@@ -147,6 +147,28 @@ export async function updateKitchenTimerLimitAction(minutes: number) {
   revalidatePath("/kitchen");
 }
 
+function isValidClockTime(value: string) {
+  return /^([01]?\d|2[0-3]):[0-5]\d$/.test(value);
+}
+
+// Shop hours — openTime anchors the "business day" boundary used by the auto-void sweep and
+// Kitchen Display's Completed panel (see lib/business-day.ts), so a shift that runs past
+// midnight still counts as one day. Clearing a field (empty string) goes back to plain UTC
+// midnight for that restaurant. Interpreted in UTC — there's no restaurant-timezone field.
+export async function updateShopHoursAction(openTime: string, closeTime: string) {
+  const { session, restaurantId } = await requireRestaurantContext();
+  await assertPermission(session, "settings");
+  if (openTime && !isValidClockTime(openTime)) return;
+  if (closeTime && !isValidClockTime(closeTime)) return;
+  await db
+    .update(restaurants)
+    .set({ openTime: openTime || null, closeTime: closeTime || null })
+    .where(eq(restaurants.id, restaurantId));
+  revalidatePath("/settings");
+  revalidatePath("/kitchen");
+  revalidatePath("/dashboard");
+}
+
 // Any admin can clear the "orders carried over from a previous day" banner — not just the one
 // who happens to be logged in when it appears.
 export async function dismissAutoVoidNoticeAction() {

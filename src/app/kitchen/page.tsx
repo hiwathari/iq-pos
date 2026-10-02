@@ -34,6 +34,7 @@ export default async function KitchenPage() {
         dishes={dishes}
         printers={printers}
         timerLimitMinutes={restaurant?.kitchenTimerLimitMinutes ?? 30}
+        openTime={restaurant?.openTime ?? null}
       />
     </AppShell>
   );

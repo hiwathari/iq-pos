@@ -34,6 +34,8 @@ export default async function SettingsPage() {
           kitchenTimerLimitMinutes={restaurant?.kitchenTimerLimitMinutes ?? 30}
           taxEnabled={restaurant?.taxEnabled ?? false}
           directServeMode={restaurant?.directServeMode ?? false}
+          openTime={restaurant?.openTime ?? null}
+          closeTime={restaurant?.closeTime ?? null}
         />
         <div className="border-t border-neutral-100 pt-8">
           <InvoiceDetailsClient

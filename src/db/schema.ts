@@ -47,6 +47,13 @@ export const restaurants = sqliteTable("restaurants", {
   // Kitchen"/"Ready" entirely and is created straight as "Served". Off by default: every
   // existing restaurant keeps the normal send-to-kitchen-then-serve flow.
   directServeMode: int("direct_serve_mode", { mode: "boolean" }).notNull().default(false),
+  // Shop hours, as "HH:MM" 24-hour clock times (UTC — there's no restaurant-timezone field).
+  // openTime anchors the "business day" boundary used by autoVoidStaleOrders and Kitchen
+  // Display's Completed panel, so a shift running past midnight still counts as one day. Null
+  // (the default for every existing restaurant) keeps the old plain-UTC-midnight behavior.
+  // closeTime is stored for reference/display only — it doesn't currently drive any logic.
+  openTime: text("open_time"),
+  closeTime: text("close_time"),
   // The starting cash float declared by whoever opens the till for the current day/shift — null
   // until someone does (see openTillAction). Carried into the next End Day close as that shift's
   // openingBalance, then cleared back to null so the following day has to declare its own.

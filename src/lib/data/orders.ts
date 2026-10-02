@@ -2,15 +2,23 @@ import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import { db } from "@/db/client";
 import { orders, restaurants } from "@/db/schema";
 import { AUTO_VOID_REASON, freeTableIfNoLiveOrders } from "@/lib/order-helpers";
+import { businessDayStart } from "@/lib/business-day";
 
 // There's no background job runner in this app, so — like releaseStaleTables in
 // lib/data/tables.ts — this runs lazily on the next read rather than on a schedule. Any order
-// still sitting unprocessed (never sent to kitchen, or never served) from a previous calendar
-// day is stale: the day it belonged to is over, so it's auto-voided and its table freed, and the
-// Dashboard banner (driven by AUTO_VOID_REASON + restaurants.autoVoidNoticeDismissedAt) tells the
-// manager what got cleared out overnight. Calendar day is UTC, matching the report's date buckets.
+// still sitting unprocessed (never sent to kitchen, or never served) from a previous business day
+// is stale: that day is over, so it's auto-voided and its table freed, and the Dashboard banner
+// (driven by AUTO_VOID_REASON + restaurants.autoVoidNoticeDismissedAt) tells the manager what got
+// cleared out overnight. The day boundary follows the restaurant's own opening time (see
+// businessDayStart) rather than plain UTC midnight, so a shift running past midnight isn't
+// treated as spanning two days.
 async function autoVoidStaleOrders(restaurantId: string) {
-  const todayStartUTC = new Date(new Date().toISOString().slice(0, 10)).getTime();
+  const [restaurant] = await db
+    .select({ openTime: restaurants.openTime })
+    .from(restaurants)
+    .where(eq(restaurants.id, restaurantId))
+    .limit(1);
+  const dayStart = businessDayStart(Date.now(), restaurant?.openTime ?? null);
   const stale = await db
     .select({ id: orders.id, tableId: orders.tableId })
     .from(orders)
@@ -18,7 +26,7 @@ async function autoVoidStaleOrders(restaurantId: string) {
       and(
         eq(orders.restaurantId, restaurantId),
         inArray(orders.status, ["Wait List", "In Kitchen"]),
-        lt(orders.createdAt, todayStartUTC)
+        lt(orders.createdAt, dayStart)
       )
     );
   if (stale.length === 0) return;
