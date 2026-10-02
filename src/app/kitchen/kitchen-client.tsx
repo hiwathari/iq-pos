@@ -18,25 +18,19 @@ import { setDishStockAction } from "@/lib/actions/menu";
 import { unlockOrderAudio, playNewOrderChime, playOrderReadyChime } from "@/lib/order-sounds";
 import { businessDayStart } from "@/lib/business-day";
 import {
-  Ban,
-  Bike,
   Check,
   CheckCheck,
   CheckCircle2,
   ChefHat,
-  Clock,
   MapPin,
   Minus,
   Phone,
   Plus,
   RefreshCw,
-  ShoppingBag,
-  Sparkles,
   X,
   XCircle,
   PackageX,
   Radio,
-  Globe,
 } from "lucide-react";
 
 // The canonical station order the selector and any station badges are shown in.
@@ -339,26 +333,28 @@ export function KitchenClient({
               {pendingOrders.length}
             </span>
           </div>
-          <div className="flex-1 overflow-y-auto p-3">
+          <div className="flex-1 overflow-y-auto p-2">
             {pendingOrders.length === 0 && (
               <div className="flex h-24 items-center justify-center text-sm text-neutral-300">No orders</div>
             )}
-            <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {/* Dense, uniform grid (no outlier-sized card) — the goal is fitting at least 8 full
+                tickets on screen at once with large, legible text, not decoration. See
+                OrderTicket for the matching low-chrome layout. */}
+            <div className="grid grid-cols-2 items-start gap-2 sm:grid-cols-3 lg:grid-cols-4">
               {pendingOrders.map((order, idx) => (
-                <div key={order.id} className={idx === 0 ? "sm:col-span-2" : undefined}>
-                  <OrderTicket
-                    order={order}
-                    now={now}
-                    timerLimitMinutes={timerLimitMinutes}
-                    station={station}
-                    itemMatchesStation={itemMatchesStation}
-                    itemSortIndex={itemSortIndex}
-                    major={idx === 0}
-                    onAdvance={(status) => advance(order.id, status)}
-                    onToggleItem={(itemKey, ready) => toggleItem(order.id, itemKey, ready)}
-                    onComplete={() => completeOrder(order.id)}
-                  />
-                </div>
+                <OrderTicket
+                  key={order.id}
+                  order={order}
+                  now={now}
+                  timerLimitMinutes={timerLimitMinutes}
+                  station={station}
+                  itemMatchesStation={itemMatchesStation}
+                  itemSortIndex={itemSortIndex}
+                  major={idx === 0}
+                  onAdvance={(status) => advance(order.id, status)}
+                  onToggleItem={(itemKey, ready) => toggleItem(order.id, itemKey, ready)}
+                  onComplete={() => completeOrder(order.id)}
+                />
               ))}
             </div>
           </div>
@@ -489,12 +485,12 @@ function CompletedOrderRow({
   const hasCustomerInfo = order.customerName || order.customerPhone || order.customerAddress;
 
   return (
-    <div className={`rounded-xl border px-3 py-2.5 text-sm ${tint}`}>
+    <div className={`rounded-xl border px-3 py-2.5 text-base ${tint}`}>
       <div className="flex items-center justify-between gap-2">
-        <span className="font-bold text-neutral-900">#{order.orderNumber}</span>
-        <span className="text-xs text-neutral-500">{formatOrderTimestamp(order.createdAt)}</span>
+        <span className="text-lg font-extrabold text-neutral-900">#{order.orderNumber}</span>
+        <span className="text-sm text-neutral-500">{formatOrderTimestamp(order.createdAt)}</span>
       </div>
-      <div className="mt-0.5 flex flex-wrap items-center gap-1 text-xs font-medium text-neutral-500">
+      <div className="mt-0.5 flex flex-wrap items-center gap-1 text-sm font-bold text-neutral-500">
         <span>
           {order.tableNumber
             ? `Table ${String(order.tableNumber).padStart(2, "0")}${
@@ -504,23 +500,23 @@ function CompletedOrderRow({
           {order.thirdPartyProvider ? ` · ${order.thirdPartyProvider}` : ""}
         </span>
         {order.placedVia !== "staff" && (
-          <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">
+          <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-xs font-bold text-indigo-700">
             {order.placedVia === "kiosk" ? "KIOSK" : "ONLINE"}
           </span>
         )}
       </div>
       {isVoided && (
-        <div className="mt-1 text-xs font-semibold text-rose-600">Voided{order.voidReason ? ` — ${order.voidReason}` : ""}</div>
+        <div className="mt-1 text-sm font-semibold text-rose-600">Voided{order.voidReason ? ` — ${order.voidReason}` : ""}</div>
       )}
-      {order.status === "Ready" && <div className="mt-1 text-xs font-semibold text-amber-600">Ready for pickup</div>}
+      {order.status === "Ready" && <div className="mt-1 text-sm font-semibold text-amber-600">Ready for pickup</div>}
       {hasCustomerInfo && (
-        <div className="mt-1 space-y-0.5 rounded-lg bg-white/60 px-2 py-1.5 text-xs text-neutral-600">
+        <div className="mt-1 space-y-0.5 rounded-lg bg-white/60 px-2 py-1.5 text-sm text-neutral-600">
           {order.customerName && <div className="font-semibold text-neutral-800">{order.customerName}</div>}
           {order.customerPhone && <div>{order.customerPhone}</div>}
           {order.customerAddress && <div>{order.customerAddress}</div>}
         </div>
       )}
-      <div className="mt-1 space-y-1 text-xs text-neutral-600">
+      <div className="mt-1 space-y-1 text-sm text-neutral-600">
         {visibleItems.map((item, idx) => (
           <div key={item.lineId ?? `${item.dishId}-${idx}`}>
             <span className={isVoided ? "line-through decoration-rose-300" : undefined}>
@@ -576,104 +572,87 @@ function OrderTicket({
   const hiddenItemCount = order.items.length - visibleItems.length;
   const showTicketActions = station === "All";
 
+  // Low-chrome by design: a KDS screen gets re-read dozens of times an hour under time pressure,
+  // so every badge/icon/line of padding here is screen space one of the 8+ tickets on screen
+  // doesn't get. Status is color + plain bold text, never an icon-and-pill combo.
   return (
     <div
-      className={`rounded-xl border p-3.5 shadow-sm ${
+      className={`rounded-lg border p-2 shadow-sm ${
         isVoided
           ? "border-rose-200 bg-rose-50/60 opacity-75"
           : isDone
             ? "border-emerald-200 bg-emerald-50/50"
             : major
-              ? "border-amber-300 ring-2 ring-amber-300"
+              ? "border-amber-400"
               : order.channel === "Delivery"
                 ? "border-blue-200 bg-blue-50/40"
                 : "border-neutral-200"
       }`}
     >
-      {major && (
-        <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-amber-400 px-2.5 py-1 text-xs font-bold text-amber-950">
-          <Sparkles className="h-3.5 w-3.5" /> NEWEST ORDER
-        </div>
-      )}
-      <div className="mb-2 flex items-center justify-between">
-        <span className="flex items-center gap-1.5 text-base font-bold text-neutral-900">
-          {isVoided && <XCircle className="h-4 w-4 text-rose-500" />}
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-xl font-extrabold leading-none text-neutral-900">
+          {isVoided && <XCircle className="h-5 w-5 shrink-0 text-rose-500" />}
           <span className={isVoided ? "line-through decoration-rose-400" : undefined}>#{order.orderNumber}</span>
+          {major && <span className="rounded bg-amber-400 px-1.5 py-0.5 text-xs font-bold text-amber-950">NEW</span>}
         </span>
         {isVoided ? (
-          <span className="flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">
-            <Ban className="h-3.5 w-3.5" /> Voided
-          </span>
+          <span className="text-sm font-bold text-rose-600">Voided</span>
         ) : isDone ? (
-          <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">
-            <CheckCircle2 className="h-3.5 w-3.5" /> Completed
-          </span>
+          <span className="text-sm font-bold text-emerald-600">Done</span>
         ) : elapsedMs !== null && band ? (
-          <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold ${TIMER_STYLES[band]}`}>
-            <Clock className="h-3.5 w-3.5" /> {formatElapsed(elapsedMs)}
-          </span>
+          <span className={`rounded-md px-1.5 py-0.5 text-sm font-bold ${TIMER_STYLES[band]}`}>{formatElapsed(elapsedMs)}</span>
         ) : (
-          <span className="flex items-center gap-1 text-xs font-medium text-neutral-400">
-            <Clock className="h-3.5 w-3.5" /> {formatOrderTimestamp(order.createdAt)}
-          </span>
+          <span className="text-sm font-medium text-neutral-400">{formatOrderTimestamp(order.createdAt)}</span>
         )}
       </div>
-      <div className="mb-2 text-xs font-medium text-neutral-400">Seq {orderSequence(order.orderNumber)}</div>
 
-      {isVoided && (
-        <div className="mb-2 rounded-lg bg-rose-100 px-2.5 py-1.5 text-xs font-semibold text-rose-700">
-          Cancelled{order.voidReason ? ` — ${order.voidReason}` : ""}
-        </div>
-      )}
-
-      {wasUpdated && (
-        <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700">
-          <RefreshCw className="h-3.5 w-3.5" /> RUNNING ORDER — items were added, recheck below
-        </div>
-      )}
-
-      {order.channel === "Delivery" && (
-        <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-blue-100 px-2.5 py-1 text-xs font-bold text-blue-700">
-          <Bike className="h-3.5 w-3.5" /> DELIVERY
-        </div>
-      )}
-      {order.channel === "Take Away" && (
-        <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700">
-          <ShoppingBag className="h-3.5 w-3.5" /> TAKEAWAY
-        </div>
-      )}
-      {order.placedVia !== "staff" && (
-        <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-indigo-100 px-2.5 py-1 text-xs font-bold text-indigo-700">
-          <Globe className="h-3.5 w-3.5" /> {order.placedVia === "kiosk" ? "KIOSK ORDER" : "ONLINE ORDER"}
-        </div>
-      )}
-
-      <div className="mb-3 text-xs font-semibold text-neutral-500">
-        {order.tableNumber
-          ? `Table ${String(order.tableNumber).padStart(2, "0")}${
-              order.mergedTableNumbers?.length ? ` + ${order.mergedTableNumbers.join(" + ")}` : ""
-            }`
-          : order.channel}
-        {order.thirdPartyProvider ? ` · ${order.thirdPartyProvider}` : ""}
+      <div className="mb-1 flex flex-wrap items-baseline gap-1.5 text-base font-bold text-neutral-700">
+        <span>
+          {order.tableNumber
+            ? `Table ${String(order.tableNumber).padStart(2, "0")}${
+                order.mergedTableNumbers?.length ? ` + ${order.mergedTableNumbers.join(" + ")}` : ""
+              }`
+            : order.channel}
+          {order.thirdPartyProvider ? ` · ${order.thirdPartyProvider}` : ""}
+        </span>
+        <span className="text-xs font-medium text-neutral-400">Seq {orderSequence(order.orderNumber)}</span>
       </div>
 
+      {(isVoided || wasUpdated || order.channel === "Delivery" || order.channel === "Take Away" || order.placedVia !== "staff") && (
+        <div className="mb-1 flex flex-wrap gap-1">
+          {isVoided && (
+            <span className="rounded bg-rose-100 px-1.5 py-0.5 text-xs font-bold text-rose-700">
+              Cancelled{order.voidReason ? ` — ${order.voidReason}` : ""}
+            </span>
+          )}
+          {wasUpdated && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-bold text-amber-700">RUNNING — recheck items</span>}
+          {order.channel === "Delivery" && <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-bold text-blue-700">DELIVERY</span>}
+          {order.channel === "Take Away" && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-bold text-amber-700">TAKEAWAY</span>}
+          {order.placedVia !== "staff" && (
+            <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-xs font-bold text-indigo-700">
+              {order.placedVia === "kiosk" ? "KIOSK" : "ONLINE"}
+            </span>
+          )}
+        </div>
+      )}
+
       {(order.customerName || order.customerPhone || order.customerAddress) && (
-        <div className="mb-3 space-y-1 rounded-lg bg-neutral-50 px-2.5 py-2 text-xs text-neutral-600">
-          {order.customerName && <div className="font-semibold text-neutral-800">{order.customerName}</div>}
+        <div className="mb-1 space-y-0.5 rounded-md bg-neutral-50 px-1.5 py-1 text-sm text-neutral-600">
+          {order.customerName && <div className="font-bold text-neutral-800">{order.customerName}</div>}
           {order.customerPhone && (
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1">
               <Phone className="h-3 w-3 shrink-0" /> {order.customerPhone}
             </div>
           )}
           {order.customerAddress && (
-            <div className="flex items-start gap-1.5">
+            <div className="flex items-start gap-1">
               <MapPin className="h-3 w-3 shrink-0 translate-y-0.5" /> {order.customerAddress}
             </div>
           )}
         </div>
       )}
 
-      <ul className="mb-3 space-y-1">
+      <ul className="mb-1.5 space-y-0.5">
         {sortedItems.map((item, idx) => {
           const itemKey = item.lineId ?? `${item.dishId}-${idx}`;
           // A voided order's items are crossed out unconditionally (not just when ready) — the
@@ -683,15 +662,15 @@ function OrderTicket({
             <li key={itemKey}>
               <button
                 onClick={() => onToggleItem(item.lineId ?? item.dishId, !item.ready)}
-                className="flex w-full items-center justify-between gap-2 rounded-lg py-1.5 text-left text-sm hover:bg-neutral-50"
+                className="flex w-full items-center justify-between gap-2 rounded-md py-0.5 text-left text-lg leading-tight hover:bg-neutral-50"
               >
                 <span className="min-w-0">
-                  <span className={`font-bold ${item.ready ? "text-neutral-300" : "text-teal-600"}`}>{item.qty}× </span>
-                  <span className={item.ready ? "text-neutral-400 line-through" : "text-neutral-800"}>{item.name}</span>
-                  {item.note && <div className="text-xs font-semibold italic text-amber-600">↳ {item.note}</div>}
+                  <span className={`font-extrabold ${item.ready ? "text-neutral-300" : "text-teal-600"}`}>{item.qty}× </span>
+                  <span className={item.ready ? "text-neutral-400 line-through" : "font-semibold text-neutral-800"}>{item.name}</span>
+                  {item.note && <div className="text-sm font-bold italic leading-tight text-amber-600">↳ {item.note}</div>}
                 </span>
                 <span
-                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border-2 ${
+                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border-2 ${
                     item.ready ? "border-[var(--brand)] bg-[var(--brand)] text-white" : "border-neutral-300"
                   }`}
                 >
@@ -700,45 +679,45 @@ function OrderTicket({
               </button>
             </li>
           ) : (
-            <li key={itemKey} className="text-sm">
-              <span className={`font-bold ${isVoided ? "text-rose-400" : "text-teal-600"}`}>{item.qty}× </span>
+            <li key={itemKey} className="text-lg leading-tight">
+              <span className={`font-extrabold ${isVoided ? "text-rose-400" : "text-teal-600"}`}>{item.qty}× </span>
               <span
                 className={
                   isVoided
                     ? "text-rose-400 line-through decoration-rose-400"
                     : crossedOut
                       ? "text-neutral-400 line-through"
-                      : "text-neutral-800"
+                      : "font-semibold text-neutral-800"
                 }
               >
                 {item.name}
               </span>
-              {item.note && <div className="ml-4 text-xs font-semibold italic text-amber-600">↳ {item.note}</div>}
+              {item.note && <div className="ml-4 text-sm font-bold italic leading-tight text-amber-600">↳ {item.note}</div>}
             </li>
           );
         })}
       </ul>
       {hiddenItemCount > 0 && (
-        <div className="mb-3 text-xs italic text-neutral-400">
+        <div className="mb-1.5 text-xs italic text-neutral-400">
           +{hiddenItemCount} more item{hiddenItemCount === 1 ? "" : "s"} on another station
         </div>
       )}
       {!isVoided && !isDone && showTicketActions && (
-        <div className="flex gap-2">
+        <div className="flex gap-1.5">
           {order.status === "In Kitchen" && (
             <button
               onClick={() => onAdvance("Ready")}
               disabled={!allItemsReady}
               title={allItemsReady ? undefined : "Tick off every item first"}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-[var(--brand)] py-3 text-sm font-bold text-white active:scale-95 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-400"
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[var(--brand)] py-2.5 text-base font-bold text-white active:scale-95 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-400"
             >
-              <CheckCircle2 className="h-4 w-4" /> Mark Order Ready
+              <CheckCircle2 className="h-5 w-5" /> Ready
             </button>
           )}
           {order.status === "Wait List" && (
             <button
               onClick={() => onAdvance("In Kitchen")}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-amber-500 py-3 text-sm font-bold text-white active:scale-95"
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-500 py-2.5 text-base font-bold text-white active:scale-95"
             >
               Send to Kitchen
             </button>
@@ -746,9 +725,9 @@ function OrderTicket({
           <button
             onClick={onComplete}
             title="Marks every item on this ticket ready and completes the order in one tap"
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 py-3 text-sm font-bold text-white active:scale-95"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 py-2.5 text-base font-bold text-white active:scale-95"
           >
-            <CheckCheck className="h-4 w-4" /> Complete Order
+            <CheckCheck className="h-5 w-5" /> Complete
           </button>
         </div>
       )}
