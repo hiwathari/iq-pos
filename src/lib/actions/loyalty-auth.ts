@@ -24,7 +24,16 @@ function hashSecret(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
-async function createSignInRequest(loyaltyMemberId: string, redirectTo: string) {
+// A restaurant with its own custom ordering domain (set in Super Admin > Online Ordering — see
+// restaurants.customDomain) gets its magic-link emails built against that domain instead of the
+// platform's own, since that's the address its customers actually know and trust. Falls back to
+// the platform URL for every restaurant that hasn't set one.
+function resolveOrigin(customDomain: string | null) {
+  if (customDomain) return `https://${customDomain}`;
+  return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+}
+
+async function createSignInRequest(loyaltyMemberId: string, redirectTo: string, customDomain: string | null) {
   const token = randomBytes(32).toString("hex");
   const code = String(randomInt(100000, 1000000));
   await db.insert(loyaltyMagicLinks).values({
@@ -34,8 +43,7 @@ async function createSignInRequest(loyaltyMemberId: string, redirectTo: string) 
     redirectTo,
     expiresAt: Date.now() + TOKEN_TTL_MS,
   });
-  const origin = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-  const link = `${origin}/my-card/verify?token=${token}`;
+  const link = `${resolveOrigin(customDomain)}/my-card/verify?token=${token}`;
   return { link, code };
 }
 
@@ -80,7 +88,7 @@ export async function requestLoyaltyMagicLinkAction(
     .limit(1);
 
   if (member) {
-    const { link, code } = await createSignInRequest(member.id, "/my-card");
+    const { link, code } = await createSignInRequest(member.id, "/my-card", restaurant.customDomain);
     await sendLoyaltyMagicLinkEmail({ to: trimmed, restaurantName: restaurant.name, link, code });
   }
 
@@ -127,7 +135,7 @@ export async function requestOnlineOrderSignInAction(
   }
 
   const safePath = safeRedirectPath(redirectTo, `/order/${restaurantSlug}`);
-  const { link, code } = await createSignInRequest(member.id, safePath);
+  const { link, code } = await createSignInRequest(member.id, safePath, restaurant.customDomain);
   await sendLoyaltyMagicLinkEmail({ to: trimmed, restaurantName: restaurant.name, link, code });
 
   return { sent: true, email: trimmed };

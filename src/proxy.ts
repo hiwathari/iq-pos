@@ -28,8 +28,13 @@ function isKnownAppHost(hostname: string) {
 }
 
 // A request arriving on a restaurant's own custom ordering domain (anything that isn't the
-// platform's own domain) is always that restaurant's public order page — rewritten internally to
-// /order/<slug>/..., transparent to the visitor's address bar.
+// platform's own domain) is that restaurant's public order page by default — rewritten internally
+// to /order/<slug>/..., transparent to the visitor's address bar. /my-card and /invoice are left
+// alone: they're already fully self-contained (a session cookie or an id in the path, never a
+// slug), not nested under /order/<slug> — and a magic-link email now legitimately points straight
+// at a custom domain's /my-card/verify (see createSignInRequest), so that needs to reach the real
+// route unprefixed. A path that's already /order/<slug>/... (e.g. the redirect verify lands on
+// after sign-in) is left alone too, or it would get the slug prefixed on a second time.
 async function resolveCustomDomain(request: NextRequest) {
   const host = request.headers.get("host");
   if (!host) return null;
@@ -39,8 +44,13 @@ async function resolveCustomDomain(request: NextRequest) {
   const restaurant = await getRestaurantByCustomDomain(hostname);
   if (!restaurant || !restaurant.onlineOrderingEnabled) return null;
 
+  const { pathname } = request.nextUrl;
+  if (pathname.startsWith("/my-card") || pathname.startsWith("/invoice") || pathname.startsWith(`/order/${restaurant.slug}`)) {
+    return null;
+  }
+
   const url = request.nextUrl.clone();
-  url.pathname = `/order/${restaurant.slug}${url.pathname === "/" ? "" : url.pathname}`;
+  url.pathname = `/order/${restaurant.slug}${pathname === "/" ? "" : pathname}`;
   return NextResponse.rewrite(url);
 }
 
