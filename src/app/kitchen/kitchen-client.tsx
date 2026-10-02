@@ -70,6 +70,7 @@ export function KitchenClient({
   printers,
   timerLimitMinutes,
   openTime,
+  defaultStation,
 }: {
   orders: Order[];
   categories: Category[];
@@ -77,13 +78,17 @@ export function KitchenClient({
   printers: Printer[];
   timerLimitMinutes: number;
   openTime: string | null;
+  // Set only for a session minted by a dedicated display's own PIN (see kitchenPinLoginAction) —
+  // that screen's identity wins over anything saved in localStorage from a previous login on the
+  // same shared device, so it always starts on its own station.
+  defaultStation: PrinterStation | null;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [now, setNow] = useState(() => Date.now());
   const [fontScaleIndex, setFontScaleIndex] = useState(DEFAULT_FONT_SCALE_INDEX);
   const [stockModalOpen, setStockModalOpen] = useState(false);
-  const [station, setStation] = useState<PrinterStation | "All">("All");
+  const [station, setStation] = useState<PrinterStation | "All">(defaultStation ?? "All");
 
   // Which stations this restaurant actually uses — either a printer assigned to that station, or
   // a category explicitly pinned to it via kitchenDisplayStation (so a display-only station with
@@ -150,6 +155,7 @@ export function KitchenClient({
   }, []);
 
   useEffect(() => {
+    if (defaultStation) return; // a dedicated display's own station always wins — see the prop doc above.
     try {
       const raw = localStorage.getItem(STATION_KEY);
       if (raw && (raw === "All" || STATION_ORDER.includes(raw as PrinterStation))) {
@@ -158,6 +164,7 @@ export function KitchenClient({
     } catch {
       // Storage unavailable — this screen just shows every station, same as before.
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function selectStation(next: PrinterStation | "All") {
@@ -469,15 +476,16 @@ const TIMER_STYLES = {
   red: "bg-rose-100 text-rose-700 animate-pulse",
 } as const;
 
-// The whole ticket's background/border, not just the elapsed-time badge — so a cook reads
-// urgency from across the room without finding and focusing on the small timer text. Gets more
-// saturated band by band (green barely tints the card; red fills it and pulses) so the card
-// visibly "fills up" as it nears and then blows past the admin's kitchen timer limit.
-const TICKET_BAND_STYLES = {
-  green: "border-neutral-200",
-  yellow: "border-yellow-300 bg-yellow-50",
-  orange: "border-orange-400 bg-orange-100",
-  red: "border-rose-500 bg-rose-200 animate-pulse",
+// The whole ticket card, not just the elapsed-time badge — so a cook reads urgency from across
+// the room without finding and focusing on the small timer text. Fills the card's outer frame
+// solidly (not just a light tint, and starting from a real green at zero elapsed, not neutral)
+// while the content itself stays on a plain white inner panel so the order text stays readable
+// against every band, including the loud final one.
+const TICKET_FRAME_STYLES = {
+  green: "bg-emerald-400",
+  yellow: "bg-yellow-400",
+  orange: "bg-orange-500",
+  red: "bg-rose-600 animate-pulse",
 } as const;
 
 function timerBand(elapsedMs: number, limitMinutes: number) {
@@ -608,19 +616,14 @@ function OrderTicket({
 
   // Low-chrome by design: a KDS screen gets re-read dozens of times an hour under time pressure,
   // so every badge/icon/line of padding here is screen space one of the 8+ tickets on screen
-  // doesn't get. Status is color + plain bold text, never an icon-and-pill combo.
+  // doesn't get. Status is color + plain bold text, never an icon-and-pill combo. The outer frame
+  // carries the full-strength status/urgency color (fills solidly, not just a tint); the inner
+  // panel stays plain white so the order text itself is never read against a tinted/colored
+  // background, including the loud pulsing red band.
+  const frameColor = isVoided ? "bg-rose-300" : isDone ? "bg-emerald-300" : band ? TICKET_FRAME_STYLES[band] : "bg-neutral-200";
   return (
-    <div
-      className={`rounded-lg border p-2 shadow-sm ${
-        isVoided
-          ? "border-rose-200 bg-rose-50/60 opacity-75"
-          : isDone
-            ? "border-emerald-200 bg-emerald-50/50"
-            : band
-              ? TICKET_BAND_STYLES[band]
-              : "border-neutral-200"
-      }`}
-    >
+    <div className={`rounded-lg p-1.5 shadow-sm ${frameColor} ${isVoided ? "opacity-75" : ""}`}>
+      <div className="rounded-md bg-white p-2">
       <div className="mb-1 flex items-center justify-between gap-2">
         <span className="flex items-center gap-1.5 text-xl font-extrabold leading-none text-neutral-900">
           {isVoided && <XCircle className="h-5 w-5 shrink-0 text-rose-500" />}
@@ -763,6 +766,7 @@ function OrderTicket({
           </button>
         </div>
       )}
+      </div>
     </div>
   );
 }

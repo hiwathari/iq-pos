@@ -358,18 +358,32 @@ export const coupons = sqliteTable(
   (table) => [uniqueIndex("coupons_restaurant_code_idx").on(table.restaurantId, table.code)]
 );
 
-export const printers = sqliteTable("printers", {
-  id: id(),
-  restaurantId: text("restaurant_id")
-    .notNull()
-    .references(() => restaurants.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  station: text("station", { enum: ["Kitchen", "Bar", "Receipt", "Expo"] }).notNull(),
-  connection: text("connection", { enum: ["Bluetooth", "Network", "WiFi", "USB"] }).notNull(),
-  address: text("address"),
-  active: int("active", { mode: "boolean" }).notNull().default(true),
-  isDefault: int("is_default", { mode: "boolean" }).default(false),
-});
+export const printers = sqliteTable(
+  "printers",
+  {
+    id: id(),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    station: text("station", { enum: ["Kitchen", "Bar", "Receipt", "Expo"] }).notNull(),
+    // Whether this entry is a physical printer, a Kitchen Display screen, or both — determines
+    // which of the two field groups below actually apply. Defaults to "printer" so every
+    // existing row (all added before this field existed) keeps behaving exactly as before.
+    kind: text("kind", { enum: ["printer", "display", "both"] }).notNull().default("printer"),
+    // Printer fields — required (in the UI) for kind "printer"/"both", unused for "display".
+    connection: text("connection", { enum: ["Bluetooth", "Network", "WiFi", "USB"] }),
+    address: text("address"),
+    // Display fields — a dedicated 6-digit PIN that logs this specific screen straight into its
+    // own station on /kitchen (see kitchenPinLoginAction), instead of a generic staff PIN that
+    // always lands on the station-less "All" view. Globally unique, same pattern as
+    // users.tillPin/kitchenPin — null for kind "printer".
+    pin: text("pin"),
+    active: int("active", { mode: "boolean" }).notNull().default(true),
+    isDefault: int("is_default", { mode: "boolean" }).default(false),
+  },
+  (table) => [uniqueIndex("printers_pin_idx").on(table.pin)]
+);
 
 export const paymentTerminals = sqliteTable("payment_terminals", {
   id: id(),

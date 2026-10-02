@@ -73,6 +73,7 @@ export type PrinterStation = "Kitchen" | "Bar" | "Receipt" | "Expo";
 // station regardless of printer. See kitchen-client.tsx's resolveItemDisplayStation.
 export type CategoryDisplayOverride = PrinterStation | "None" | null;
 export type PrinterConnection = "Bluetooth" | "Network" | "WiFi" | "USB";
+export type PrinterKind = "printer" | "display" | "both";
 export type IntegrationProvider = "Uber Eats" | "Deliveroo" | "Just Eat";
 
 export const PRICING_CHANNELS = ["Dine in", "Take Away", "Delivery", "Online", "Uber Eats", "Deliveroo", "Just Eat"] as const;

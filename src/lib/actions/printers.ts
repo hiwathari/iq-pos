@@ -4,29 +4,50 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { integrations, paymentTerminals, printers } from "@/db/schema";
-import type { IntegrationProvider, PrinterConnection, PrinterStation } from "@/lib/types";
+import type { IntegrationProvider, PrinterConnection, PrinterKind, PrinterStation } from "@/lib/types";
 import { assertPermission, requireRestaurantContext } from "@/lib/scope";
 
 export interface CreatePrinterInput {
   name: string;
   station: PrinterStation;
-  connection: PrinterConnection;
+  kind: PrinterKind;
+  connection?: PrinterConnection;
   address?: string;
+  pin?: string;
 }
 
-export async function createPrinterAction(input: CreatePrinterInput) {
+export interface PrinterActionState {
+  error?: string;
+}
+
+export async function createPrinterAction(input: CreatePrinterInput): Promise<PrinterActionState> {
   const { session, restaurantId } = await requireRestaurantContext();
   await assertPermission(session, "settings");
-  if (!input.name.trim()) return;
+  if (!input.name.trim()) return { error: "Enter a name." };
+
+  const needsPin = input.kind !== "printer";
+  const needsConnection = input.kind !== "display";
+  const pin = input.pin?.trim() ?? "";
+
+  if (needsPin) {
+    if (!/^\d{6}$/.test(pin)) return { error: "Enter a 6-digit PIN for this display." };
+    const [existing] = await db.select({ id: printers.id }).from(printers).where(eq(printers.pin, pin)).limit(1);
+    if (existing) return { error: "That PIN is already used by another display — pick a different one." };
+  }
+  if (needsConnection && !input.connection) return { error: "Choose a connection type." };
+
   await db.insert(printers).values({
     id: crypto.randomUUID(),
     restaurantId,
     name: input.name.trim(),
     station: input.station,
-    connection: input.connection,
-    address: input.address?.trim() || null,
+    kind: input.kind,
+    connection: needsConnection ? (input.connection ?? null) : null,
+    address: needsConnection ? input.address?.trim() || null : null,
+    pin: needsPin ? pin : null,
   });
   revalidatePath("/settings");
+  return {};
 }
 
 export async function togglePrinterActiveAction(printerId: string, active: boolean) {

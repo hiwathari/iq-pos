@@ -17,7 +17,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = { themeColor: "#d97706" };
 
 export default async function KitchenPage() {
-  const { restaurantId } = await requirePermission("kitchen");
+  const { session, restaurantId } = await requirePermission("kitchen");
   const [orders, categories, dishes, printers, restaurant] = await Promise.all([
     listOrders(restaurantId),
     listCategories(restaurantId),
@@ -35,6 +35,7 @@ export default async function KitchenPage() {
         printers={printers}
         timerLimitMinutes={restaurant?.kitchenTimerLimitMinutes ?? 30}
         openTime={restaurant?.openTime ?? null}
+        defaultStation={session.displayStation ?? null}
       />
     </AppShell>
   );
