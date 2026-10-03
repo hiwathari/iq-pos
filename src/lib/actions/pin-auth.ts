@@ -3,7 +3,7 @@
 import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db/client";
-import { restaurants, users } from "@/db/schema";
+import { printers, restaurants, users } from "@/db/schema";
 import { createSession } from "@/lib/auth";
 
 // PIN-unlocked devices (till, kitchen display) get a shorter session than a full staff login,
@@ -54,22 +54,44 @@ export async function kitchenPinLoginAction(
   if (!pin) return { error: "Enter the 6-digit code." };
 
   const [staff] = await db.select().from(users).where(eq(users.kitchenPin, pin)).limit(1);
-  if (!staff || !staff.active || !staff.restaurantId) return { error: "Incorrect code." };
+  if (staff) {
+    if (!staff.active || !staff.restaurantId) return { error: "Incorrect code." };
+    const [restaurant] = await db.select().from(restaurants).where(eq(restaurants.id, staff.restaurantId)).limit(1);
+    if (!restaurant || !restaurant.active) return { error: "Incorrect code." };
 
-  const [restaurant] = await db.select().from(restaurants).where(eq(restaurants.id, staff.restaurantId)).limit(1);
+    await createSession(
+      {
+        userId: staff.id,
+        email: staff.email,
+        name: staff.name,
+        role: "kitchen_display",
+        restaurantId: staff.restaurantId,
+      },
+      DEVICE_SESSION_SECONDS
+    );
+    redirect("/kitchen");
+  }
+
+  // Not a staff member's personal kitchen PIN — try a dedicated display's own PIN instead (see
+  // printers.pin). Unlike a staff login, this defaults the screen straight to that display's own
+  // station rather than the station-less "All" view.
+  const [display] = await db.select().from(printers).where(eq(printers.pin, pin)).limit(1);
+  if (!display || !display.active) return { error: "Incorrect code." };
+
+  const [restaurant] = await db.select().from(restaurants).where(eq(restaurants.id, display.restaurantId)).limit(1);
   if (!restaurant || !restaurant.active) return { error: "Incorrect code." };
 
   await createSession(
     {
-      userId: staff.id,
-      email: staff.email,
-      name: staff.name,
+      userId: display.id,
+      email: "",
+      name: display.name,
       role: "kitchen_display",
-      restaurantId: staff.restaurantId,
+      restaurantId: display.restaurantId,
+      displayStation: display.station,
     },
     DEVICE_SESSION_SECONDS
   );
-
   redirect("/kitchen");
 }
 

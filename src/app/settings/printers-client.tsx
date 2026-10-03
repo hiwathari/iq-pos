@@ -2,12 +2,13 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Bluetooth, Cable, Plus, Star, Trash2, Wifi, X } from "lucide-react";
+import { Bluetooth, Cable, Monitor, Plus, Star, Trash2, Wifi, X } from "lucide-react";
 import { createPrinterAction, deletePrinterAction, setDefaultPrinterAction, togglePrinterActiveAction } from "@/lib/actions/printers";
-import type { Printer, PrinterConnection, PrinterStation } from "@/lib/types";
+import type { Printer, PrinterConnection, PrinterKind, PrinterStation } from "@/lib/types";
 
 const STATIONS: PrinterStation[] = ["Kitchen", "Bar", "Receipt", "Expo"];
 const CONNECTIONS: PrinterConnection[] = ["Bluetooth", "Network", "WiFi", "USB"];
+const KIND_LABEL: Record<PrinterKind, string> = { printer: "Printer", display: "Display", both: "Printer + Display" };
 
 const CONNECTION_ICON: Record<PrinterConnection, typeof Bluetooth> = {
   Bluetooth: Bluetooth,
@@ -46,23 +47,24 @@ export function PrintersClient({ printers }: { printers: Printer[] }) {
     <div>
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-neutral-900">Printers &amp; Stations</h2>
+          <h2 className="text-lg font-semibold text-neutral-900">Printers &amp; Displays</h2>
           <p className="text-sm text-neutral-500">
-            Register each printer once it&apos;s paired at the OS level (Bluetooth, network, or WiFi) — receipts and kitchen
-            tickets print to whichever station a ticket is routed to.
+            Register each physical printer once it&apos;s paired at the OS level (Bluetooth, network, or WiFi), and each
+            dedicated Kitchen Display screen with its own PIN — a screen logged in with a display&apos;s own PIN defaults
+            straight to that station instead of the generic &quot;All&quot; view.
           </p>
         </div>
         <button
           onClick={() => setModalOpen(true)}
           className="flex shrink-0 items-center gap-2 rounded-xl bg-[var(--brand)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)]"
         >
-          <Plus className="h-4 w-4" /> Add Printer
+          <Plus className="h-4 w-4" /> Add Printer / Display
         </button>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {printers.map((p) => {
-          const Icon = CONNECTION_ICON[p.connection];
+          const Icon = p.kind === "display" ? Monitor : p.connection ? CONNECTION_ICON[p.connection] : Monitor;
           return (
             <div key={p.id} className="flex items-start justify-between rounded-2xl border border-neutral-200 bg-white p-4">
               <div>
@@ -71,8 +73,10 @@ export function PrintersClient({ printers }: { printers: Printer[] }) {
                   <span className="font-semibold text-neutral-900">{p.name}</span>
                 </div>
                 <div className="text-xs text-neutral-500">
-                  {p.station} station &middot; {p.connection}
+                  {p.station} station &middot; {KIND_LABEL[p.kind as PrinterKind]}
+                  {p.connection ? ` · ${p.connection}` : ""}
                   {p.address ? ` · ${p.address}` : ""}
+                  {p.pin ? ` · PIN ${p.pin}` : ""}
                 </div>
                 <div className="mt-2 flex items-center gap-1.5">
                   <span
@@ -90,7 +94,7 @@ export function PrintersClient({ printers }: { printers: Printer[] }) {
                 </div>
               </div>
               <div className="flex flex-col gap-1.5">
-                {!p.isDefault && (
+                {!p.isDefault && (p.kind === "printer" || p.kind === "both") && (
                   <button
                     onClick={() => makeDefault(p.id)}
                     className="rounded-lg border border-neutral-200 px-2.5 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
@@ -116,7 +120,7 @@ export function PrintersClient({ printers }: { printers: Printer[] }) {
         })}
         {printers.length === 0 && (
           <div className="col-span-full rounded-2xl border border-dashed border-neutral-300 py-10 text-center text-sm text-neutral-400">
-            No printers registered yet.
+            No printers or displays registered yet.
           </div>
         )}
       </div>
@@ -131,76 +135,132 @@ function AddPrinterModal({ onClose }: { onClose: () => void }) {
   const [, startTransition] = useTransition();
   const [name, setName] = useState("");
   const [station, setStation] = useState<PrinterStation>("Kitchen");
+  const [kind, setKind] = useState<PrinterKind>("printer");
   const [connection, setConnection] = useState<PrinterConnection>("Network");
   const [address, setAddress] = useState("");
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  const needsConnection = kind !== "display";
+  const needsPin = kind !== "printer";
 
   function save() {
     if (!name.trim()) return;
+    setError(null);
+    setPending(true);
     startTransition(async () => {
-      await createPrinterAction({ name, station, connection, address });
+      const result = await createPrinterAction({
+        name,
+        station,
+        kind,
+        connection: needsConnection ? connection : undefined,
+        address: needsConnection ? address : undefined,
+        pin: needsPin ? pin : undefined,
+      });
+      setPending(false);
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
       router.refresh();
+      onClose();
     });
-    onClose();
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
       <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-neutral-900">Add Printer</h2>
+          <h2 className="text-lg font-semibold text-neutral-900">Add Printer / Display</h2>
           <button onClick={onClose} className="rounded-full p-1 text-neutral-400 hover:bg-neutral-100">
             <X className="h-5 w-5" />
           </button>
         </div>
         <div className="space-y-4">
           <div>
+            <label className="mb-1.5 block text-xs font-medium text-neutral-500">This entry is a</label>
+            <div className="grid grid-cols-3 gap-1.5">
+              {(["printer", "display", "both"] as PrinterKind[]).map((k) => (
+                <button
+                  key={k}
+                  onClick={() => setKind(k)}
+                  className={`rounded-lg border px-2 py-2 text-xs font-semibold ${
+                    kind === k ? "border-[var(--brand)] bg-[var(--brand-light)] text-[var(--brand-dark)]" : "border-neutral-200 text-neutral-500"
+                  }`}
+                >
+                  {KIND_LABEL[k]}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
             <label className="mb-1.5 block text-xs font-medium text-neutral-500">Name</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Kitchen Line 1"
+              placeholder={needsPin ? "e.g. Bar Screen" : "e.g. Kitchen Line 1"}
               className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
             />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-neutral-500">Station</label>
-              <select
-                value={station}
-                onChange={(e) => setStation(e.target.value as PrinterStation)}
-                className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-              >
-                {STATIONS.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-neutral-500">Connection</label>
-              <select
-                value={connection}
-                onChange={(e) => setConnection(e.target.value as PrinterConnection)}
-                className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-              >
-                {CONNECTIONS.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
           </div>
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-neutral-500">Address / MAC (optional)</label>
-            <input
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="192.168.1.42"
+            <label className="mb-1.5 block text-xs font-medium text-neutral-500">Station</label>
+            <select
+              value={station}
+              onChange={(e) => setStation(e.target.value as PrinterStation)}
               className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-            />
+            >
+              {STATIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
           </div>
+          {needsConnection && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-neutral-500">Connection</label>
+                <select
+                  value={connection}
+                  onChange={(e) => setConnection(e.target.value as PrinterConnection)}
+                  className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+                >
+                  {CONNECTIONS.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-neutral-500">Address / MAC (optional)</label>
+                <input
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="192.168.1.42"
+                  className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+                />
+              </div>
+            </div>
+          )}
+          {needsPin && (
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-neutral-500">Display PIN (6 digits)</label>
+              <input
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                inputMode="numeric"
+                placeholder="e.g. 482913"
+                className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+              />
+              <p className="mt-1 text-xs text-neutral-400">
+                Entered at /kitchen-login to log this specific screen straight into its own station. Must be different from
+                every other display&apos;s PIN and every staff member&apos;s own PIN.
+              </p>
+            </div>
+          )}
+          {error && <p className="text-sm text-rose-600">{error}</p>}
         </div>
         <div className="mt-6 flex gap-3">
           <button
@@ -211,10 +271,10 @@ function AddPrinterModal({ onClose }: { onClose: () => void }) {
           </button>
           <button
             onClick={save}
-            disabled={!name.trim()}
+            disabled={!name.trim() || pending || (needsPin && pin.length !== 6)}
             className="flex-1 rounded-xl bg-[var(--brand)] py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Add Printer
+            Add
           </button>
         </div>
       </div>

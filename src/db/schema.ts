@@ -118,8 +118,16 @@ export const categories = sqliteTable("categories", {
     .references(() => restaurants.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   icon: text("icon").notNull().default("all"),
+  // Null = no printer for this category's tickets (that's an explicit, selectable option, not
+  // an unset default).
   printerId: text("printer_id").references(() => printers.id, { onDelete: "set null" }),
-  showOnKitchenDisplay: int("show_on_kitchen_display", { mode: "boolean" }).notNull().default(true),
+  // Which Kitchen Display station(s) this category's items appear on — independent of printerId,
+  // since a category may need a printer but no screen tracking (or vice versa). Null (the default
+  // for every category today) means "automatic": derive it from the category/dish's own printer
+  // station, same as before this field existed. "None" explicitly hides it from every Kitchen
+  // Display station, including "All". Any other value pins it to exactly that station regardless
+  // of printer. See resolveItemDisplayStation in kitchen-client.tsx.
+  kitchenDisplayStation: text("kitchen_display_station", { enum: ["Kitchen", "Bar", "Receipt", "Expo", "None"] }),
   // Only actually charged when the restaurant's own taxEnabled is on (see restaurants above) —
   // kept ready with a sensible default either way, so turning tax on doesn't need a backfill step.
   taxRatePercent: real("tax_rate_percent").notNull().default(20),
@@ -345,18 +353,32 @@ export const coupons = sqliteTable(
   (table) => [uniqueIndex("coupons_restaurant_code_idx").on(table.restaurantId, table.code)]
 );
 
-export const printers = sqliteTable("printers", {
-  id: id(),
-  restaurantId: text("restaurant_id")
-    .notNull()
-    .references(() => restaurants.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  station: text("station", { enum: ["Kitchen", "Bar", "Receipt", "Expo"] }).notNull(),
-  connection: text("connection", { enum: ["Bluetooth", "Network", "WiFi", "USB"] }).notNull(),
-  address: text("address"),
-  active: int("active", { mode: "boolean" }).notNull().default(true),
-  isDefault: int("is_default", { mode: "boolean" }).default(false),
-});
+export const printers = sqliteTable(
+  "printers",
+  {
+    id: id(),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    station: text("station", { enum: ["Kitchen", "Bar", "Receipt", "Expo"] }).notNull(),
+    // Whether this entry is a physical printer, a Kitchen Display screen, or both — determines
+    // which of the two field groups below actually apply. Defaults to "printer" so every
+    // existing row (all added before this field existed) keeps behaving exactly as before.
+    kind: text("kind", { enum: ["printer", "display", "both"] }).notNull().default("printer"),
+    // Printer fields — required (in the UI) for kind "printer"/"both", unused for "display".
+    connection: text("connection", { enum: ["Bluetooth", "Network", "WiFi", "USB"] }),
+    address: text("address"),
+    // Display fields — a dedicated 6-digit PIN that logs this specific screen straight into its
+    // own station on /kitchen (see kitchenPinLoginAction), instead of a generic staff PIN that
+    // always lands on the station-less "All" view. Globally unique, same pattern as
+    // users.tillPin/kitchenPin — null for kind "printer".
+    pin: text("pin"),
+    active: int("active", { mode: "boolean" }).notNull().default(true),
+    isDefault: int("is_default", { mode: "boolean" }).default(false),
+  },
+  (table) => [uniqueIndex("printers_pin_idx").on(table.pin)]
+);
 
 export const paymentTerminals = sqliteTable("payment_terminals", {
   id: id(),

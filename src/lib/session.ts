@@ -16,6 +16,11 @@ export interface SessionPayload {
   name: string;
   role: Role;
   restaurantId: string | null;
+  // Only set when a kitchen_display session was minted by a dedicated display's own PIN (see
+  // kitchenPinLoginAction) rather than a staff member's personal kitchen PIN — the station that
+  // screen defaults to on load, instead of the station-less "All" view every other kitchen_display
+  // session starts on.
+  displayStation?: "Kitchen" | "Bar" | "Receipt" | "Expo" | null;
 }
 
 export const SESSION_COOKIE_NAME = "iq_pos_session";
