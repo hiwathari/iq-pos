@@ -3,9 +3,16 @@
 import { useState, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { formatMoney, orderSequence, formatOrderTimestamp } from "@/lib/types";
-import type { Order, Reservation, PettyCashEntry } from "@/lib/types";
+import type { Order, Reservation, PettyCashEntry, PaymentTerminal, TerminalPayout, TerminalExpense } from "@/lib/types";
 import type { ReportData, DailySummary } from "@/lib/data/reports";
+import type { TerminalSettlementReport, TerminalSettlementRow } from "@/lib/data/terminal-settlements";
 import { addPettyCashEntryAction, deletePettyCashEntryAction } from "@/lib/actions/petty-cash";
+import {
+  addTerminalPayoutAction,
+  deleteTerminalPayoutAction,
+  addTerminalExpenseAction,
+  deleteTerminalExpenseAction,
+} from "@/lib/actions/terminal-settlements";
 import { RevenueBarChart, RevenueLineChart, RevenuePieChart } from "@/components/charts";
 import { SortableTable, type Column } from "./sortable-table";
 import {
@@ -30,6 +37,9 @@ import {
   Plus,
   Trash2,
   ClipboardList,
+  Landmark,
+  ReceiptText,
+  AlertTriangle,
 } from "lucide-react";
 
 export interface ReportsSearchParams {
@@ -37,6 +47,7 @@ export interface ReportsSearchParams {
   from?: string;
   to?: string;
   date?: string;
+  terminal?: string;
 }
 
 const TABS: { slug: string; label: string }[] = [
@@ -51,6 +62,7 @@ const TABS: { slug: string; label: string }[] = [
   { slug: "offline", label: "Offline Orders" },
   { slug: "bookings", label: "Bookings" },
   { slug: "pettycash", label: "Petty Cash" },
+  { slug: "cardsettlements", label: "Card Settlements" },
 ];
 
 export function ReportsClient({
@@ -64,6 +76,11 @@ export function ReportsClient({
   reservationsInRange,
   pettyCash,
   dailySummary,
+  paymentTerminals,
+  selectedTerminalId,
+  settlementReport,
+  terminalPayouts,
+  terminalExpenses,
 }: {
   tab: string;
   fromStr: string;
@@ -75,10 +92,22 @@ export function ReportsClient({
   reservationsInRange: Reservation[];
   pettyCash: PettyCashEntry[];
   dailySummary: DailySummary | null;
+  paymentTerminals: PaymentTerminal[];
+  selectedTerminalId: string;
+  settlementReport: TerminalSettlementReport | null;
+  terminalPayouts: TerminalPayout[];
+  terminalExpenses: TerminalExpense[];
 }) {
   return (
     <div>
-      <ReportFilterBar tab={tab} fromStr={fromStr} toStr={toStr} dateStr={dateStr} />
+      <ReportFilterBar
+        tab={tab}
+        fromStr={fromStr}
+        toStr={toStr}
+        dateStr={dateStr}
+        paymentTerminals={paymentTerminals}
+        selectedTerminalId={selectedTerminalId}
+      />
 
       <div id="report-print-area">
         {tab === "overview" && <OverviewTab report={report} currencySymbol={currencySymbol} />}
@@ -92,20 +121,44 @@ export function ReportsClient({
         {tab === "offline" && <OnlineOfflineTab orders={ordersInRange} currencySymbol={currencySymbol} online={false} />}
         {tab === "bookings" && <BookingsTab reservations={reservationsInRange} />}
         {tab === "pettycash" && <PettyCashTab entries={pettyCash} currencySymbol={currencySymbol} />}
+        {tab === "cardsettlements" && settlementReport && (
+          <CardSettlementsTab
+            currencySymbol={currencySymbol}
+            paymentTerminals={paymentTerminals}
+            selectedTerminalId={selectedTerminalId}
+            settlementReport={settlementReport}
+            payouts={terminalPayouts}
+            expenses={terminalExpenses}
+          />
+        )}
       </div>
     </div>
   );
 }
 
-const RANGE_PRESETS: { label: string; days: number | "all" }[] = [
+const RANGE_PRESETS: { label: string; days: number | "all" | "month" }[] = [
   { label: "Today", days: 0 },
   { label: "Last 7 Days", days: 6 },
   { label: "Last 30 Days", days: 29 },
-  { label: "Last 90 Days", days: 89 },
+  { label: "This Month", days: "month" },
   { label: "All Time", days: "all" },
 ];
 
-function ReportFilterBar({ tab, fromStr, toStr, dateStr }: { tab: string; fromStr: string; toStr: string; dateStr: string }) {
+function ReportFilterBar({
+  tab,
+  fromStr,
+  toStr,
+  dateStr,
+  paymentTerminals,
+  selectedTerminalId,
+}: {
+  tab: string;
+  fromStr: string;
+  toStr: string;
+  dateStr: string;
+  paymentTerminals: PaymentTerminal[];
+  selectedTerminalId: string;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -119,11 +172,16 @@ function ReportFilterBar({ tab, fromStr, toStr, dateStr }: { tab: string; fromSt
     router.push(`${pathname}?${params.toString()}`);
   }
 
-  function applyPreset(days: number | "all") {
+  function applyPreset(days: number | "all" | "month") {
     const now = new Date();
     const today = now.toISOString().slice(0, 10);
     if (days === "all") {
       navigate({ from: "2000-01-01", to: today });
+      return;
+    }
+    if (days === "month") {
+      const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+      navigate({ from: firstOfMonth, to: today });
       return;
     }
     const from = new Date(now.getTime() - days * 86400000).toISOString().slice(0, 10);
@@ -179,6 +237,19 @@ function ReportFilterBar({ tab, fromStr, toStr, dateStr }: { tab: string; fromSt
               className="rounded-xl border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[var(--brand)]"
             />
           </>
+        )}
+        {tab === "cardsettlements" && paymentTerminals.length > 0 && (
+          <select
+            value={selectedTerminalId}
+            onChange={(e) => navigate({ terminal: e.target.value })}
+            className="rounded-xl border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[var(--brand)]"
+          >
+            {paymentTerminals.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
         )}
         <button
           onClick={() => window.print()}
@@ -733,6 +804,296 @@ function PettyCashTab({ entries, currencySymbol }: { entries: PettyCashEntry[]; 
           columns={columns}
         />
       </div>
+    </div>
+  );
+}
+
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function CardSettlementsTab({
+  currencySymbol,
+  paymentTerminals,
+  selectedTerminalId,
+  settlementReport,
+  payouts,
+  expenses,
+}: {
+  currencySymbol: string;
+  paymentTerminals: PaymentTerminal[];
+  selectedTerminalId: string;
+  settlementReport: TerminalSettlementReport;
+  payouts: TerminalPayout[];
+  expenses: TerminalExpense[];
+}) {
+  const router = useRouter();
+  const [, startTransition] = useTransition();
+
+  const selectedTerminalName = paymentTerminals.find((t) => t.id === selectedTerminalId)?.name ?? "—";
+
+  const totals = settlementReport.rows.reduce(
+    (sum, r) => ({
+      grossSales: sum.grossSales + r.grossSales,
+      expense: sum.expense + r.expense,
+      payout: sum.payout + r.payout,
+      variance: sum.variance + r.variance,
+    }),
+    { grossSales: 0, expense: 0, payout: 0, variance: 0 }
+  );
+
+  const payoutColumns: Column<TerminalPayout>[] = [
+    { key: "date", label: "Date", render: (p) => p.date },
+    { key: "note", label: "Note", render: (p) => p.note ?? "—" },
+    { key: "createdByName", label: "By", render: (p) => p.createdByName ?? "—" },
+    {
+      key: "amount",
+      label: "Amount",
+      align: "right",
+      render: (p) => <span className="font-semibold text-emerald-600">{formatMoney(p.amount, currencySymbol)}</span>,
+      sortValue: (p) => p.amount,
+    },
+    {
+      key: "actions",
+      label: "",
+      align: "right",
+      render: (p) => (
+        <button
+          onClick={() => startTransition(async () => { await deleteTerminalPayoutAction(p.id); router.refresh(); })}
+          className="text-neutral-300 hover:text-rose-500 print:hidden"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      ),
+    },
+  ];
+
+  const expenseColumns: Column<TerminalExpense>[] = [
+    { key: "date", label: "Date", render: (e) => e.date },
+    { key: "description", label: "Description", render: (e) => e.description },
+    { key: "createdByName", label: "By", render: (e) => e.createdByName ?? "—" },
+    {
+      key: "amount",
+      label: "Amount",
+      align: "right",
+      render: (e) => <span className="font-semibold text-rose-600">{formatMoney(e.amount, currencySymbol)}</span>,
+      sortValue: (e) => e.amount,
+    },
+    {
+      key: "actions",
+      label: "",
+      align: "right",
+      render: (e) => (
+        <button
+          onClick={() => startTransition(async () => { await deleteTerminalExpenseAction(e.id); router.refresh(); })}
+          className="text-neutral-300 hover:text-rose-500 print:hidden"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      ),
+    },
+  ];
+
+  const settlementColumns: Column<TerminalSettlementRow>[] = [
+    { key: "date", label: "Date", render: (r) => r.date },
+    { key: "terminalName", label: "Terminal", render: (r) => r.terminalName },
+    {
+      key: "grossSales",
+      label: "Gross Sales",
+      align: "right",
+      render: (r) => formatMoney(r.grossSales, currencySymbol),
+      sortValue: (r) => r.grossSales,
+    },
+    {
+      key: "shiftCounted",
+      label: "Shift-Counted",
+      align: "right",
+      render: (r) => (r.shiftCounted === null ? "—" : formatMoney(r.shiftCounted, currencySymbol)),
+      sortValue: (r) => r.shiftCounted ?? 0,
+    },
+    {
+      key: "expense",
+      label: "Commission",
+      align: "right",
+      render: (r) => formatMoney(r.expense, currencySymbol),
+      sortValue: (r) => r.expense,
+    },
+    {
+      key: "payout",
+      label: "Payout",
+      align: "right",
+      render: (r) => formatMoney(r.payout, currencySymbol),
+      sortValue: (r) => r.payout,
+    },
+    {
+      key: "variance",
+      label: "Variance",
+      align: "right",
+      render: (r) => {
+        const flagged = Math.abs(r.variance) >= 0.01;
+        return (
+          <span className={`flex items-center justify-end gap-1 font-semibold ${flagged ? "text-amber-600" : "text-neutral-400"}`}>
+            {flagged && <AlertTriangle className="h-3.5 w-3.5" />}
+            {formatMoney(r.variance, currencySymbol)}
+          </span>
+        );
+      },
+      sortValue: (r) => r.variance,
+    },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 print:grid-cols-4">
+        <StatCard icon={CreditCard} label="Gross Card Sales" value={formatMoney(totals.grossSales, currencySymbol)} tint="bg-blue-50 text-blue-600" />
+        <StatCard icon={ReceiptText} label="Commission / Fees" value={formatMoney(totals.expense, currencySymbol)} tint="bg-rose-50 text-rose-600" />
+        <StatCard icon={Landmark} label="Payouts Received" value={formatMoney(totals.payout, currencySymbol)} tint="bg-emerald-50 text-emerald-600" />
+        <StatCard
+          icon={AlertTriangle}
+          label="Total Variance"
+          value={formatMoney(totals.variance, currencySymbol)}
+          tint={Math.abs(totals.variance) >= 0.01 ? "bg-amber-50 text-amber-600" : "bg-neutral-100 text-neutral-500"}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 print:hidden">
+        <TerminalLedgerForm
+          title={`Add Payout — ${selectedTerminalName}`}
+          icon={Landmark}
+          noteLabel="Note (optional)"
+          notePlaceholder="e.g. Bank deposit ref #1234"
+          noteRequired={false}
+          submitLabel="Add Payout"
+          onSubmit={(date, amount, note) =>
+            startTransition(async () => {
+              await addTerminalPayoutAction(selectedTerminalId, date, amount, note);
+              router.refresh();
+            })
+          }
+        />
+        <TerminalLedgerForm
+          title={`Add Commission / Fee — ${selectedTerminalName}`}
+          icon={ReceiptText}
+          noteLabel="Description"
+          notePlaceholder="e.g. Transaction fees for the day"
+          noteRequired
+          submitLabel="Add Expense"
+          onSubmit={(date, amount, description) =>
+            startTransition(async () => {
+              await addTerminalExpenseAction(selectedTerminalId, date, amount, description);
+              router.refresh();
+            })
+          }
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+          <h2 className="mb-3 text-sm font-semibold text-neutral-900">Payouts — {selectedTerminalName}</h2>
+          <SortableTable rows={payouts} rowKey={(p) => p.id} emptyMessage="No payouts logged in this range." defaultSortKey="date" columns={payoutColumns} />
+        </div>
+        <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+          <h2 className="mb-3 text-sm font-semibold text-neutral-900">Commission / Fees — {selectedTerminalName}</h2>
+          <SortableTable rows={expenses} rowKey={(e) => e.id} emptyMessage="No expenses logged in this range." defaultSortKey="date" columns={expenseColumns} />
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+        <h2 className="mb-3 text-sm font-semibold text-neutral-900">Reconciliation — All Terminals</h2>
+        <p className="mb-3 text-xs text-neutral-400">
+          Gross Sales is what the Till recorded. Shift-Counted is what staff counted into this terminal at End Day. Commission and
+          Payout are what you logged here from the card machine&apos;s statement. Variance flags any day where Payout doesn&apos;t
+          match Gross Sales minus Commission.
+        </p>
+        <SortableTable
+          rows={settlementReport.rows}
+          rowKey={(r) => `${r.date}::${r.terminalId}`}
+          emptyMessage="No card activity in this range."
+          defaultSortKey="date"
+          columns={settlementColumns}
+        />
+      </div>
+    </div>
+  );
+}
+
+function TerminalLedgerForm({
+  title,
+  icon: Icon,
+  noteLabel,
+  notePlaceholder,
+  noteRequired,
+  submitLabel,
+  onSubmit,
+}: {
+  title: string;
+  icon: typeof Landmark;
+  noteLabel: string;
+  notePlaceholder: string;
+  noteRequired: boolean;
+  submitLabel: string;
+  onSubmit: (date: string, amount: number, note: string) => void;
+}) {
+  const [date, setDate] = useState(todayStr());
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  function submit() {
+    const value = Number(amount);
+    if (!date || !value || value <= 0 || (noteRequired && !note.trim())) {
+      setError(noteRequired ? "Pick a date, enter a description, and an amount greater than 0." : "Pick a date and enter an amount greater than 0.");
+      return;
+    }
+    setError(null);
+    onSubmit(date, value, note);
+    setAmount("");
+    setNote("");
+  }
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+      <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-neutral-900">
+        <Icon className="h-4 w-4 text-teal-600" /> {title}
+      </h2>
+      <div className="flex flex-wrap items-end gap-2">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-neutral-500">Date</label>
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="rounded-xl border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[var(--brand)]"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-neutral-500">Amount</label>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className="w-28 rounded-xl border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[var(--brand)]"
+          />
+        </div>
+        <div className="flex-1 min-w-[180px]">
+          <label className="mb-1 block text-xs font-medium text-neutral-500">{noteLabel}</label>
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder={notePlaceholder}
+            className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[var(--brand)]"
+          />
+        </div>
+        <button
+          onClick={submit}
+          className="flex items-center gap-1.5 rounded-xl bg-[var(--brand)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--brand-dark)]"
+        >
+          <Plus className="h-4 w-4" /> {submitLabel}
+        </button>
+      </div>
+      {error && <p className="mt-2 text-xs font-medium text-rose-600">{error}</p>}
     </div>
   );
 }
