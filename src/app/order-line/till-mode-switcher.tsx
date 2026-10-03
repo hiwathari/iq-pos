@@ -29,6 +29,8 @@ export function TillModeSwitcher({
   invoiceWebsite,
   invoiceLogoUrl,
   invoiceFooterText,
+  openTime,
+  timezone,
 }: {
   categories: Category[];
   dishes: Dish[];
@@ -44,6 +46,8 @@ export function TillModeSwitcher({
   invoiceWebsite?: string;
   invoiceLogoUrl?: string;
   invoiceFooterText: string;
+  openTime: string | null;
+  timezone: string;
 }) {
   const [mode, setMode] = useState<Mode | null>(null);
 
@@ -104,6 +108,8 @@ export function TillModeSwitcher({
       invoiceWebsite={invoiceWebsite}
       invoiceLogoUrl={invoiceLogoUrl}
       invoiceFooterText={invoiceFooterText}
+      openTime={openTime}
+      timezone={timezone}
     />
   );
 }

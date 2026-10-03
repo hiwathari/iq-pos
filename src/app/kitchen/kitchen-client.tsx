@@ -16,13 +16,15 @@ import {
 import { completeOrderAction, setOrderStatusAction, toggleOrderItemReadyAction } from "@/lib/actions/orders";
 import { setDishStockAction } from "@/lib/actions/menu";
 import { unlockOrderAudio, playNewOrderChime, playOrderReadyChime } from "@/lib/order-sounds";
-import { businessDayStart } from "@/lib/business-day";
+import { businessDateKey, businessDayRange, shiftDateKey } from "@/lib/business-day";
 import { FullscreenButton } from "@/components/fullscreen-button";
 import {
   Check,
   CheckCheck,
   CheckCircle2,
   ChefHat,
+  ChevronLeft,
+  ChevronRight,
   MapPin,
   Minus,
   Phone,
@@ -92,6 +94,11 @@ export function KitchenClient({
   const [fontScaleIndex, setFontScaleIndex] = useState(DEFAULT_FONT_SCALE_INDEX);
   const [stockModalOpen, setStockModalOpen] = useState(false);
   const [station, setStation] = useState<PrinterStation | "All">(defaultStation ?? "All");
+  // Which business day the Completed column shows — defaults to today, with Prev/Next/Today
+  // controls on the column itself so staff can glance back at a previous day's tickets without
+  // leaving this screen. Pending tickets are never date-filtered — they're always just whatever
+  // is actually still cooking right now.
+  const [completedDateStr, setCompletedDateStr] = useState(() => businessDateKey(Date.now(), openTime, timezone));
 
   // Which stations this restaurant actually uses — either a printer assigned to that station, or
   // a category explicitly pinned to it via kitchenDisplayStation (so a display-only station with
@@ -267,9 +274,9 @@ export function KitchenClient({
   // Already newest-first (listOrders sorts by createdAt desc), so the first pending ticket is
   // always the most recently placed one — that's the one flagged "major" below.
   let pendingOrders = orders.filter((o) => PENDING_STATUSES.includes(o.status));
-  const todayStart = businessDayStart(now, openTime, timezone);
+  const { from: completedDayStart, to: completedDayEnd } = businessDayRange(completedDateStr, openTime, timezone);
   let completedOrders = orders
-    .filter((o) => COMPLETED_STATUSES.includes(o.status) && doneAt(o) >= todayStart)
+    .filter((o) => COMPLETED_STATUSES.includes(o.status) && doneAt(o) >= completedDayStart && doneAt(o) < completedDayEnd)
     .sort((a, b) => doneAt(b) - doneAt(a));
   // A ticket only belongs on this station's screen if it has at least one item that routes here
   // (or is unrouted) — an all-drinks order never shows up on the Kitchen screen. Applied even on
@@ -395,6 +402,36 @@ export function KitchenClient({
             <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-neutral-100 px-2 text-sm font-bold text-neutral-600">
               {completedOrders.length}
             </span>
+          </div>
+          <div className="flex items-center justify-center gap-1 border-b border-neutral-100 px-3 py-2">
+            <button
+              onClick={() => setCompletedDateStr((d) => shiftDateKey(d, -1))}
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100"
+              aria-label="Previous day"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <input
+              type="date"
+              value={completedDateStr}
+              onChange={(e) => setCompletedDateStr(e.target.value)}
+              className="rounded-lg border border-neutral-200 px-2 py-1 text-xs text-neutral-600 outline-none focus:border-[var(--brand)]"
+            />
+            <button
+              onClick={() => setCompletedDateStr((d) => shiftDateKey(d, 1))}
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100"
+              aria-label="Next day"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+            {completedDateStr !== businessDateKey(now, openTime, timezone) && (
+              <button
+                onClick={() => setCompletedDateStr(businessDateKey(now, openTime, timezone))}
+                className="ml-1 rounded-lg px-2 py-1 text-xs font-semibold text-teal-600 hover:bg-teal-50"
+              >
+                Today
+              </button>
+            )}
           </div>
           <div className="flex-1 space-y-2 overflow-y-auto p-3">
             {completedOrders.length === 0 && (

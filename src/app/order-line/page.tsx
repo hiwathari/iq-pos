@@ -55,6 +55,8 @@ export default async function OrderLinePage() {
         invoiceWebsite={restaurant?.invoiceWebsite ?? undefined}
         invoiceLogoUrl={restaurant?.invoiceLogoUrl ?? undefined}
         invoiceFooterText={restaurant?.invoiceFooterText ?? "Thank you for dining with us!"}
+        openTime={restaurant?.openTime ?? null}
+        timezone={restaurant?.timezone ?? "UTC"}
       />
     </AppShell>
   );

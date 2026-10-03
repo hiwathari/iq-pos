@@ -30,6 +30,7 @@ import { setDishStockAction } from "@/lib/actions/menu";
 import { printTicket } from "@/lib/print-ticket";
 import { tableOrderQrDataUrl } from "@/lib/table-qr";
 import { unlockOrderAudio, playNewOrderChime, playOrderReadyChime } from "@/lib/order-sounds";
+import { businessDateKey, businessDayRange, shiftDateKey } from "@/lib/business-day";
 import { TableLayoutPicker } from "@/components/table-layout-picker";
 import { CategoryIconView } from "@/components/category-icon";
 import { FullscreenButton } from "@/components/fullscreen-button";
@@ -63,6 +64,8 @@ import {
   ArrowLeftRight,
   Combine,
   QrCode,
+  ChevronLeft,
+  ChevronRight,
   FileClock,
   Globe,
 } from "lucide-react";
@@ -85,6 +88,13 @@ const TABLE_AREAS = ["Ground Floor", "1st Floor", "Basement"] as const;
 // under the "Served" filter, and in Reports).
 function isOrderClosedOut(o: Order) {
   return o.status === "Served" && !!o.paymentMethod;
+}
+
+// A tiny top-level wrapper around Date.now() (rather than calling it directly inside the
+// component's body) keeps the component itself free of impure calls, per the project's
+// react-hooks purity lint rule.
+function currentBusinessDateKey(openTime: string | null, timezone: string) {
+  return businessDateKey(Date.now(), openTime, timezone);
 }
 
 const STATUS_STYLES: Record<Order["status"], string> = {
@@ -167,6 +177,8 @@ export function OrderLineClient({
   invoiceWebsite,
   invoiceLogoUrl,
   invoiceFooterText,
+  openTime,
+  timezone,
 }: {
   categories: Category[];
   dishes: Dish[];
@@ -182,6 +194,8 @@ export function OrderLineClient({
   invoiceWebsite?: string;
   invoiceLogoUrl?: string;
   invoiceFooterText: string;
+  openTime: string | null;
+  timezone: string;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -198,6 +212,9 @@ export function OrderLineClient({
   });
 
   const [view, setView] = useState<TillView>("order");
+  // Which business day the History view shows — defaults to today, with a filter to look back at
+  // a previous day's closed-out/voided orders without the list growing unbounded forever.
+  const [historyDateStr, setHistoryDateStr] = useState(() => currentBusinessDateKey(openTime, timezone));
   const [queueTab, setQueueTab] = useState<QueueTab>("All");
   const [tablesArea, setTablesArea] = useState<(typeof TABLE_AREAS)[number]>("Ground Floor");
   const [menuCategory, setMenuCategory] = useState<string>("all");
@@ -304,11 +321,16 @@ export function OrderLineClient({
     });
   }, [dishes, menuCategory, menuSearch]);
 
-  // Fully wrapped-up orders (served+paid) and voided ones, most recent first, for the Till's
-  // History view — reviewing and reprinting past tickets without cluttering active views.
+  // Fully wrapped-up orders (served+paid) and voided ones from the selected business day, most
+  // recent first — reviewing and reprinting past tickets without cluttering active views, or
+  // carrying every day's history forward forever once a day's shift is closed. Defaults to
+  // today; the History view's own date filter can step back to any earlier day.
   const historyOrders = useMemo(() => {
-    return orders.filter((o) => isOrderClosedOut(o) || o.status === "Voided").slice(0, 60);
-  }, [orders]);
+    const { from, to } = businessDayRange(historyDateStr, openTime, timezone);
+    return orders
+      .filter((o) => (isOrderClosedOut(o) || o.status === "Voided") && o.createdAt >= from && o.createdAt < to)
+      .sort((a, b) => b.createdAt - a.createdAt);
+  }, [orders, historyDateStr, openTime, timezone]);
 
   const priceFor = (dish: Dish) => {
     const key = cart.channel === "Third Party" ? cart.thirdPartyProvider : cart.channel;
@@ -968,9 +990,41 @@ export function OrderLineClient({
 
         {view === "history" && (
           <>
-            <p className="mb-4 text-sm text-neutral-500">
-              Completed and voided orders, most recent first — tap one to review or reprint it.
-            </p>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-neutral-500">
+                Completed and voided orders, most recent first — tap one to review or reprint it.
+              </p>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setHistoryDateStr((d) => shiftDateKey(d, -1))}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50"
+                  aria-label="Previous day"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <input
+                  type="date"
+                  value={historyDateStr}
+                  onChange={(e) => setHistoryDateStr(e.target.value)}
+                  className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-sm outline-none focus:border-[var(--brand)]"
+                />
+                <button
+                  onClick={() => setHistoryDateStr((d) => shiftDateKey(d, 1))}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50"
+                  aria-label="Next day"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+                {historyDateStr !== currentBusinessDateKey(openTime, timezone) && (
+                  <button
+                    onClick={() => setHistoryDateStr(currentBusinessDateKey(openTime, timezone))}
+                    className="rounded-lg px-2.5 py-1.5 text-sm font-semibold text-teal-600 hover:bg-teal-50"
+                  >
+                    Today
+                  </button>
+                )}
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
               {historyOrders.map((order) => (
                 <OrderCard
@@ -982,7 +1036,7 @@ export function OrderLineClient({
               ))}
               {historyOrders.length === 0 && (
                 <div className="col-span-full flex h-32 items-center justify-center text-sm text-neutral-400">
-                  No completed or voided orders yet.
+                  No completed or voided orders on this date.
                 </div>
               )}
             </div>
