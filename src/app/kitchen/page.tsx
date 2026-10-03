@@ -35,6 +35,7 @@ export default async function KitchenPage() {
         printers={printers}
         timerLimitMinutes={restaurant?.kitchenTimerLimitMinutes ?? 30}
         openTime={restaurant?.openTime ?? null}
+        timezone={restaurant?.timezone ?? "UTC"}
         defaultStation={session.displayStation ?? null}
       />
     </AppShell>

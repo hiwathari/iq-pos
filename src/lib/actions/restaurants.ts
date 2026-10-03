@@ -146,18 +146,30 @@ function isValidClockTime(value: string) {
 // Kitchen Display's Completed panel (see lib/business-day.ts), so a shift that runs past
 // midnight still counts as one day. Clearing a field (empty string) goes back to plain UTC
 // midnight for that restaurant. Interpreted in UTC — there's no restaurant-timezone field.
-export async function updateShopHoursAction(openTime: string, closeTime: string) {
+function isValidTimezone(tz: string) {
+  try {
+    new Intl.DateTimeFormat(undefined, { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function updateShopHoursAction(openTime: string, closeTime: string, timezone: string) {
   const { session, restaurantId } = await requireRestaurantContext();
   await assertPermission(session, "settings");
   if (openTime && !isValidClockTime(openTime)) return;
   if (closeTime && !isValidClockTime(closeTime)) return;
+  const tz = timezone.trim() || "UTC";
+  if (!isValidTimezone(tz)) return;
   await db
     .update(restaurants)
-    .set({ openTime: openTime || null, closeTime: closeTime || null })
+    .set({ openTime: openTime || null, closeTime: closeTime || null, timezone: tz })
     .where(eq(restaurants.id, restaurantId));
   revalidatePath("/settings");
   revalidatePath("/kitchen");
   revalidatePath("/dashboard");
+  revalidatePath("/reports");
 }
 
 // Any admin can clear the "orders carried over from a previous day" banner — not just the one

@@ -35,6 +35,7 @@ export default async function SettingsPage() {
           taxEnabled={restaurant?.taxEnabled ?? false}
           openTime={restaurant?.openTime ?? null}
           closeTime={restaurant?.closeTime ?? null}
+          timezone={restaurant?.timezone ?? "UTC"}
         />
         <div className="border-t border-neutral-100 pt-8">
           <InvoiceDetailsClient

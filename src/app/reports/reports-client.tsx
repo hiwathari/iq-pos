@@ -4,7 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { formatMoney, orderSequence, formatOrderTimestamp } from "@/lib/types";
 import type { Order, Reservation, PettyCashEntry } from "@/lib/types";
-import type { ReportData, DailySummary } from "@/lib/data/reports";
+import type { ReportData, DailySummary, WeeklyDaySummary } from "@/lib/data/reports";
+import { businessDateKey, shiftDateKey } from "@/lib/business-day";
 import { addPettyCashEntryAction, deletePettyCashEntryAction } from "@/lib/actions/petty-cash";
 import { RevenueBarChart, RevenueLineChart, RevenuePieChart } from "@/components/charts";
 import { SortableTable, type Column } from "./sortable-table";
@@ -26,10 +27,13 @@ import {
   Globe,
   Store,
   CalendarClock,
+  CalendarRange,
   Wallet2,
   Plus,
   Trash2,
   ClipboardList,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 export interface ReportsSearchParams {
@@ -37,6 +41,14 @@ export interface ReportsSearchParams {
   from?: string;
   to?: string;
   date?: string;
+  week?: string;
+}
+
+// A tiny top-level wrapper around Date.now() (rather than calling it directly inside a
+// component's body) keeps the component itself free of impure calls, per the project's
+// react-hooks purity lint rule.
+function currentBusinessDateKey(openTime: string | null, timezone: string) {
+  return businessDateKey(Date.now(), openTime, timezone);
 }
 
 const TABS: { slug: string; label: string }[] = [
@@ -47,6 +59,7 @@ const TABS: { slug: string; label: string }[] = [
   { slug: "category", label: "By Category" },
   { slug: "waiter", label: "Waiter Report" },
   { slug: "daily", label: "Daily Summary" },
+  { slug: "weekly", label: "Weekly Summary" },
   { slug: "online", label: "Online Orders" },
   { slug: "offline", label: "Offline Orders" },
   { slug: "bookings", label: "Bookings" },
@@ -58,27 +71,35 @@ export function ReportsClient({
   fromStr,
   toStr,
   dateStr,
+  weekStr,
   report,
   currencySymbol,
   ordersInRange,
   reservationsInRange,
   pettyCash,
   dailySummary,
+  weeklySummary,
+  openTime,
+  timezone,
 }: {
   tab: string;
   fromStr: string;
   toStr: string;
   dateStr: string;
+  weekStr: string;
   report: ReportData;
   currencySymbol: string;
   ordersInRange: Order[];
   reservationsInRange: Reservation[];
   pettyCash: PettyCashEntry[];
   dailySummary: DailySummary | null;
+  weeklySummary: WeeklyDaySummary[] | null;
+  openTime: string | null;
+  timezone: string;
 }) {
   return (
     <div>
-      <ReportFilterBar tab={tab} fromStr={fromStr} toStr={toStr} dateStr={dateStr} />
+      <ReportFilterBar tab={tab} fromStr={fromStr} toStr={toStr} dateStr={dateStr} weekStr={weekStr} openTime={openTime} timezone={timezone} />
 
       <div id="report-print-area">
         {tab === "overview" && <OverviewTab report={report} currencySymbol={currencySymbol} />}
@@ -88,6 +109,7 @@ export function ReportsClient({
         {tab === "category" && <CategoryTab report={report} currencySymbol={currencySymbol} />}
         {tab === "waiter" && <WaiterReportTab report={report} currencySymbol={currencySymbol} />}
         {tab === "daily" && dailySummary && <DailySummaryTab summary={dailySummary} currencySymbol={currencySymbol} />}
+        {tab === "weekly" && weeklySummary && <WeeklySummaryTab days={weeklySummary} currencySymbol={currencySymbol} />}
         {tab === "online" && <OnlineOfflineTab orders={ordersInRange} currencySymbol={currencySymbol} online />}
         {tab === "offline" && <OnlineOfflineTab orders={ordersInRange} currencySymbol={currencySymbol} online={false} />}
         {tab === "bookings" && <BookingsTab reservations={reservationsInRange} />}
@@ -105,7 +127,23 @@ const RANGE_PRESETS: { label: string; days: number | "all" }[] = [
   { label: "All Time", days: "all" },
 ];
 
-function ReportFilterBar({ tab, fromStr, toStr, dateStr }: { tab: string; fromStr: string; toStr: string; dateStr: string }) {
+function ReportFilterBar({
+  tab,
+  fromStr,
+  toStr,
+  dateStr,
+  weekStr,
+  openTime,
+  timezone,
+}: {
+  tab: string;
+  fromStr: string;
+  toStr: string;
+  dateStr: string;
+  weekStr: string;
+  openTime: string | null;
+  timezone: string;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -119,16 +157,19 @@ function ReportFilterBar({ tab, fromStr, toStr, dateStr }: { tab: string; fromSt
     router.push(`${pathname}?${params.toString()}`);
   }
 
+  // "Today" and the other presets follow the restaurant's own business day (see
+  // lib/business-day.ts) — not plain UTC midnight — so they land on the same day the Daily
+  // Summary/Kitchen Display would call "today", even right around midnight.
   function applyPreset(days: number | "all") {
-    const now = new Date();
-    const today = now.toISOString().slice(0, 10);
+    const today = currentBusinessDateKey(openTime, timezone);
     if (days === "all") {
       navigate({ from: "2000-01-01", to: today });
       return;
     }
-    const from = new Date(now.getTime() - days * 86400000).toISOString().slice(0, 10);
-    navigate({ from, to: today });
+    navigate({ from: shiftDateKey(today, -days), to: today });
   }
+
+  const weekEndStr = shiftDateKey(weekStr, 6);
 
   return (
     <div className="mb-6 print:hidden">
@@ -148,12 +189,60 @@ function ReportFilterBar({ tab, fromStr, toStr, dateStr }: { tab: string; fromSt
 
       <div className="flex flex-wrap items-center gap-2">
         {tab === "daily" ? (
-          <input
-            type="date"
-            value={dateStr}
-            onChange={(e) => navigate({ date: e.target.value })}
-            className="rounded-xl border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[var(--brand)]"
-          />
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => navigate({ date: shiftDateKey(dateStr, -1) })}
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50"
+              aria-label="Previous day"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <input
+              type="date"
+              value={dateStr}
+              onChange={(e) => navigate({ date: e.target.value })}
+              className="rounded-xl border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[var(--brand)]"
+            />
+            <button
+              onClick={() => navigate({ date: shiftDateKey(dateStr, 1) })}
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50"
+              aria-label="Next day"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => navigate({ date: currentBusinessDateKey(openTime, timezone) })}
+              className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-500 hover:bg-neutral-50"
+            >
+              Today
+            </button>
+          </div>
+        ) : tab === "weekly" ? (
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => navigate({ week: shiftDateKey(weekStr, -7) })}
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50"
+              aria-label="Previous week"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <span className="rounded-xl border border-neutral-200 bg-white px-3.5 py-2 text-sm font-medium text-neutral-700">
+              {weekStr} — {weekEndStr}
+            </span>
+            <button
+              onClick={() => navigate({ week: shiftDateKey(weekStr, 7) })}
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50"
+              aria-label="Next week"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => navigate({ week: shiftDateKey(currentBusinessDateKey(openTime, timezone), -6) })}
+              className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-500 hover:bg-neutral-50"
+            >
+              This Week
+            </button>
+          </div>
         ) : (
           <>
             {RANGE_PRESETS.map((p) => (
@@ -526,6 +615,80 @@ function DailySummaryTab({ summary, currencySymbol }: { summary: DailySummary; c
               <span className="font-semibold text-neutral-900">{value}</span>
             </div>
           ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WeeklySummaryTab({ days, currencySymbol }: { days: WeeklyDaySummary[]; currencySymbol: string }) {
+  const totals = days.reduce(
+    (acc, d) => ({
+      totalSales: acc.totalSales + d.totalSales,
+      cashSales: acc.cashSales + d.cashSales,
+      cardSales: acc.cardSales + d.cardSales,
+      orderCount: acc.orderCount + d.orderCount,
+      voidCount: acc.voidCount + d.voidCount,
+      voidAmount: acc.voidAmount + d.voidAmount,
+    }),
+    { totalSales: 0, cashSales: 0, cardSales: 0, orderCount: 0, voidCount: 0, voidAmount: 0 }
+  );
+
+  return (
+    <div className="space-y-5">
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard icon={DollarSign} label="Week Total Sales" value={formatMoney(totals.totalSales, currencySymbol)} tint="bg-teal-50 text-teal-600" />
+        <StatCard icon={Wallet} label="Week Cash Sales" value={formatMoney(totals.cashSales, currencySymbol)} tint="bg-emerald-50 text-emerald-600" />
+        <StatCard icon={CreditCard} label="Week Card Sales" value={formatMoney(totals.cardSales, currencySymbol)} tint="bg-blue-50 text-blue-600" />
+        <StatCard icon={Package} label="Week Orders" value={String(totals.orderCount)} tint="bg-neutral-100 text-neutral-600" />
+      </div>
+
+      <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+        <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold text-neutral-900">
+          <CalendarRange className="h-4 w-4 text-teal-600" /> Day-by-Day
+        </h2>
+        <div className="mt-3">
+          <SortableTable
+            rows={days}
+            rowKey={(d) => d.date}
+            emptyMessage="No sales recorded this week."
+            columns={[
+              { key: "date", label: "Date", render: (d) => d.date },
+              { key: "orders", label: "Orders", align: "right", render: (d) => d.orderCount, sortValue: (d) => d.orderCount },
+              {
+                key: "cash",
+                label: "Cash",
+                align: "right",
+                render: (d) => formatMoney(d.cashSales, currencySymbol),
+                sortValue: (d) => d.cashSales,
+              },
+              {
+                key: "card",
+                label: "Card",
+                align: "right",
+                render: (d) => formatMoney(d.cardSales, currencySymbol),
+                sortValue: (d) => d.cardSales,
+              },
+              {
+                key: "total",
+                label: "Total",
+                align: "right",
+                render: (d) => formatMoney(d.totalSales, currencySymbol),
+                sortValue: (d) => d.totalSales,
+              },
+              {
+                key: "void",
+                label: "Voided",
+                align: "right",
+                render: (d) => (d.voidCount > 0 ? `${d.voidCount} (${formatMoney(d.voidAmount, currencySymbol)})` : "—"),
+                sortValue: (d) => d.voidAmount,
+              },
+            ]}
+            defaultSortKey="date"
+          />
+        </div>
+        <div className="mt-3 flex justify-end gap-6 text-sm font-bold text-neutral-900">
+          <span>Total: {formatMoney(totals.totalSales, currencySymbol)}</span>
         </div>
       </div>
     </div>

@@ -14,11 +14,11 @@ import { businessDayStart } from "@/lib/business-day";
 // treated as spanning two days.
 async function autoVoidStaleOrders(restaurantId: string) {
   const [restaurant] = await db
-    .select({ openTime: restaurants.openTime })
+    .select({ openTime: restaurants.openTime, timezone: restaurants.timezone })
     .from(restaurants)
     .where(eq(restaurants.id, restaurantId))
     .limit(1);
-  const dayStart = businessDayStart(Date.now(), restaurant?.openTime ?? null);
+  const dayStart = businessDayStart(Date.now(), restaurant?.openTime ?? null, restaurant?.timezone ?? "UTC");
   const stale = await db
     .select({ id: orders.id, tableId: orders.tableId })
     .from(orders)

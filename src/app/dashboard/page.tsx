@@ -51,7 +51,12 @@ export default async function DashboardPage() {
   // restricted set rather than each one re-deriving it.
   const defaultTerminalName = paymentTerminals.find((t) => t.isDefault)?.name ?? null;
   const orders = session.role === "accounts" ? filterOrdersForAccountsRole(rawOrders, defaultTerminalName) : rawOrders;
-  const report = await getReportData(restaurantId, undefined, session.role === "accounts" ? { defaultTerminalName } : undefined);
+  const report = await getReportData(
+    restaurantId,
+    undefined,
+    session.role === "accounts" ? { defaultTerminalName } : undefined,
+    { openTime: restaurant?.openTime ?? null, timezone: restaurant?.timezone ?? "UTC" }
+  );
 
   const revenue = orders.reduce((sum, o) => sum + o.items.reduce((s, i) => s + i.price * i.qty, 0), 0);
   const onDine = tables.filter((t) => t.status === "on-dine").length;

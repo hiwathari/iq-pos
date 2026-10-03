@@ -71,6 +71,7 @@ export function KitchenClient({
   printers,
   timerLimitMinutes,
   openTime,
+  timezone,
   defaultStation,
 }: {
   orders: Order[];
@@ -79,6 +80,7 @@ export function KitchenClient({
   printers: Printer[];
   timerLimitMinutes: number;
   openTime: string | null;
+  timezone: string;
   // Set only for a session minted by a dedicated display's own PIN (see kitchenPinLoginAction) —
   // that screen's identity wins over anything saved in localStorage from a previous login on the
   // same shared device, so it always starts on its own station.
@@ -265,7 +267,7 @@ export function KitchenClient({
   // Already newest-first (listOrders sorts by createdAt desc), so the first pending ticket is
   // always the most recently placed one — that's the one flagged "major" below.
   let pendingOrders = orders.filter((o) => PENDING_STATUSES.includes(o.status));
-  const todayStart = businessDayStart(now, openTime);
+  const todayStart = businessDayStart(now, openTime, timezone);
   let completedOrders = orders
     .filter((o) => COMPLETED_STATUSES.includes(o.status) && doneAt(o) >= todayStart)
     .sort((a, b) => doneAt(b) - doneAt(a));

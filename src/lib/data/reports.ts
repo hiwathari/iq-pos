@@ -3,8 +3,18 @@ import { db } from "@/db/client";
 import { categories, dishes, orders, pettyCashEntries, reservations } from "@/db/schema";
 import { orderTotal, orderSequence } from "@/lib/types";
 import { filterOrdersForAccountsRole } from "@/lib/accounts-filter";
+import { businessDateKey, businessDayRange, getLocalParts, shiftDateKey } from "@/lib/business-day";
 
 export type ReportData = Awaited<ReturnType<typeof getReportData>>;
+
+// The restaurant's openTime/timezone (see lib/business-day.ts) — every day/hour bucket below
+// follows the business day this defines rather than plain UTC midnight, so a shift running past
+// midnight isn't split across two days. Omitting it falls back to plain UTC, unchanged from
+// before this existed.
+export interface BusinessDayConfig {
+  openTime: string | null;
+  timezone: string;
+}
 
 // `from`/`to` are optional timestamps (from inclusive, to exclusive) — omitting both keeps the
 // original all-time behavior the Dashboard relies on; the Reports page's date filter passes them.
@@ -13,7 +23,8 @@ export type ReportData = Awaited<ReturnType<typeof getReportData>>;
 export async function getReportData(
   restaurantId: string,
   range?: { from?: number; to?: number },
-  accountsFilter?: { defaultTerminalName: string | null }
+  accountsFilter?: { defaultTerminalName: string | null },
+  businessDay?: BusinessDayConfig
 ) {
   const orderConditions = [eq(orders.restaurantId, restaurantId)];
   const reservationConditions = [eq(reservations.restaurantId, restaurantId)];
@@ -88,9 +99,11 @@ export async function getReportData(
     const rawTax = o.items.reduce((sum, i) => sum + i.price * i.qty * ((i.taxRate ?? 0) / 100), 0);
     totalTax += rawTax * discountFactor;
 
-    const dateKey = new Date(o.createdAt).toISOString().slice(0, 10);
+    const dateKey = businessDay ? businessDateKey(o.createdAt, businessDay.openTime, businessDay.timezone) : new Date(o.createdAt).toISOString().slice(0, 10);
     dailyMap.set(dateKey, (dailyMap.get(dateKey) ?? 0) + total);
-    const hour = new Date(o.createdAt).getHours();
+    // The hour in the restaurant's own local timezone, not the server's — a restaurant with no
+    // timezone set falls back to plain UTC, same as before this existed.
+    const hour = businessDay ? getLocalParts(o.createdAt, businessDay.timezone).hour : new Date(o.createdAt).getUTCHours();
     hourlyMap.set(hour, (hourlyMap.get(hour) ?? 0) + total);
 
     for (const item of o.items) {
@@ -172,14 +185,19 @@ export async function getReportData(
 
 export type DailySummary = Awaited<ReturnType<typeof getDailySummary>>;
 
-// One calendar day (UTC, matching the daily/hourly buckets above), laid out the way an end-of-day
-// cash-up sheet reads: every order placed that day, the sale items behind them, any petty cash
-// movement, anything cancelled, then a reconciliation block a manager can check the till against.
-// There's no opening-float carry-forward yet, so openingBalance is always 0 — a restaurant that
-// starts its drawer with a float would need to fold that in manually for now.
-export async function getDailySummary(restaurantId: string, dateStr: string, accountsFilter?: { defaultTerminalName: string | null }) {
-  const from = new Date(`${dateStr}T00:00:00.000Z`).getTime();
-  const to = from + 24 * 60 * 60 * 1000;
+// One business day (matching the daily/hourly buckets in getReportData above — the restaurant's
+// own openTime/timezone, or plain UTC midnight if it hasn't set one), laid out the way an
+// end-of-day cash-up sheet reads: every order placed that day, the sale items behind them, any
+// petty cash movement, anything cancelled, then a reconciliation block a manager can check the
+// till against. There's no opening-float carry-forward yet, so openingBalance is always 0 — a
+// restaurant that starts its drawer with a float would need to fold that in manually for now.
+export async function getDailySummary(
+  restaurantId: string,
+  dateStr: string,
+  accountsFilter?: { defaultTerminalName: string | null },
+  businessDay?: BusinessDayConfig
+) {
+  const { from, to } = businessDayRange(dateStr, businessDay?.openTime ?? null, businessDay?.timezone ?? "UTC");
 
   const [fetchedDayOrders, dayPettyCash, dayReservations] = await Promise.all([
     db
@@ -303,4 +321,64 @@ export async function getDailySummary(restaurantId: string, dateStr: string, acc
       closingBalance,
     },
   };
+}
+
+export interface WeeklyDaySummary {
+  date: string;
+  totalSales: number;
+  cashSales: number;
+  cardSales: number;
+  orderCount: number;
+  voidCount: number;
+  voidAmount: number;
+}
+
+// Seven consecutive business days starting at `weekStartStr`, each with the same figures the
+// Dashboard's own stat tiles use — one query for the whole week rather than one per day, bucketed
+// by businessDateKey the same way getReportData's own daily/hourly maps are.
+export async function getWeeklySummary(
+  restaurantId: string,
+  weekStartStr: string,
+  accountsFilter?: { defaultTerminalName: string | null },
+  businessDay?: BusinessDayConfig
+): Promise<WeeklyDaySummary[]> {
+  const openTime = businessDay?.openTime ?? null;
+  const timezone = businessDay?.timezone ?? "UTC";
+  const dateKeys = Array.from({ length: 7 }, (_, i) => shiftDateKey(weekStartStr, i));
+
+  const from = businessDayRange(dateKeys[0], openTime, timezone).from;
+  const to = businessDayRange(dateKeys[6], openTime, timezone).to;
+
+  const fetchedOrders = await db
+    .select()
+    .from(orders)
+    .where(and(eq(orders.restaurantId, restaurantId), gte(orders.createdAt, from), lt(orders.createdAt, to)));
+  const weekOrders = accountsFilter ? filterOrdersForAccountsRole(fetchedOrders, accountsFilter.defaultTerminalName) : fetchedOrders;
+
+  const byDay = new Map<string, WeeklyDaySummary>(
+    dateKeys.map((date) => [date, { date, totalSales: 0, cashSales: 0, cardSales: 0, orderCount: 0, voidCount: 0, voidAmount: 0 }])
+  );
+
+  for (const o of weekOrders) {
+    const key = businessDateKey(o.createdAt, openTime, timezone);
+    const bucket = byDay.get(key);
+    if (!bucket) continue; // outside this week — shouldn't happen given the range query above
+
+    if (o.status === "Voided") {
+      bucket.voidCount += 1;
+      bucket.voidAmount += orderTotal(o);
+      continue;
+    }
+
+    const total = orderTotal(o);
+    bucket.totalSales += total;
+    bucket.orderCount += 1;
+    const methodLines = o.payments?.length ? o.payments : o.paymentMethod ? [{ method: o.paymentMethod, amount: total }] : [];
+    for (const line of methodLines) {
+      if (line.method === "Cash") bucket.cashSales += line.amount;
+      else bucket.cardSales += line.amount;
+    }
+  }
+
+  return dateKeys.map((d) => byDay.get(d)!);
 }
