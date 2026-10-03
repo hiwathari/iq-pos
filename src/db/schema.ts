@@ -42,11 +42,12 @@ export const restaurants = sqliteTable("restaurants", {
   // on in Settings. Once on, each menu category's own taxRatePercent (see categories below) is
   // what actually gets applied, not a single restaurant-wide rate.
   taxEnabled: int("tax_enabled", { mode: "boolean" }).notNull().default(false),
-  // For a counter-service place with no kitchen ticket workflow (e.g. a cafe that takes the
-  // order and payment together at the counter) — a brand-new, fully-paid order skips "In
-  // Kitchen"/"Ready" entirely and is created straight as "Served". Off by default: every
-  // existing restaurant keeps the normal send-to-kitchen-then-serve flow.
-  directServeMode: int("direct_serve_mode", { mode: "boolean" }).notNull().default(false),
+  // Chosen on the Super Admin create form ("Restaurant" vs "Cafe"), editable later in Settings.
+  // Drives the order workflow directly — "cafe" means counter-service with no kitchen ticket
+  // step: a brand-new, fully-paid order skips "In Kitchen"/"Ready" entirely and is created
+  // straight as "Served" (see placeOrderAction). "restaurant" (the default) keeps the normal
+  // send-to-kitchen-then-serve flow every existing restaurant already uses.
+  businessType: text("business_type", { enum: ["restaurant", "cafe"] }).notNull().default("restaurant"),
   // Shop hours, as "HH:MM" 24-hour clock times (UTC — there's no restaurant-timezone field).
   // openTime anchors the "business day" boundary used by autoVoidStaleOrders and Kitchen
   // Display's Completed panel, so a shift running past midnight still counts as one day. Null

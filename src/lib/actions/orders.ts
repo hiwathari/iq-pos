@@ -149,15 +149,15 @@ export async function placeOrderAction(input: PlaceOrderInput) {
 
     const orderNumber = await nextOrderNumber(restaurantId);
 
-    // Counter-service places with no kitchen ticket step (see directServeMode on restaurants)
-    // skip "In Kitchen"/"Ready" for a new order that's already paid in full — it's created
-    // straight as Served, the same end state the normal flow reaches via the kitchen board.
+    // A cafe (see businessType on restaurants) has no kitchen ticket step — a new order that's
+    // already paid in full skips "In Kitchen"/"Ready" entirely and is created straight as
+    // Served, the same end state the normal flow reaches via the kitchen board.
     let status: OrderStatus = input.channel === "Wait List" ? "Wait List" : "In Kitchen";
     let servedAt: number | null = null;
     let closedOutAt: number | null = null;
     if (status === "In Kitchen" && paymentMethod) {
-      const [restaurant] = await db.select({ directServeMode: restaurants.directServeMode }).from(restaurants).where(eq(restaurants.id, restaurantId));
-      if (restaurant?.directServeMode) {
+      const [restaurant] = await db.select({ businessType: restaurants.businessType }).from(restaurants).where(eq(restaurants.id, restaurantId));
+      if (restaurant?.businessType === "cafe") {
         status = "Served";
         servedAt = Date.now();
         closedOutAt = Date.now();

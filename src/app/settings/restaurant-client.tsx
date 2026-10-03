@@ -3,26 +3,26 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  updateDirectServeModeAction,
+  updateBusinessTypeAction,
   updateKitchenTimerLimitAction,
   updateRestaurantCurrencyAction,
   updateRestaurantTaxEnabledAction,
   updateShopHoursAction,
 } from "@/lib/actions/restaurants";
-import { CURRENCY_OPTIONS } from "@/lib/types";
+import { CURRENCY_OPTIONS, type BusinessType } from "@/lib/types";
 
 export function RestaurantClient({
   currencySymbol,
   kitchenTimerLimitMinutes,
   taxEnabled,
-  directServeMode,
+  businessType,
   openTime,
   closeTime,
 }: {
   currencySymbol: string;
   kitchenTimerLimitMinutes: number;
   taxEnabled: boolean;
-  directServeMode: boolean;
+  businessType: BusinessType;
   openTime: string | null;
   closeTime: string | null;
 }) {
@@ -30,7 +30,7 @@ export function RestaurantClient({
   const [, startTransition] = useTransition();
   const [timerLimit, setTimerLimit] = useState(kitchenTimerLimitMinutes);
   const [taxOn, setTaxOn] = useState(taxEnabled);
-  const [directServeOn, setDirectServeOn] = useState(directServeMode);
+  const [businessTypeValue, setBusinessTypeValue] = useState(businessType);
   const [shopOpenTime, setShopOpenTime] = useState(openTime ?? "");
   const [shopCloseTime, setShopCloseTime] = useState(closeTime ?? "");
 
@@ -57,10 +57,10 @@ export function RestaurantClient({
     });
   }
 
-  function handleDirectServeChange(enabled: boolean) {
-    setDirectServeOn(enabled);
+  function handleBusinessTypeChange(next: BusinessType) {
+    setBusinessTypeValue(next);
     startTransition(async () => {
-      await updateDirectServeModeAction(enabled);
+      await updateBusinessTypeAction(next);
       router.refresh();
     });
   }
@@ -131,27 +131,24 @@ export function RestaurantClient({
           </p>
         </div>
         <div className="max-w-xs">
-          <label className="mb-1.5 block text-xs font-medium text-neutral-500">Order Workflow</label>
-          <button
-            onClick={() => handleDirectServeChange(!directServeOn)}
-            className={`flex w-full items-center justify-between rounded-xl border px-3.5 py-2.5 text-sm font-medium ${
-              directServeOn ? "border-teal-500 bg-teal-50 text-teal-700" : "border-neutral-200 text-neutral-500"
-            }`}
-          >
-            <span>Direct Order & Pay {directServeOn ? "On" : "Off"}</span>
-            <span
-              className={`relative h-5 w-9 rounded-full transition-colors ${directServeOn ? "bg-teal-500" : "bg-neutral-300"}`}
-            >
-              <span
-                className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
-                  directServeOn ? "translate-x-4" : "translate-x-0.5"
+          <label className="mb-1.5 block text-xs font-medium text-neutral-500">Business Type</label>
+          <div className="flex rounded-xl border border-neutral-200 p-1">
+            {(["restaurant", "cafe"] as const).map((type) => (
+              <button
+                key={type}
+                onClick={() => handleBusinessTypeChange(type)}
+                className={`flex-1 rounded-lg py-2 text-sm font-medium capitalize ${
+                  businessTypeValue === type ? "bg-teal-500 text-white" : "text-neutral-500 hover:bg-neutral-50"
                 }`}
-              />
-            </span>
-          </button>
+              >
+                {type}
+              </button>
+            ))}
+          </div>
           <p className="mt-1 text-xs text-neutral-400">
-            For counter-service places with no kitchen ticket step (e.g. a cafe). A new order that&apos;s paid in full
-            is saved straight as Served — it never goes to the Kitchen Display.
+            Cafe is counter-service with no kitchen ticket step — a new order that&apos;s paid in full is saved
+            straight as Served and never goes to the Kitchen Display. Restaurant keeps the normal
+            send-to-kitchen-then-serve flow.
           </p>
         </div>
         <div className="max-w-xs">

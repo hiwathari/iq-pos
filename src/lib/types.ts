@@ -74,6 +74,9 @@ export type PrinterStation = "Kitchen" | "Bar" | "Receipt" | "Expo";
 export type CategoryDisplayOverride = PrinterStation | "None" | null;
 export type PrinterConnection = "Bluetooth" | "Network" | "WiFi" | "USB";
 export type PrinterKind = "printer" | "display" | "both";
+// "cafe" drives direct-serve: a fully-paid new order skips the kitchen ticket step and is
+// created straight as Served. See restaurants.businessType / placeOrderAction.
+export type BusinessType = "restaurant" | "cafe";
 export type IntegrationProvider = "Uber Eats" | "Deliveroo" | "Just Eat";
 
 export const PRICING_CHANNELS = ["Dine in", "Take Away", "Delivery", "Online", "Uber Eats", "Deliveroo", "Just Eat"] as const;

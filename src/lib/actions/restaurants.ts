@@ -8,6 +8,7 @@ import { categories, paymentTerminals, printers, restaurants, users } from "@/db
 import { hashPassword, setImpersonatedRestaurant } from "@/lib/auth";
 import { assertPermission, assertRestaurantAccess, requireRestaurantContext, requireSession } from "@/lib/scope";
 import { isValidHexColor } from "@/lib/color";
+import type { BusinessType } from "@/lib/types";
 
 function slugify(name: string) {
   const base = name
@@ -29,6 +30,8 @@ export async function createRestaurantAction(
   if (session.role !== "super_admin") return { error: "Forbidden." };
 
   const name = String(formData.get("name") || "").trim();
+  const businessTypeRaw = String(formData.get("businessType") || "restaurant");
+  const businessType: BusinessType = businessTypeRaw === "cafe" ? "cafe" : "restaurant";
   const adminName = String(formData.get("adminName") || "").trim();
   const adminEmail = String(formData.get("adminEmail") || "")
     .trim()
@@ -49,7 +52,7 @@ export async function createRestaurantAction(
 
   const restaurantId = crypto.randomUUID();
   const slug = slugify(name);
-  await db.insert(restaurants).values({ id: restaurantId, name, slug });
+  await db.insert(restaurants).values({ id: restaurantId, name, slug, businessType });
 
   const passwordHash = await hashPassword(adminPassword);
   await db.insert(users).values({
@@ -129,10 +132,10 @@ export async function updateRestaurantTaxEnabledAction(enabled: boolean) {
   revalidatePath("/dashboard");
 }
 
-export async function updateDirectServeModeAction(enabled: boolean) {
+export async function updateBusinessTypeAction(businessType: BusinessType) {
   const { session, restaurantId } = await requireRestaurantContext();
   await assertPermission(session, "settings");
-  await db.update(restaurants).set({ directServeMode: enabled }).where(eq(restaurants.id, restaurantId));
+  await db.update(restaurants).set({ businessType }).where(eq(restaurants.id, restaurantId));
   revalidatePath("/settings");
   revalidatePath("/order-line");
   revalidatePath("/kitchen");
