@@ -6,6 +6,7 @@ import { listOrders } from "@/lib/data/orders";
 import { listReservations } from "@/lib/data/tables";
 import { listPettyCashEntries } from "@/lib/data/petty-cash";
 import { listPaymentTerminals } from "@/lib/data/printers";
+import { getTerminalSettlementReport, listTerminalExpenses, listTerminalPayouts } from "@/lib/data/terminal-settlements";
 import { filterOrdersForAccountsRole } from "@/lib/accounts-filter";
 import { businessDateKey, businessDayRange, shiftDateKey } from "@/lib/business-day";
 import { ReportsClient, type ReportsSearchParams } from "./reports-client";
@@ -43,17 +44,32 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const weekStr = params.week || shiftDateKey(todayKey, -6);
 
   const paymentTerminals = await listPaymentTerminals(restaurantId);
+  const defaultTerminal = paymentTerminals.find((t) => t.isDefault);
   const accountsFilter =
-    session.role === "accounts" ? { defaultTerminalName: paymentTerminals.find((t) => t.isDefault)?.name ?? null } : undefined;
+    session.role === "accounts" ? { defaultTerminalName: defaultTerminal?.name ?? null } : undefined;
+  const accountsTerminalFilter =
+    session.role === "accounts" ? { defaultTerminalId: defaultTerminal?.id ?? null } : undefined;
 
-  const [report, rawOrders, allReservations, pettyCash, dailySummary, weeklySummary] = await Promise.all([
-    getReportData(restaurantId, { from, to }, accountsFilter, businessDay),
-    listOrders(restaurantId),
-    listReservations(restaurantId),
-    listPettyCashEntries(restaurantId, from, to),
-    tab === "daily" ? getDailySummary(restaurantId, dateStr, accountsFilter, businessDay) : Promise.resolve(null),
-    tab === "weekly" ? getWeeklySummary(restaurantId, weekStr, accountsFilter, businessDay) : Promise.resolve(null),
-  ]);
+  const selectedTerminalId = params.terminal || defaultTerminal?.id || paymentTerminals[0]?.id || "";
+
+  const [report, rawOrders, allReservations, pettyCash, dailySummary, weeklySummary, settlementReport, terminalPayouts, terminalExpenses] =
+    await Promise.all([
+      getReportData(restaurantId, { from, to }, accountsFilter, businessDay),
+      listOrders(restaurantId),
+      listReservations(restaurantId),
+      listPettyCashEntries(restaurantId, from, to),
+      tab === "daily" ? getDailySummary(restaurantId, dateStr, accountsFilter, businessDay) : Promise.resolve(null),
+      tab === "weekly" ? getWeeklySummary(restaurantId, weekStr, accountsFilter, businessDay) : Promise.resolve(null),
+      tab === "cardsettlements"
+        ? getTerminalSettlementReport(restaurantId, { fromStr, toStr, from, to }, businessDay, accountsTerminalFilter)
+        : Promise.resolve(null),
+      tab === "cardsettlements" && selectedTerminalId
+        ? listTerminalPayouts(restaurantId, selectedTerminalId, fromStr, toStr, accountsTerminalFilter)
+        : Promise.resolve([]),
+      tab === "cardsettlements" && selectedTerminalId
+        ? listTerminalExpenses(restaurantId, selectedTerminalId, fromStr, toStr, accountsTerminalFilter)
+        : Promise.resolve([]),
+    ]);
   const currencySymbol = restaurant?.currencySymbol ?? "£";
 
   const allOrders = accountsFilter ? filterOrdersForAccountsRole(rawOrders, accountsFilter.defaultTerminalName) : rawOrders;
@@ -79,6 +95,11 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           weekStr={weekStr}
           openTime={businessDay.openTime}
           timezone={businessDay.timezone}
+          paymentTerminals={paymentTerminals}
+          selectedTerminalId={selectedTerminalId}
+          settlementReport={settlementReport}
+          terminalPayouts={terminalPayouts}
+          terminalExpenses={terminalExpenses}
         />
       </div>
     </AppShell>

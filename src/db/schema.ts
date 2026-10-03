@@ -522,3 +522,43 @@ export const pettyCashEntries = sqliteTable("petty_cash_entries", {
   createdByName: text("created_by_name"),
   createdAt: timestamp("created_at"),
 });
+
+// What a card machine actually paid into the bank for one terminal on one day — entered by hand
+// from the provider's payout/statement, since none of the integrated providers expose this over
+// an API. `date` is the business day the payout covers (YYYY-MM-DD, see lib/business-day.ts), not
+// the day it was typed in, so a payout logged a few days late still lines up with the right day's
+// gross card sales on the Card Settlements report.
+export const terminalPayouts = sqliteTable("terminal_payouts", {
+  id: id(),
+  restaurantId: text("restaurant_id")
+    .notNull()
+    .references(() => restaurants.id, { onDelete: "cascade" }),
+  paymentTerminalId: text("payment_terminal_id")
+    .notNull()
+    .references(() => paymentTerminals.id, { onDelete: "cascade" }),
+  date: text("date").notNull(),
+  amount: real("amount").notNull(),
+  note: text("note"),
+  createdByName: text("created_by_name"),
+  createdAt: timestamp("created_at"),
+});
+
+// The fee/commission a card machine provider deducted for one terminal on one day — entered by
+// hand from the same statement as terminalPayouts, so the two together show why a day's payout
+// came in lower than its gross card sales. Checked against the gross figure the Till itself
+// recorded (orders' payments, and what staff counted into shifts.terminalCounts at End Day) on
+// the Card Settlements report, rather than trusted blindly.
+export const terminalExpenses = sqliteTable("terminal_expenses", {
+  id: id(),
+  restaurantId: text("restaurant_id")
+    .notNull()
+    .references(() => restaurants.id, { onDelete: "cascade" }),
+  paymentTerminalId: text("payment_terminal_id")
+    .notNull()
+    .references(() => paymentTerminals.id, { onDelete: "cascade" }),
+  date: text("date").notNull(),
+  amount: real("amount").notNull(),
+  description: text("description").notNull(),
+  createdByName: text("created_by_name"),
+  createdAt: timestamp("created_at"),
+});
