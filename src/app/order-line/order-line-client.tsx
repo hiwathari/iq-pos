@@ -1044,9 +1044,8 @@ export function OrderLineClient({
         )}
       </div>
 
-      {/* Desktop cart panel — dark, deliberately set apart from the light menu area beside it
-          (see .cart-dark in globals.css). */}
-      <div className="cart-dark hidden w-[400px] shrink-0 flex-col border-l border-neutral-800 bg-neutral-900 p-5 lg:flex min-h-0">
+      {/* Desktop cart panel — same light theme as the menu area, just a border to separate it. */}
+      <div className="hidden w-[400px] shrink-0 flex-col border-l border-neutral-200 bg-white p-5 lg:flex min-h-0">
         <CartPanel {...cartPanelProps} showClose={false} />
       </div>
 
@@ -1063,7 +1062,7 @@ export function OrderLineClient({
 
       {/* Mobile cart drawer */}
       {mobileCartOpen && (
-        <div className="cart-dark fixed inset-0 z-50 flex flex-col bg-neutral-900 p-5 lg:hidden">
+        <div className="fixed inset-0 z-50 flex flex-col bg-white p-5 lg:hidden">
           <CartPanel {...cartPanelProps} showClose />
         </div>
       )}
