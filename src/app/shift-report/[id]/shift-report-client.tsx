@@ -112,6 +112,12 @@ export function ShiftReportClient({
             <span className="font-semibold text-neutral-800">-{formatMoney(shift.cashExpenses, currencySymbol)}</span>
           </div>
         )}
+        {shift.envelopeCash > 0 && (
+          <div className="flex items-center justify-between border-t border-neutral-100 px-4 py-3 text-sm text-neutral-600">
+            <span>Less: Envelope Cash</span>
+            <span className="font-semibold text-neutral-800">-{formatMoney(shift.envelopeCash, currencySymbol)}</span>
+          </div>
+        )}
         <Row label="Expected Cash in Till" value={shift.expectedCash} currencySymbol={currencySymbol} />
         <Row label="Cash Counted in Till" value={shift.cashCounted} currencySymbol={currencySymbol} />
         <div className={`flex items-center justify-between px-4 py-3 text-sm font-bold ${isBalanced ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>

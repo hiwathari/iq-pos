@@ -18,6 +18,7 @@ export function EndShiftButton({
   const [terminalAmounts, setTerminalAmounts] = useState<Record<string, string>>({});
   const [cashExpenses, setCashExpenses] = useState("");
   const [cardExpenses, setCardExpenses] = useState("");
+  const [envelopeCash, setEnvelopeCash] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -39,6 +40,7 @@ export function EndShiftButton({
         terminalCounts,
         cashExpenses: Math.max(0, Number(cashExpenses) || 0),
         cardExpenses: Math.max(0, Number(cardExpenses) || 0),
+        envelopeCash: Math.max(0, Number(envelopeCash) || 0),
         notes,
       });
       if (result.error) {
@@ -136,6 +138,22 @@ export function EndShiftButton({
             <p className="mb-3 text-xs text-neutral-400">
               Money spent out of the till or on a card during the shift (e.g. supplies, petty cash) — subtracted from
               what&apos;s expected so the count still tallies.
+            </p>
+
+            <label className="mb-1 block text-xs font-semibold text-neutral-500">Envelope Cash ({currencySymbol})</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={envelopeCash}
+              onChange={(e) => setEnvelopeCash(e.target.value)}
+              placeholder="0.00"
+              className="mb-1 w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm focus:border-teal-500 focus:outline-none"
+            />
+            <p className="mb-3 text-xs text-neutral-400">
+              Cash taken out of the till today and set aside (an owner draw, or kept aside for cash needs) —
+              subtracted from what&apos;s expected, same as an expense, and added to the running Envelope Cash
+              balance on the Dashboard.
             </p>
 
             <label className="mb-1 block text-xs font-semibold text-neutral-500">Notes (optional)</label>

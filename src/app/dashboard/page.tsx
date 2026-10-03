@@ -16,7 +16,19 @@ import { EndShiftButton } from "./end-shift-button";
 import { OpenTillButton } from "./open-till-button";
 import { AutoVoidNotice } from "./auto-void-notice";
 import { AUTO_VOID_REASON } from "@/lib/order-helpers";
-import { DollarSign, ClipboardList, Table2, Users, TrendingUp, TrendingDown, Receipt, FileText, AlertTriangle } from "lucide-react";
+import {
+  DollarSign,
+  ClipboardList,
+  Table2,
+  Users,
+  TrendingUp,
+  TrendingDown,
+  Receipt,
+  FileText,
+  AlertTriangle,
+  CreditCard,
+  Wallet,
+} from "lucide-react";
 
 export default async function DashboardPage() {
   const { session, restaurantId } = await requirePermission("dashboard");
@@ -62,6 +74,17 @@ export default async function DashboardPage() {
   const pendingOrders = activeOrders.filter((o) => !isOrderClosedOut(o));
   const billedOrders = activeOrders.filter(isOrderClosedOut);
 
+  // Card sales — everything paid by a named terminal rather than Cash, same split
+  // summarizeShiftWindow uses for a shift's own report.
+  let cardSales = 0;
+  for (const o of activeOrders) {
+    const total = o.items.reduce((s, i) => s + i.price * i.qty, 0);
+    const methodLines = o.payments?.length ? o.payments : o.paymentMethod ? [{ method: o.paymentMethod, amount: total }] : [];
+    for (const line of methodLines) {
+      if (line.method !== "Cash") cardSales += line.amount;
+    }
+  }
+
   const dismissedAt = restaurant?.autoVoidNoticeDismissedAt ?? 0;
   const carriedOverOrders = orders
     .filter((o) => o.voidReason === AUTO_VOID_REASON && (o.voidedAt ?? 0) > dismissedAt)
@@ -91,6 +114,13 @@ export default async function DashboardPage() {
           <StatCard icon={ClipboardList} label="Active Orders" value={String(orders.length)} tint="bg-amber-50 text-amber-600" />
           <StatCard icon={Table2} label="Tables Occupied" value={`${onDine}/${tables.length}`} tint="bg-rose-50 text-rose-600" />
           <StatCard icon={Users} label="Reservations Today" value={String(reservations.length)} tint="bg-indigo-50 text-indigo-600" />
+          <StatCard icon={CreditCard} label="Card Sales" value={formatMoney(cardSales, currencySymbol)} tint="bg-sky-50 text-sky-600" />
+          <StatCard
+            icon={Wallet}
+            label="Envelope Cash"
+            value={formatMoney(restaurant?.envelopeCashBalance ?? 0, currencySymbol)}
+            tint="bg-emerald-50 text-emerald-600"
+          />
         </div>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

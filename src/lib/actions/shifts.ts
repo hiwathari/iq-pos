@@ -1,6 +1,6 @@
 "use server";
 
-import { asc, desc, eq } from "drizzle-orm";
+import { asc, desc, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { orders, restaurants, shifts } from "@/db/schema";
@@ -52,6 +52,10 @@ export interface EndShiftInput {
   terminalCounts: { method: string; counted: number }[];
   cashExpenses: number;
   cardExpenses: number;
+  // Cash taken out of the till this shift and set aside (owner draw / cash reserve) — reduces
+  // expected cash same as cashExpenses, and is added to the restaurant's running envelope cash
+  // balance shown on the Dashboard.
+  envelopeCash: number;
   notes: string;
 }
 
@@ -92,6 +96,7 @@ export async function endShiftAction(input: EndShiftInput): Promise<EndShiftStat
 
   const cashExpenses = Math.max(0, input.cashExpenses || 0);
   const cardExpenses = Math.max(0, input.cardExpenses || 0);
+  const envelopeCash = Math.max(0, input.envelopeCash || 0);
 
   const [shift] = await db
     .insert(shifts)
@@ -106,19 +111,26 @@ export async function endShiftAction(input: EndShiftInput): Promise<EndShiftStat
       openingBalance,
       cashExpenses,
       cardExpenses,
+      envelopeCash,
       terminalCounts: input.terminalCounts,
       ...summary,
       // Expected cash starts from the declared float, adds cash sales, and subtracts whatever
-      // cash left the till as an expense during the shift.
-      expectedCash: openingBalance + summary.expectedCash - cashExpenses,
+      // cash left the till as an expense or into the envelope during the shift.
+      expectedCash: openingBalance + summary.expectedCash - cashExpenses - envelopeCash,
     })
     .returning();
 
   // The float that was just reconciled no longer applies — the next day/shift has to declare
-  // its own before it closes.
+  // its own before it closes. The envelope cash balance is cumulative, though — add this
+  // shift's amount on top rather than resetting it.
   await db
     .update(restaurants)
-    .set({ pendingOpeningBalance: null, openingBalanceSetByName: null, openingBalanceSetAt: null })
+    .set({
+      pendingOpeningBalance: null,
+      openingBalanceSetByName: null,
+      openingBalanceSetAt: null,
+      envelopeCashBalance: sql`${restaurants.envelopeCashBalance} + ${envelopeCash}`,
+    })
     .where(eq(restaurants.id, restaurantId));
 
   await notifyIfShiftDidNotBalance(shift, restaurant?.currencySymbol ?? "£", session.name);

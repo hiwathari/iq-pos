@@ -55,6 +55,11 @@ export const restaurants = sqliteTable("restaurants", {
   pendingOpeningBalance: real("pending_opening_balance"),
   openingBalanceSetByName: text("opening_balance_set_by_name"),
   openingBalanceSetAt: int("opening_balance_set_at"),
+  // Running total of cash taken out of the till and set aside (an owner draw, or a reserve kept
+  // aside for cash needs) — added to at each End Day close (see shifts.envelopeCash) and never
+  // reset, unlike pendingOpeningBalance. Shown on the Dashboard; doesn't drive any reconciliation
+  // math beyond being subtracted from that shift's expected cash, same as cashExpenses.
+  envelopeCashBalance: real("envelope_cash_balance").notNull().default(0),
   createdAt: timestamp("created_at"),
 },
   (table) => [uniqueIndex("restaurants_custom_domain_idx").on(table.customDomain)]
@@ -463,6 +468,10 @@ export const shifts = sqliteTable("shifts", {
   // the till outside of order payments.
   cashExpenses: real("cash_expenses").notNull().default(0),
   cardExpenses: real("card_expenses").notNull().default(0),
+  // Cash taken out of the till this shift and set aside (an owner draw, or a reserve kept aside
+  // for cash needs) — subtracted from expected cash same as cashExpenses, and added to the
+  // restaurant's running envelopeCashBalance (see restaurants above) when this shift closes.
+  envelopeCash: real("envelope_cash").notNull().default(0),
   // Per-payment-method breakdown computed from this window's orders — e.g.
   // [{ method: "Cash", amount: 120 }, { method: "Card 1", amount: 80 }] — one entry per named
   // payment terminal plus "Cash", so a restaurant with several card machines gets each one
