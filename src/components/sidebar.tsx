@@ -22,7 +22,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
-import { Logo } from "./logo";
+import { BrandLogo } from "./brand-logo";
 import clsx from "clsx";
 import { logoutAction } from "@/lib/actions/auth";
 import type { Role } from "@/lib/session";
@@ -55,11 +55,15 @@ export function Sidebar({
   name,
   permissions,
   isImpersonating,
+  restaurantName,
+  restaurantLogoUrl,
 }: {
   role: Role;
   name: string;
   permissions?: string[] | null;
   isImpersonating?: boolean;
+  restaurantName?: string | null;
+  restaurantLogoUrl?: string | null;
 }) {
   const pathname = usePathname();
   const isSuperOrRegional = role === "super_admin" || role === "regional_admin";
@@ -111,7 +115,7 @@ export function Sidebar({
       )}
     >
       <div className={clsx("mb-8 flex items-center", collapsed ? "flex-col gap-3 px-0" : "justify-between px-2")}>
-        <Logo showText={!collapsed} />
+        <BrandLogo name={restaurantName} logoUrl={restaurantLogoUrl} showText={!collapsed} />
         <button
           onClick={toggleCollapsed}
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}

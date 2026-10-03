@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db/client";
 import { printers, restaurants, users } from "@/db/schema";
-import { createSession } from "@/lib/auth";
+import { createSession, rememberDeviceRestaurant } from "@/lib/auth";
 
 // PIN-unlocked devices (till, kitchen display) get a shorter session than a full staff login,
 // since they're shared hardware left logged in for a shift rather than a personal device.
@@ -42,6 +42,7 @@ export async function tillPinLoginAction(
     },
     DEVICE_SESSION_SECONDS
   );
+  await rememberDeviceRestaurant(staff.restaurantId);
 
   redirect("/order-line");
 }
@@ -69,6 +70,7 @@ export async function kitchenPinLoginAction(
       },
       DEVICE_SESSION_SECONDS
     );
+    await rememberDeviceRestaurant(staff.restaurantId);
     redirect("/kitchen");
   }
 
@@ -92,6 +94,7 @@ export async function kitchenPinLoginAction(
     },
     DEVICE_SESSION_SECONDS
   );
+  await rememberDeviceRestaurant(display.restaurantId);
   redirect("/kitchen");
 }
 
@@ -119,6 +122,7 @@ export async function staffPinLoginAction(
     role: staff.role,
     restaurantId: staff.restaurantId,
   });
+  await rememberDeviceRestaurant(staff.restaurantId);
 
   redirect("/dashboard");
 }

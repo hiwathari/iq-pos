@@ -26,6 +26,12 @@ export interface SessionPayload {
 export const SESSION_COOKIE_NAME = "iq_pos_session";
 export const IMPERSONATION_COOKIE_NAME = "iq_pos_impersonate";
 export const SESSION_DURATION_SECONDS = 60 * 60 * 24 * 30; // 30 days
+// Not a security boundary — just a UI convenience so a shared device's own login screen (Till,
+// Kitchen, Staff PIN) shows that restaurant's own logo/name instead of the generic brand mark,
+// once it's been signed into at least once. Set at every successful login, never cleared by
+// logout, so it survives across PIN-unlock cycles on the same device. See lib/auth.ts.
+export const DEVICE_RESTAURANT_COOKIE_NAME = "iq_pos_device_restaurant";
+export const DEVICE_RESTAURANT_MAX_AGE_SECONDS = 60 * 60 * 24 * 365; // 1 year
 
 function getSecretKey() {
   const secret = process.env.JWT_SECRET;

@@ -18,7 +18,12 @@ export async function AppShell({ children, title }: { children: React.ReactNode;
   if (session.role === "till" || session.role === "kitchen_display") {
     const label = session.role === "till" ? `Till · ${session.name}` : "Kitchen Display";
     return (
-      <LockedShell restaurantName={restaurant?.name} label={label} brandColor={restaurant?.brandColor}>
+      <LockedShell
+        restaurantName={restaurant?.name}
+        restaurantLogoUrl={restaurant?.invoiceLogoUrl}
+        label={label}
+        brandColor={restaurant?.brandColor}
+      >
         {children}
       </LockedShell>
     );
@@ -35,7 +40,14 @@ export async function AppShell({ children, title }: { children: React.ReactNode;
 
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-neutral-50" style={brandCssVars(restaurant?.brandColor)}>
-      <Sidebar role={session.role} name={session.name} permissions={permissions} isImpersonating={isImpersonating} />
+      <Sidebar
+        role={session.role}
+        name={session.name}
+        permissions={permissions}
+        isImpersonating={isImpersonating}
+        restaurantName={restaurant?.name}
+        restaurantLogoUrl={restaurant?.invoiceLogoUrl}
+      />
       <div className="flex min-w-0 flex-1 flex-col">
         {isImpersonating && restaurant && (
           <ImpersonationBanner restaurantName={restaurant.name} label={session.role === "regional_admin" ? "Regional Admin" : "Super Admin"} />

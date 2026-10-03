@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { Delete } from "lucide-react";
 import type { PinLoginState } from "@/lib/actions/pin-auth";
+import { BrandLogo } from "@/components/brand-logo";
 
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
 
@@ -10,10 +11,16 @@ export function PinLoginForm({
   action,
   title,
   subtitle,
+  restaurantName,
+  restaurantLogoUrl,
 }: {
   action: (prevState: PinLoginState | undefined, formData: FormData) => Promise<PinLoginState>;
   title: string;
   subtitle: string;
+  // Set once this device has signed into a specific restaurant before (see
+  // lib/auth.ts's rememberDeviceRestaurant) — shows its own branding instead of the generic mark.
+  restaurantName?: string | null;
+  restaurantLogoUrl?: string | null;
 }) {
   const [state, formAction, pending] = useActionState(action, {});
   const [pin, setPin] = useState("");
@@ -47,6 +54,9 @@ export function PinLoginForm({
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-neutral-950 px-4 text-white">
+      <div className="mb-6">
+        <BrandLogo name={restaurantName} logoUrl={restaurantLogoUrl} dark />
+      </div>
       <div className="mb-8 text-center">
         <h1 className="text-xl font-semibold">{title}</h1>
         <p className="mt-1 text-sm text-neutral-400">{subtitle}</p>

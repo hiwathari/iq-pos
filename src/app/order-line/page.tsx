@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   title: "Till",
   manifest: "/till-manifest.webmanifest",
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Till" },
-  icons: { apple: "/api/pwa-icon/till?size=180" },
+  icons: { icon: "/api/pwa-icon/till?size=64", apple: "/api/pwa-icon/till?size=180" },
 };
 
 export const viewport: Viewport = { themeColor: "#0d9488" };

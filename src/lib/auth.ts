@@ -2,6 +2,8 @@ import "server-only";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import {
+  DEVICE_RESTAURANT_COOKIE_NAME,
+  DEVICE_RESTAURANT_MAX_AGE_SECONDS,
   IMPERSONATION_COOKIE_NAME,
   SESSION_COOKIE_NAME,
   SESSION_DURATION_SECONDS,
@@ -74,4 +76,23 @@ export async function getActiveRestaurantId(session: SessionPayload): Promise<st
     return getImpersonatedRestaurantId();
   }
   return session.restaurantId;
+}
+
+// Called at every successful PIN/password login that resolves to a specific restaurant — not
+// super_admin/regional_admin, which aren't tied to one. Lets a shared device's own login screen
+// show that restaurant's branding from then on, surviving logout (see DEVICE_RESTAURANT_COOKIE_NAME).
+export async function rememberDeviceRestaurant(restaurantId: string) {
+  const store = await cookies();
+  store.set(DEVICE_RESTAURANT_COOKIE_NAME, restaurantId, {
+    httpOnly: false, // read by server components rendering the login screen; not sensitive.
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: DEVICE_RESTAURANT_MAX_AGE_SECONDS,
+  });
+}
+
+export async function getRememberedDeviceRestaurantId(): Promise<string | null> {
+  const store = await cookies();
+  return store.get(DEVICE_RESTAURANT_COOKIE_NAME)?.value ?? null;
 }

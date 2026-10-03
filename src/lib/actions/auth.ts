@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db/client";
 import { users } from "@/db/schema";
-import { createSession, destroySession, getSession, verifyPassword } from "@/lib/auth";
+import { createSession, destroySession, getSession, rememberDeviceRestaurant, verifyPassword } from "@/lib/auth";
 
 export interface LoginState {
   error?: string;
@@ -37,6 +37,7 @@ export async function loginAction(_prevState: LoginState | undefined, formData: 
     role: user.role,
     restaurantId: user.restaurantId,
   });
+  if (user.restaurantId) await rememberDeviceRestaurant(user.restaurantId);
 
   redirect(user.role === "super_admin" || user.role === "regional_admin" ? "/super-admin" : "/dashboard");
 }

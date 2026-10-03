@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   title: "Kitchen",
   manifest: "/kitchen-manifest.webmanifest",
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Kitchen" },
-  icons: { apple: "/api/pwa-icon/kitchen?size=180" },
+  icons: { icon: "/api/pwa-icon/kitchen?size=64", apple: "/api/pwa-icon/kitchen?size=180" },
 };
 
 export const viewport: Viewport = { themeColor: "#d97706" };

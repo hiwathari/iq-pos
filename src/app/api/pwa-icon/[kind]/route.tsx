@@ -4,9 +4,13 @@ import sharp from "sharp";
 import { getActiveRestaurantId, getSession } from "@/lib/auth";
 import { getRestaurant } from "@/lib/data/restaurants";
 
+// "dashboard" has no corner badge (empty letter) — unlike Till/Kitchen, it's not one of
+// several device-specific "apps" that might sit side by side on the same tablet, so there's
+// nothing to disambiguate.
 const BRAND: Record<string, { label: string; letter: string; color: string }> = {
   till: { label: "TILL", letter: "T", color: "#0d9488" },
   kitchen: { label: "KITCHEN", letter: "K", color: "#d97706" },
+  dashboard: { label: "", letter: "", color: "#0d9488" },
 };
 
 // Satori (which ImageResponse renders through) can only decode PNG/JPEG — a WebP or AVIF
@@ -74,32 +78,36 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ kind
         ) : (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
             <div style={{ fontSize: size * 0.1, fontWeight: 700, color: "white", letterSpacing: 4 }}>IQ POS</div>
-            <div style={{ fontSize: size * 0.07, color: "rgba(255,255,255,0.85)", letterSpacing: 3, marginTop: size * 0.02 }}>
-              {brand.label}
-            </div>
+            {brand.label && (
+              <div style={{ fontSize: size * 0.07, color: "rgba(255,255,255,0.85)", letterSpacing: 3, marginTop: size * 0.02 }}>
+                {brand.label}
+              </div>
+            )}
           </div>
         )}
 
-        <div
-          style={{
-            position: "absolute",
-            bottom: 0,
-            right: 0,
-            width: badgeSize,
-            height: badgeSize,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: brand.color,
-            color: "white",
-            fontSize: badgeSize * 0.55,
-            fontWeight: 700,
-            borderTopLeftRadius: badgeSize * 0.4,
-            border: `${Math.max(2, size * 0.008)}px solid white`,
-          }}
-        >
-          {brand.letter}
-        </div>
+        {brand.letter && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: 0,
+              right: 0,
+              width: badgeSize,
+              height: badgeSize,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: brand.color,
+              color: "white",
+              fontSize: badgeSize * 0.55,
+              fontWeight: 700,
+              borderTopLeftRadius: badgeSize * 0.4,
+              border: `${Math.max(2, size * 0.008)}px solid white`,
+            }}
+          >
+            {brand.letter}
+          </div>
+        )}
       </div>
     ),
     { width: size, height: size }
