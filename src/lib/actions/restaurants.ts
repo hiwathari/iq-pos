@@ -10,14 +10,25 @@ import { assertPermission, assertRestaurantAccess, requireRestaurantContext, req
 import { isValidHexColor } from "@/lib/color";
 import { generatePin } from "@/lib/pin";
 
-// Same retry-until-unique approach as generateStaffPinAction in lib/actions/staff.ts — tillPin
-// is unique across the whole platform (PIN-login looks a code up with no restaurant context
-// first), so a fixed constant could never work for more than one restaurant.
+// The default Test Staff PIN — easy to remember for training — but tillPin is unique across the
+// whole platform (PIN-login looks a code up with no restaurant context first), so only one
+// restaurant can ever hold it at a time. An admin frees it up for the next restaurant by
+// deactivating that Test Staff login and clearing its PIN (Settings > Staff already has both).
+const DEFAULT_STAFF_PIN = "123456";
+
+async function isPinTaken(pin: string): Promise<boolean> {
+  const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.tillPin, pin)).limit(1);
+  return !!existing;
+}
+
+// Tries DEFAULT_STAFF_PIN first; falls back to the same retry-until-unique approach as
+// generateStaffPinAction in lib/actions/staff.ts once it's already taken elsewhere.
 async function uniqueStaffPin(): Promise<string> {
+  if (!(await isPinTaken(DEFAULT_STAFF_PIN))) return DEFAULT_STAFF_PIN;
+
   let pin = generatePin();
   for (let attempt = 0; attempt < 10; attempt++) {
-    const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.tillPin, pin)).limit(1);
-    if (!existing) break;
+    if (!(await isPinTaken(pin))) break;
     pin = generatePin();
   }
   return pin;
