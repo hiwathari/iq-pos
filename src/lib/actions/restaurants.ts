@@ -8,6 +8,20 @@ import { categories, paymentTerminals, printers, restaurants, users } from "@/db
 import { hashPassword, setImpersonatedRestaurant } from "@/lib/auth";
 import { assertPermission, assertRestaurantAccess, requireRestaurantContext, requireSession } from "@/lib/scope";
 import { isValidHexColor } from "@/lib/color";
+import { generatePin } from "@/lib/pin";
+
+// Same retry-until-unique approach as generateStaffPinAction in lib/actions/staff.ts — tillPin
+// is unique across the whole platform (PIN-login looks a code up with no restaurant context
+// first), so a fixed constant could never work for more than one restaurant.
+async function uniqueStaffPin(): Promise<string> {
+  let pin = generatePin();
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.tillPin, pin)).limit(1);
+    if (!existing) break;
+    pin = generatePin();
+  }
+  return pin;
+}
 
 function slugify(name: string) {
   const base = name
@@ -78,6 +92,28 @@ export async function createRestaurantAction(
       name: `${name} Accounts`,
       role: "accounts",
       restaurantId,
+    });
+
+    // A ready-made "staff" login for testing/training on a brand-new restaurant, so there's
+    // always something to sign into the Till/Kitchen with before any real staff member is set
+    // up. Fixed password (not synced to the admin's, unlike accounts@ above) since it's meant to
+    // be the same known credential across every restaurant; the PIN can't be, since tillPin is
+    // unique platform-wide — see uniqueStaffPin above. Admins can edit, repin, or delete this
+    // from Settings > Staff like any other staff account once real staff are added.
+    const plainStaffEmail = `staff@${domain}`;
+    const [staffDomainTaken] = await db.select({ id: users.id }).from(users).where(eq(users.email, plainStaffEmail)).limit(1);
+    const staffEmail = staffDomainTaken ? `staff+${slug}@${domain}` : plainStaffEmail;
+    const staffPasswordHash = await hashPassword("Staff@123");
+    const staffPin = await uniqueStaffPin();
+    await db.insert(users).values({
+      id: crypto.randomUUID(),
+      email: staffEmail,
+      passwordHash: staffPasswordHash,
+      name: "Test Staff",
+      role: "staff",
+      restaurantId,
+      tillPin: staffPin,
+      kitchenPin: staffPin,
     });
   }
 
