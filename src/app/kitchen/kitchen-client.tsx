@@ -17,6 +17,7 @@ import { completeOrderAction, setOrderStatusAction, toggleOrderItemReadyAction }
 import { setDishStockAction } from "@/lib/actions/menu";
 import { unlockOrderAudio, playNewOrderChime, playOrderReadyChime } from "@/lib/order-sounds";
 import { businessDateKey, businessDayRange, shiftDateKey } from "@/lib/business-day";
+import { useVisibleInterval } from "@/lib/use-visible-interval";
 import { FullscreenButton } from "@/components/fullscreen-button";
 import {
   Check,
@@ -203,11 +204,10 @@ export function KitchenClient({
     return () => clearInterval(id);
   }, []);
 
-  // Poll for new/updated orders placed from the Till so they show up here without a manual refresh.
-  useEffect(() => {
-    const id = setInterval(() => router.refresh(), 5000);
-    return () => clearInterval(id);
-  }, [router]);
+  // Poll for new/updated orders placed from the Till so they show up here without a manual
+  // refresh — paused while this tab isn't visible, so a backgrounded/minimized screen doesn't
+  // keep hitting the server for no one (see useVisibleInterval).
+  useVisibleInterval(() => router.refresh(), 5000);
 
   // Most browsers block audio until the page has seen a user gesture — the first tap anywhere
   // on this screen (ticking an item, switching stations, etc.) unlocks it for the whole session.

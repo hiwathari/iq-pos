@@ -110,6 +110,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ kind
         )}
       </div>
     ),
-    { width: size, height: size }
+    {
+      width: size,
+      height: size,
+      // This URL's full identity (kind + size + the restaurant query param, which always mirrors
+      // the session that generated it) already determines the image byte-for-byte, so caching it
+      // is safe — without this, every request re-ran a DB lookup, an external logo fetch, a sharp
+      // re-encode, and a full Satori render, even though the result almost never changes.
+      headers: { "Cache-Control": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800" },
+    }
   );
 }

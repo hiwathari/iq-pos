@@ -30,6 +30,7 @@ import { setDishStockAction } from "@/lib/actions/menu";
 import { printTicket } from "@/lib/print-ticket";
 import { tableOrderQrDataUrl } from "@/lib/table-qr";
 import { unlockOrderAudio, playNewOrderChime, playOrderReadyChime } from "@/lib/order-sounds";
+import { useVisibleInterval } from "@/lib/use-visible-interval";
 import { businessDateKey, businessDayRange, shiftDateKey } from "@/lib/business-day";
 import { TableLayoutPicker } from "@/components/table-layout-picker";
 import { CategoryIconView } from "@/components/category-icon";
@@ -234,11 +235,10 @@ export function OrderLineClient({
   const [loyaltyError, setLoyaltyError] = useState<string | null>(null);
 
   // Poll for changes made elsewhere (kitchen marking an order ready, another till voiding
-  // one, etc.) so status notifications below stay current without a manual refresh.
-  useEffect(() => {
-    const id = setInterval(() => router.refresh(), 8000);
-    return () => clearInterval(id);
-  }, [router]);
+  // one, etc.) so status notifications below stay current without a manual refresh — paused
+  // while this tab isn't visible, so a backgrounded tab doesn't keep hitting the server for no
+  // one (see useVisibleInterval).
+  useVisibleInterval(() => router.refresh(), 8000);
 
   // Most browsers block audio before the page has seen a user gesture — the first tap anywhere
   // on the Till (adding an item, picking a table, etc.) unlocks it for the rest of the session.
