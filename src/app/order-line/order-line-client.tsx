@@ -238,7 +238,7 @@ export function OrderLineClient({
   // one, etc.) so status notifications below stay current without a manual refresh — paused
   // while this tab isn't visible, so a backgrounded tab doesn't keep hitting the server for no
   // one (see useVisibleInterval).
-  useVisibleInterval(() => router.refresh(), 8000);
+  useVisibleInterval(() => router.refresh(), 20000);
 
   // Most browsers block audio before the page has seen a user gesture — the first tap anywhere
   // on the Till (adding an item, picking a table, etc.) unlocks it for the rest of the session.

@@ -207,7 +207,7 @@ export function KitchenClient({
   // Poll for new/updated orders placed from the Till so they show up here without a manual
   // refresh — paused while this tab isn't visible, so a backgrounded/minimized screen doesn't
   // keep hitting the server for no one (see useVisibleInterval).
-  useVisibleInterval(() => router.refresh(), 5000);
+  useVisibleInterval(() => router.refresh(), 15000);
 
   // Most browsers block audio until the page has seen a user gesture — the first tap anywhere
   // on this screen (ticking an item, switching stations, etc.) unlocks it for the whole session.

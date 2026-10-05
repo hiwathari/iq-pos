@@ -126,7 +126,12 @@ export function Sidebar({
       </div>
       <nav className="flex-1 flex flex-col gap-1">
         {isSuperOrRegional && (
-          <Link href="/super-admin" title={collapsed ? "Super Admin" : undefined} className={linkClass(pathname === "/super-admin")}>
+          <Link
+            href="/super-admin"
+            prefetch={false}
+            title={collapsed ? "Super Admin" : undefined}
+            className={linkClass(pathname === "/super-admin")}
+          >
             <ShieldCheck className="h-[18px] w-[18px] shrink-0" strokeWidth={2} />
             {!collapsed && "Super Admin"}
           </Link>
@@ -135,7 +140,13 @@ export function Sidebar({
           const active = pathname === item.href;
           const Icon = item.icon;
           return (
-            <Link key={item.href} href={item.href} title={collapsed ? item.label : undefined} className={linkClass(active)}>
+            <Link
+              key={item.href}
+              href={item.href}
+              prefetch={false}
+              title={collapsed ? item.label : undefined}
+              className={linkClass(active)}
+            >
               <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={2} />
               {!collapsed && item.label}
             </Link>
