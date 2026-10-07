@@ -16,6 +16,7 @@ import type {
   tables,
   terminalExpenses,
   terminalPayouts,
+  teyaPayments,
 } from "@/db/schema";
 
 export type CategoryIcon =
@@ -53,6 +54,7 @@ export type PettyCashEntry = typeof pettyCashEntries.$inferSelect;
 export type TerminalPayout = typeof terminalPayouts.$inferSelect;
 export type TerminalExpense = typeof terminalExpenses.$inferSelect;
 export type SumupCheckout = typeof sumupCheckouts.$inferSelect;
+export type TeyaPayment = typeof teyaPayments.$inferSelect;
 
 export interface OrderItem {
   dishId: string;

@@ -57,6 +57,9 @@ export default async function SettingsPage() {
             terminals={paymentTerminals}
             sumupApiKey={restaurant?.sumupApiKey ?? ""}
             sumupMerchantCode={restaurant?.sumupMerchantCode ?? ""}
+            teyaClientId={restaurant?.teyaClientId ?? ""}
+            teyaClientSecret={restaurant?.teyaClientSecret ?? ""}
+            teyaStoreId={restaurant?.teyaStoreId ?? ""}
           />
         </div>
         <div className="border-t border-neutral-100 pt-8">

@@ -32,6 +32,7 @@ import { tableOrderQrDataUrl } from "@/lib/table-qr";
 import { unlockOrderAudio, playNewOrderChime, playOrderReadyChime } from "@/lib/order-sounds";
 import { useVisibleInterval } from "@/lib/use-visible-interval";
 import { startSumupChargeAction, pollSumupChargeAction, cancelSumupChargeAction } from "@/lib/actions/sumup";
+import { startTeyaChargeAction, pollTeyaChargeAction, cancelTeyaChargeAction } from "@/lib/actions/teya";
 import { businessDateKey, businessDayRange, shiftDateKey } from "@/lib/business-day";
 import { TableLayoutPicker } from "@/components/table-layout-picker";
 import { CategoryIconView } from "@/components/category-icon";
@@ -1198,6 +1199,7 @@ function CartPanel({
 }: CartPanelProps) {
   const canManageTable = !!cart.editingOrderId && !!cart.tableId && editingOrder?.status !== "Voided";
   const [sumupCharging, setSumupCharging] = useState<{ terminal: PaymentTerminal; amount: number } | null>(null);
+  const [teyaCharging, setTeyaCharging] = useState<{ terminal: PaymentTerminal; amount: number } | null>(null);
 
   function updatePaymentAmount(method: string, amount: number) {
     setCart((prev) => ({
@@ -1236,6 +1238,10 @@ function CartPanel({
     }
     if (t.provider === "sumup" && t.sumupReaderId) {
       setSumupCharging({ terminal: t, amount: remainingAmount() });
+      return;
+    }
+    if (t.provider === "teya" && t.teyaTerminalId) {
+      setTeyaCharging({ terminal: t, amount: remainingAmount() });
       return;
     }
     togglePaymentLine(t.name);
@@ -1812,6 +1818,18 @@ function CartPanel({
           onClose={() => setSumupCharging(null)}
         />
       )}
+      {teyaCharging && (
+        <TeyaChargeOverlay
+          terminal={teyaCharging.terminal}
+          amount={teyaCharging.amount}
+          currencySymbol={currencySymbol}
+          onSuccess={(amount) => {
+            setCart((prev) => ({ ...prev, payments: [...prev.payments, { method: teyaCharging.terminal.name, amount }] }));
+            setTeyaCharging(null);
+          }}
+          onClose={() => setTeyaCharging(null)}
+        />
+      )}
     </div>
   );
 }
@@ -2337,6 +2355,103 @@ function SumupChargeOverlay({
             <Loader2 className="mx-auto mb-3 h-10 w-10 animate-spin text-[var(--brand)]" />
             <p className="mb-5 text-sm text-neutral-500">
               {state === "starting" ? "Starting the charge…" : "Waiting for the customer to tap, insert or swipe on the reader…"}
+            </p>
+            <button
+              onClick={cancel}
+              className="w-full rounded-xl border border-neutral-200 py-2.5 text-sm font-medium text-neutral-600 hover:bg-neutral-50"
+            >
+              Cancel
+            </button>
+          </>
+        )}
+
+        {(state === "failed" || state === "cancelled") && (
+          <>
+            <XCircle className="mx-auto mb-3 h-10 w-10 text-rose-500" />
+            <p className="mb-5 text-sm text-neutral-500">
+              {state === "cancelled" ? "Charge cancelled." : errorMessage || "The charge didn't go through."}
+            </p>
+            <button
+              onClick={onClose}
+              className="w-full rounded-xl bg-[var(--brand)] py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)]"
+            >
+              Close
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Same shape as SumupChargeOverlay — Teya has no confirmed webhook/signature model, so this is
+// polling-only (see lib/data/teya.ts for why).
+function TeyaChargeOverlay({
+  terminal,
+  amount,
+  currencySymbol,
+  onSuccess,
+  onClose,
+}: {
+  terminal: PaymentTerminal;
+  amount: number;
+  currencySymbol: string;
+  onSuccess: (amount: number) => void;
+  onClose: () => void;
+}) {
+  const [paymentRequestId, setPaymentRequestId] = useState<string | null>(null);
+  const [state, setState] = useState<"starting" | "pending" | "failed" | "cancelled">("starting");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    startTeyaChargeAction(terminal.id, amount).then((result) => {
+      if (cancelled) return;
+      if (result.error || !result.paymentRequestId) {
+        setState("failed");
+        setErrorMessage(result.error ?? "Couldn't start the charge.");
+        return;
+      }
+      setPaymentRequestId(result.paymentRequestId);
+      setState("pending");
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Runs once per mount — a new overlay instance (new terminal/amount) is a new charge attempt.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!paymentRequestId || state !== "pending") return;
+    const id = setInterval(async () => {
+      const result = await pollTeyaChargeAction(paymentRequestId);
+      if (result.status === "successful") {
+        onSuccess(amount);
+      } else if (result.status === "failed" || result.status === "cancelled") {
+        setState(result.status);
+        setErrorMessage(result.failureReason ?? null);
+      }
+    }, 2000);
+    return () => clearInterval(id);
+  }, [paymentRequestId, state, amount, onSuccess]);
+
+  function cancel() {
+    if (paymentRequestId) cancelTeyaChargeAction(paymentRequestId);
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
+        <h2 className="mb-1 text-lg font-semibold text-neutral-900">{terminal.name}</h2>
+        <p className="mb-5 text-2xl font-bold text-neutral-900">{formatMoney(amount, currencySymbol)}</p>
+
+        {(state === "starting" || state === "pending") && (
+          <>
+            <Loader2 className="mx-auto mb-3 h-10 w-10 animate-spin text-[var(--brand)]" />
+            <p className="mb-5 text-sm text-neutral-500">
+              {state === "starting" ? "Starting the charge…" : "Waiting for the customer to tap, insert or swipe on the terminal…"}
             </p>
             <button
               onClick={cancel}

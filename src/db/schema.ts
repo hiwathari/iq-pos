@@ -72,6 +72,13 @@ export const restaurants = sqliteTable("restaurants", {
   // an admin connects SumUp; every existing terminal keeps working exactly as before either way.
   sumupApiKey: text("sumup_api_key"),
   sumupMerchantCode: text("sumup_merchant_code"),
+  // This restaurant's own Teya OAuth app + store — same idea as the SumUp fields above, for any
+  // of this restaurant's terminals with provider "teya". storeId is Teya's own identifier for
+  // this merchant's store (a terminal can have several under one store), set once alongside the
+  // credentials; the individual terminal_id lives on paymentTerminals.teyaTerminalId below.
+  teyaClientId: text("teya_client_id"),
+  teyaClientSecret: text("teya_client_secret"),
+  teyaStoreId: text("teya_store_id"),
   createdAt: timestamp("created_at"),
 },
   (table) => [uniqueIndex("restaurants_custom_domain_idx").on(table.customDomain)]
@@ -415,8 +422,9 @@ export const paymentTerminals = sqliteTable("payment_terminals", {
   // Which card-machine API (if any) actually processes a payment when this terminal is tapped on
   // the Till, instead of staff running the physical machine out-of-band and just logging the
   // amount here. Null (every terminal today) means "manual" — unchanged behavior. "sumup" means
-  // a paired SumUp Solo reader (sumupReaderId) is charged directly.
-  provider: text("provider", { enum: ["sumup"] }),
+  // a paired SumUp Solo reader (sumupReaderId) is charged directly; "teya" means Teya's POSLink
+  // API charges teyaTerminalId directly.
+  provider: text("provider", { enum: ["sumup", "teya"] }),
   // The SumUp Cloud API reader this terminal is paired to — set once pairSumupReaderAction
   // succeeds, authorized against the restaurant's own sumupApiKey/sumupMerchantCode above. Null
   // until paired, or if this terminal isn't a SumUp one.
@@ -425,6 +433,11 @@ export const paymentTerminals = sqliteTable("payment_terminals", {
   // "paired" once it has, "expired" if the pairing code timed out) so Settings can show it
   // without an extra live API call on every page load.
   sumupReaderStatus: text("sumup_reader_status", { enum: ["processing", "paired", "expired"] }),
+  // Teya's own terminal_id for this physical reader — pasted in directly by the admin (unlike
+  // SumUp's pairing-code flow, Teya's terminals are pre-registered devices looked up by an id the
+  // restaurant already has from their own Teya account). Null until set, or if this terminal
+  // isn't a Teya one.
+  teyaTerminalId: text("teya_terminal_id"),
 });
 
 // One attempt to charge a SumUp Solo reader from the Till — created the moment
@@ -457,6 +470,34 @@ export const sumupCheckouts = sqliteTable("sumup_checkouts", {
   updatedAt: int("updated_at"),
 },
   (table) => [uniqueIndex("sumup_checkouts_checkout_id_idx").on(table.checkoutId)]
+);
+
+// Teya's equivalent of sumupCheckouts — one row per charge attempt on a Teya-paired terminal,
+// same reasoning: created before the order is placed, status only ever moved on by re-fetching
+// the truth from Teya's own Get Payment Request endpoint (pollTeyaChargeAction), since there's
+// no confirmed webhook/signature model for Teya either (its SSE "subscribe" stream is the
+// documented push option, not used here — see lib/teya.ts for why polling-only was chosen for
+// this first version). `orderId` is filled in once/if the order actually gets placed, for audit.
+export const teyaPayments = sqliteTable("teya_payments", {
+  id: id(),
+  restaurantId: text("restaurant_id")
+    .notNull()
+    .references(() => restaurants.id, { onDelete: "cascade" }),
+  paymentTerminalId: text("payment_terminal_id")
+    .notNull()
+    .references(() => paymentTerminals.id, { onDelete: "cascade" }),
+  // Teya's own payment_request_id — what every follow-up call (get/cancel) addresses it by.
+  paymentRequestId: text("payment_request_id").notNull(),
+  referenceNumber: text("reference_number"),
+  amount: real("amount").notNull(),
+  currency: text("currency").notNull(),
+  status: text("status", { enum: ["pending", "successful", "failed", "cancelled"] }).notNull().default("pending"),
+  failureReason: text("failure_reason"),
+  orderId: text("order_id").references(() => orders.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at"),
+  updatedAt: int("updated_at"),
+},
+  (table) => [uniqueIndex("teya_payments_payment_request_id_idx").on(table.paymentRequestId)]
 );
 
 // Admin-only alerts surfaced via the Topbar bell — currently just a day's close not balancing

@@ -11,23 +11,32 @@ import {
   updatePaymentTerminalAction,
 } from "@/lib/actions/printers";
 import { pairSumupReaderAction, saveSumupCredentialsAction, unpairSumupReaderAction } from "@/lib/actions/sumup";
+import { connectTeyaTerminalAction, disconnectTeyaTerminalAction, saveTeyaCredentialsAction } from "@/lib/actions/teya";
 import type { PaymentTerminal } from "@/lib/types";
 
 export function PaymentTerminalsClient({
   terminals,
   sumupApiKey,
   sumupMerchantCode,
+  teyaClientId,
+  teyaClientSecret,
+  teyaStoreId,
 }: {
   terminals: PaymentTerminal[];
   sumupApiKey: string;
   sumupMerchantCode: string;
+  teyaClientId: string;
+  teyaClientSecret: string;
+  teyaStoreId: string;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTerminal, setEditingTerminal] = useState<PaymentTerminal | null>(null);
   const [pairingTerminal, setPairingTerminal] = useState<PaymentTerminal | null>(null);
+  const [connectingTeyaTerminal, setConnectingTeyaTerminal] = useState<PaymentTerminal | null>(null);
   const sumupConnected = Boolean(sumupApiKey && sumupMerchantCode);
+  const teyaConnected = Boolean(teyaClientId && teyaClientSecret && teyaStoreId);
 
   function toggle(id: string, active: boolean) {
     startTransition(async () => {
@@ -57,6 +66,13 @@ export function PaymentTerminalsClient({
     });
   }
 
+  function disconnectTeya(id: string) {
+    startTransition(async () => {
+      await disconnectTeyaTerminalAction(id);
+      router.refresh();
+    });
+  }
+
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
@@ -76,6 +92,7 @@ export function PaymentTerminalsClient({
       </div>
 
       <SumupAccountForm sumupApiKey={sumupApiKey} sumupMerchantCode={sumupMerchantCode} />
+      <TeyaAccountForm teyaClientId={teyaClientId} teyaClientSecret={teyaClientSecret} teyaStoreId={teyaStoreId} />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {terminals.map((t) => (
@@ -113,6 +130,11 @@ export function PaymentTerminalsClient({
                     SumUp: {t.sumupReaderStatus ?? "processing"}
                   </span>
                 )}
+                {t.provider === "teya" && (
+                  <span className="inline-block rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">
+                    Teya: connected
+                  </span>
+                )}
               </div>
               <p className="mt-2 max-w-[20ch] text-[11px] text-neutral-400">
                 {t.isDefault
@@ -128,7 +150,7 @@ export function PaymentTerminalsClient({
               >
                 <Pencil className="h-3.5 w-3.5" />
               </button>
-              {t.provider === "sumup" ? (
+              {t.provider === "sumup" && (
                 <button
                   onClick={() => unpair(t.id)}
                   className="flex items-center justify-center gap-1 rounded-lg border border-neutral-200 px-2.5 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
@@ -136,15 +158,35 @@ export function PaymentTerminalsClient({
                 >
                   <Unlink className="h-3 w-3" /> Unpair
                 </button>
-              ) : (
+              )}
+              {t.provider === "teya" && (
                 <button
-                  onClick={() => setPairingTerminal(t)}
-                  disabled={!sumupConnected}
-                  title={sumupConnected ? "Pair a SumUp Solo reader" : "Connect your SumUp account above first"}
-                  className="flex items-center justify-center gap-1 rounded-lg border border-neutral-200 px-2.5 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  onClick={() => disconnectTeya(t.id)}
+                  className="flex items-center justify-center gap-1 rounded-lg border border-neutral-200 px-2.5 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-50"
+                  title="Disconnect this Teya terminal"
                 >
-                  <Link2 className="h-3 w-3" /> Connect SumUp
+                  <Unlink className="h-3 w-3" /> Disconnect
                 </button>
+              )}
+              {!t.provider && (
+                <>
+                  <button
+                    onClick={() => setPairingTerminal(t)}
+                    disabled={!sumupConnected}
+                    title={sumupConnected ? "Pair a SumUp Solo reader" : "Connect your SumUp account above first"}
+                    className="flex items-center justify-center gap-1 rounded-lg border border-neutral-200 px-2.5 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <Link2 className="h-3 w-3" /> Connect SumUp
+                  </button>
+                  <button
+                    onClick={() => setConnectingTeyaTerminal(t)}
+                    disabled={!teyaConnected}
+                    title={teyaConnected ? "Connect a Teya terminal" : "Connect your Teya account above first"}
+                    className="flex items-center justify-center gap-1 rounded-lg border border-neutral-200 px-2.5 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <Link2 className="h-3 w-3" /> Connect Teya
+                  </button>
+                </>
               )}
               {!t.isDefault && (
                 <button
@@ -179,6 +221,141 @@ export function PaymentTerminalsClient({
       {modalOpen && <TerminalModal onClose={() => setModalOpen(false)} />}
       {editingTerminal && <TerminalModal terminal={editingTerminal} onClose={() => setEditingTerminal(null)} />}
       {pairingTerminal && <PairReaderModal terminal={pairingTerminal} onClose={() => setPairingTerminal(null)} />}
+      {connectingTeyaTerminal && (
+        <ConnectTeyaTerminalModal terminal={connectingTeyaTerminal} onClose={() => setConnectingTeyaTerminal(null)} />
+      )}
+    </div>
+  );
+}
+
+function TeyaAccountForm({
+  teyaClientId,
+  teyaClientSecret,
+  teyaStoreId,
+}: {
+  teyaClientId: string;
+  teyaClientSecret: string;
+  teyaStoreId: string;
+}) {
+  const router = useRouter();
+  const [, startTransition] = useTransition();
+  const [clientId, setClientId] = useState(teyaClientId);
+  const [clientSecret, setClientSecret] = useState(teyaClientSecret);
+  const [storeId, setStoreId] = useState(teyaStoreId);
+
+  function save() {
+    startTransition(async () => {
+      await saveTeyaCredentialsAction(clientId, clientSecret, storeId);
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="mb-4 rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
+      <h3 className="mb-1 text-sm font-semibold text-neutral-900">Teya Account</h3>
+      <p className="mb-3 text-xs text-neutral-500">
+        Connect this restaurant&apos;s own Teya account to charge a terminal directly from the Till, instead of
+        running it by hand and logging the amount.
+      </p>
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="min-w-[180px] flex-1">
+          <label className="mb-1 block text-xs font-medium text-neutral-500">Client ID</label>
+          <input
+            value={clientId}
+            onChange={(e) => setClientId(e.target.value)}
+            placeholder="cli_…"
+            className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[var(--brand)]"
+          />
+        </div>
+        <div className="min-w-[180px] flex-1">
+          <label className="mb-1 block text-xs font-medium text-neutral-500">Client Secret</label>
+          <input
+            value={clientSecret}
+            onChange={(e) => setClientSecret(e.target.value)}
+            placeholder="sec_…"
+            className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[var(--brand)]"
+          />
+        </div>
+        <div className="min-w-[160px]">
+          <label className="mb-1 block text-xs font-medium text-neutral-500">Store ID</label>
+          <input
+            value={storeId}
+            onChange={(e) => setStoreId(e.target.value)}
+            placeholder="Store UUID"
+            className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[var(--brand)]"
+          />
+        </div>
+        <button
+          onClick={save}
+          className="rounded-xl bg-[var(--brand)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--brand-dark)]"
+        >
+          Save
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ConnectTeyaTerminalModal({ terminal, onClose }: { terminal: PaymentTerminal; onClose: () => void }) {
+  const router = useRouter();
+  const [, startTransition] = useTransition();
+  const [terminalId, setTerminalId] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  function submit() {
+    if (!terminalId.trim()) {
+      setError("Enter this terminal's Teya terminal id.");
+      return;
+    }
+    setError(null);
+    setPending(true);
+    startTransition(async () => {
+      const result = await connectTeyaTerminalAction(terminal.id, terminalId);
+      setPending(false);
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      router.refresh();
+      onClose();
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-neutral-900">Connect Teya — {terminal.name}</h2>
+          <button onClick={onClose} className="rounded-full p-1 text-neutral-400 hover:bg-neutral-100">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <p className="mb-3 text-sm text-neutral-500">Enter this physical terminal&apos;s id from your Teya account.</p>
+        <input
+          value={terminalId}
+          onChange={(e) => setTerminalId(e.target.value)}
+          placeholder="Terminal id"
+          autoFocus
+          className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+        />
+        {error && <p className="mt-2 text-xs font-medium text-rose-600">{error}</p>}
+        <div className="mt-6 flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-xl border border-neutral-200 py-2.5 text-sm font-medium text-neutral-600 hover:bg-neutral-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={submit}
+            disabled={pending}
+            className="flex-1 rounded-xl bg-[var(--brand)] py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {pending ? "Connecting…" : "Connect"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
