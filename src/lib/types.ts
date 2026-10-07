@@ -12,6 +12,7 @@ import type {
   reservations,
   restaurants,
   shifts,
+  sumupCheckouts,
   tables,
   terminalExpenses,
   terminalPayouts,
@@ -51,6 +52,7 @@ export type InventoryItem = typeof inventoryItems.$inferSelect;
 export type PettyCashEntry = typeof pettyCashEntries.$inferSelect;
 export type TerminalPayout = typeof terminalPayouts.$inferSelect;
 export type TerminalExpense = typeof terminalExpenses.$inferSelect;
+export type SumupCheckout = typeof sumupCheckouts.$inferSelect;
 
 export interface OrderItem {
   dishId: string;
@@ -103,6 +105,21 @@ export const CURRENCY_OPTIONS = [
   { symbol: "₹", label: "₹ Indian Rupee" },
   { symbol: "A$", label: "A$ Australian Dollar" },
 ] as const;
+
+// Card-network APIs (SumUp, etc.) need an ISO 4217 currency code, not the display symbol stored
+// on restaurants.currencySymbol — this is the one place that mapping lives, kept next to the
+// symbol list above so a new currency option is added in both places at once.
+const CURRENCY_SYMBOL_TO_ISO: Record<string, string> = {
+  "£": "GBP",
+  "$": "USD",
+  "€": "EUR",
+  "₹": "INR",
+  "A$": "AUD",
+};
+
+export function currencySymbolToIsoCode(symbol: string): string | null {
+  return CURRENCY_SYMBOL_TO_ISO[symbol] ?? null;
+}
 
 // Each item carries its own snapshotted tax rate (see OrderItem.taxRate) rather than one flat
 // restaurant-wide rate, since different menu categories can be taxed differently. An extra

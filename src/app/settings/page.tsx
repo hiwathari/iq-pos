@@ -53,7 +53,11 @@ export default async function SettingsPage() {
           <PrintersClient printers={printers} />
         </div>
         <div className="border-t border-neutral-100 pt-8">
-          <PaymentTerminalsClient terminals={paymentTerminals} />
+          <PaymentTerminalsClient
+            terminals={paymentTerminals}
+            sumupApiKey={restaurant?.sumupApiKey ?? ""}
+            sumupMerchantCode={restaurant?.sumupMerchantCode ?? ""}
+          />
         </div>
         <div className="border-t border-neutral-100 pt-8">
           <IntegrationsClient integrations={integrations} />

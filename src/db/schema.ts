@@ -66,6 +66,12 @@ export const restaurants = sqliteTable("restaurants", {
   // reset, unlike pendingOpeningBalance. Shown on the Dashboard; doesn't drive any reconciliation
   // math beyond being subtracted from that shift's expected cash, same as cashExpenses.
   envelopeCashBalance: real("envelope_cash_balance").notNull().default(0),
+  // This restaurant's own SumUp merchant account — set in Settings > Payment Terminals, used to
+  // authorize every Cloud API call (pairing a reader, starting/polling a checkout) for any of
+  // this restaurant's terminals with provider "sumup" (see paymentTerminals below). Null until
+  // an admin connects SumUp; every existing terminal keeps working exactly as before either way.
+  sumupApiKey: text("sumup_api_key"),
+  sumupMerchantCode: text("sumup_merchant_code"),
   createdAt: timestamp("created_at"),
 },
   (table) => [uniqueIndex("restaurants_custom_domain_idx").on(table.customDomain)]
@@ -406,7 +412,52 @@ export const paymentTerminals = sqliteTable("payment_terminals", {
   // trailing 14 days for that role. At most one terminal per restaurant should have this set;
   // enforced in code (setDefaultPaymentTerminalAction), not at the DB level.
   isDefault: int("is_default", { mode: "boolean" }).default(false),
+  // Which card-machine API (if any) actually processes a payment when this terminal is tapped on
+  // the Till, instead of staff running the physical machine out-of-band and just logging the
+  // amount here. Null (every terminal today) means "manual" — unchanged behavior. "sumup" means
+  // a paired SumUp Solo reader (sumupReaderId) is charged directly.
+  provider: text("provider", { enum: ["sumup"] }),
+  // The SumUp Cloud API reader this terminal is paired to — set once pairSumupReaderAction
+  // succeeds, authorized against the restaurant's own sumupApiKey/sumupMerchantCode above. Null
+  // until paired, or if this terminal isn't a SumUp one.
+  sumupReaderId: text("sumup_reader_id"),
+  // Mirrors SumUp's own reader status ("processing" while the physical device confirms pairing,
+  // "paired" once it has, "expired" if the pairing code timed out) so Settings can show it
+  // without an extra live API call on every page load.
+  sumupReaderStatus: text("sumup_reader_status", { enum: ["processing", "paired", "expired"] }),
 });
+
+// One attempt to charge a SumUp Solo reader from the Till — created the moment
+// startSumupChargeAction asks SumUp to begin, long before (if ever) the resulting order is
+// placed, since staff see the card result before they place the order. `status` starts "pending"
+// and is only ever moved to a terminal state by re-fetching the truth from SumUp's own Get
+// Checkout endpoint (via pollSumupChargeAction or the webhook) — never trusted from a payload
+// alone, per SumUp's own guidance to always verify a webhook against their API. `orderId` is
+// filled in once/if the order this charge was for actually gets placed, purely for audit —
+// nothing reads it back out today.
+export const sumupCheckouts = sqliteTable("sumup_checkouts", {
+  id: id(),
+  restaurantId: text("restaurant_id")
+    .notNull()
+    .references(() => restaurants.id, { onDelete: "cascade" }),
+  paymentTerminalId: text("payment_terminal_id")
+    .notNull()
+    .references(() => paymentTerminals.id, { onDelete: "cascade" }),
+  // SumUp's own identifiers for this checkout — checkoutId is what every follow-up call
+  // (poll/terminate) addresses it by; clientTransactionId is kept alongside since SumUp's
+  // webhook payload keys off that name instead.
+  checkoutId: text("checkout_id").notNull(),
+  clientTransactionId: text("client_transaction_id"),
+  amount: real("amount").notNull(),
+  currency: text("currency").notNull(),
+  status: text("status", { enum: ["pending", "successful", "failed", "cancelled"] }).notNull().default("pending"),
+  failureReason: text("failure_reason"),
+  orderId: text("order_id").references(() => orders.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at"),
+  updatedAt: int("updated_at"),
+},
+  (table) => [uniqueIndex("sumup_checkouts_checkout_id_idx").on(table.checkoutId)]
+);
 
 // Admin-only alerts surfaced via the Topbar bell — currently just a day's close not balancing
 // (see notifyIfShiftDidNotBalance in lib/actions/shifts.ts), but a generic title/body/link shape
