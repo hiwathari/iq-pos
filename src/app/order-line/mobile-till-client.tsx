@@ -18,6 +18,7 @@ import {
   Store,
   Users,
   UtensilsCrossed,
+  Wallet,
 } from "lucide-react";
 
 const TABLE_AREAS = ["Ground Floor", "1st Floor", "Basement"] as const;
@@ -34,6 +35,12 @@ interface SimpleCart {
   items: OrderItem[];
   customerName: string;
   customerPhone: string;
+  // Null (the default) keeps today's behavior — unpaid, sent to kitchen, settled later on the
+  // Full Till. "Cash" marks it paid in full immediately, which is what lets a cafe-type
+  // restaurant's auto-serve shortcut (see placeOrderAction) actually trigger from this screen —
+  // card payments still require the Full Till, since those go through a live terminal charge
+  // (SumUp/Teya) that this simplified flow has no room to wait on.
+  paymentMethod: "Cash" | null;
 }
 
 const emptyCart: SimpleCart = {
@@ -46,6 +53,7 @@ const emptyCart: SimpleCart = {
   items: [],
   customerName: "",
   customerPhone: "",
+  paymentMethod: null,
 };
 
 // Matches the Till's own definition — a paid-and-served order is done, so tapping its table
@@ -142,6 +150,7 @@ export function MobileTillClient({
         items: activeOrder.items.map((i) => ({ ...i })),
         customerName: "",
         customerPhone: "",
+        paymentMethod: null,
       });
     } else {
       setCart((c) => ({ ...emptyCart, channel: "Dine in", tableId: table.id, tableNumber: table.number, guests: c.guests }));
@@ -197,7 +206,7 @@ export function MobileTillClient({
         channel: cart.channel,
         thirdPartyProvider: cart.channel === "Third Party" ? cart.thirdPartyProvider : undefined,
         items: cart.items,
-        payments: [],
+        payments: cart.paymentMethod ? [{ method: cart.paymentMethod, amount: total }] : [],
         customerName: cart.customerName.trim() || undefined,
         customerPhone: cart.customerPhone.trim() || undefined,
       });
@@ -486,7 +495,29 @@ export function MobileTillClient({
                 <span>{formatMoney(total, currencySymbol)}</span>
               </div>
             </div>
-            <p className="mt-3 text-center text-xs text-neutral-400">Payment is taken at the till — this just sends the order to the kitchen.</p>
+            <div className="mt-3 flex items-center gap-2 rounded-xl border border-neutral-200 p-1">
+              <button
+                onClick={() => setCart((c) => ({ ...c, paymentMethod: null }))}
+                className={`flex-1 rounded-lg py-2 text-sm font-semibold ${
+                  cart.paymentMethod === null ? "bg-[var(--brand)] text-white" : "text-neutral-500"
+                }`}
+              >
+                Pay Later
+              </button>
+              <button
+                onClick={() => setCart((c) => ({ ...c, paymentMethod: "Cash" }))}
+                className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold ${
+                  cart.paymentMethod === "Cash" ? "bg-[var(--brand)] text-white" : "text-neutral-500"
+                }`}
+              >
+                <Wallet className="h-4 w-4" /> Cash
+              </button>
+            </div>
+            <p className="mt-2 text-center text-xs text-neutral-400">
+              {cart.paymentMethod
+                ? "Marked paid in full — card payments need the Full Till instead."
+                : "Payment can be taken at the till later — this just sends the order to the kitchen."}
+            </p>
           </div>
           <div className="border-t border-neutral-200 bg-white p-3">
             <button
@@ -494,7 +525,7 @@ export function MobileTillClient({
               disabled={cart.items.length === 0 || sending}
               className="w-full rounded-2xl bg-[var(--brand)] py-4 text-base font-bold text-white active:scale-95 disabled:bg-neutral-300"
             >
-              {sending ? "Sending…" : "Send to Kitchen"}
+              {sending ? "Sending…" : cart.paymentMethod ? "Place Order" : "Send to Kitchen"}
             </button>
             <button onClick={startOver} className="mt-2 w-full py-2 text-center text-xs font-medium text-neutral-400">
               Cancel this order

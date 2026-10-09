@@ -215,6 +215,12 @@ export function OrderLineClient({
     return emptyCart;
   });
 
+  // Recalling an already-paid order (e.g. from Till History) loads its real payment lines into
+  // the cart — this keeps the Payment Method section locked to a read-only summary of what was
+  // actually taken instead of showing live, tappable payment buttons on a settled order, until
+  // staff explicitly ask to redo it. Reset on every loadOrderIntoCart, since that's the only
+  // place a different order (closed-out or not) gets loaded in.
+  const [forcePaymentEdit, setForcePaymentEdit] = useState(false);
   const [view, setView] = useState<TillView>("order");
   // Which business day the History view shows — defaults to today, with a filter to look back at
   // a previous day's closed-out/voided orders without the list growing unbounded forever.
@@ -433,6 +439,7 @@ export function OrderLineClient({
   }
 
   const editingOrder = cart.editingOrderId ? orders.find((o) => o.id === cart.editingOrderId) : null;
+  const paymentLocked = !!editingOrder && isOrderClosedOut(editingOrder) && !forcePaymentEdit;
 
   // Only merges into an existing line for this dish if that line has no note — a line that
   // already carries a comment (e.g. "no onions") never silently absorbs another tap and becomes
@@ -520,6 +527,7 @@ export function OrderLineClient({
       loyaltyContact: "",
       loyaltyMember: order.loyaltyMemberId ? { id: order.loyaltyMemberId, code: "", name: null } : null,
     });
+    setForcePaymentEdit(false);
     setCouponError(null);
     setLoyaltyError(null);
     setTableEditorOpen(false);
@@ -690,6 +698,8 @@ export function OrderLineClient({
     cart,
     setCart,
     editingOrder,
+    paymentLocked,
+    onUnlockPayment: () => setForcePaymentEdit(true),
     tableEditorOpen,
     setTableEditorOpen,
     tablePickerOpen,
@@ -1114,6 +1124,8 @@ interface CartPanelProps {
   cart: CartState;
   setCart: React.Dispatch<React.SetStateAction<CartState>>;
   editingOrder: Order | null | undefined;
+  paymentLocked: boolean;
+  onUnlockPayment: () => void;
   tableEditorOpen: boolean;
   setTableEditorOpen: (v: boolean | ((v: boolean) => boolean)) => void;
   tablePickerOpen: boolean;
@@ -1158,6 +1170,8 @@ function CartPanel({
   cart,
   setCart,
   editingOrder,
+  paymentLocked,
+  onUnlockPayment,
   tableEditorOpen,
   setTableEditorOpen,
   tablePickerOpen,
@@ -1674,30 +1688,49 @@ function CartPanel({
         </div>
 
         <div className="mt-4">
-          <h3 className="mb-2 text-sm font-semibold text-neutral-900">Payment Method</h3>
-          <p className="mb-2 text-xs text-neutral-400">
-            Tap a method to apply it, tap again to cancel it — tap more than one to split the bill across them.
-          </p>
-          <div className="grid grid-cols-3 gap-2">
-            <PaymentButton
-              icon={Wallet}
-              label="Cash"
-              active={cart.payments.some((p) => p.method === "Cash")}
-              onClick={() => togglePaymentLine("Cash")}
-            />
-            {paymentTerminals.map((t) => (
-              <PaymentButton
-                key={t.id}
-                icon={CreditCard}
-                logoUrl={t.logoUrl}
-                label={t.name}
-                active={cart.payments.some((p) => p.method === t.name)}
-                onClick={() => tapTerminal(t)}
-              />
-            ))}
-          </div>
+          <h3 className="mb-2 text-sm font-semibold text-neutral-900">{paymentLocked ? "Payment Taken" : "Payment Method"}</h3>
+          {paymentLocked ? (
+            <div className="space-y-2 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+              {cart.payments.map((p) => (
+                <div key={p.method} className="flex items-center justify-between text-sm">
+                  <span className="font-semibold text-neutral-700">{p.method}</span>
+                  <span className="font-semibold text-neutral-900">{formatMoney(p.amount, currencySymbol)}</span>
+                </div>
+              ))}
+              <button
+                onClick={onUnlockPayment}
+                className="mt-1 w-full rounded-lg border border-neutral-200 bg-white py-1.5 text-xs font-semibold text-neutral-600 hover:bg-neutral-50"
+              >
+                Redo Payment
+              </button>
+            </div>
+          ) : (
+            <>
+              <p className="mb-2 text-xs text-neutral-400">
+                Tap a method to apply it, tap again to cancel it — tap more than one to split the bill across them.
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                <PaymentButton
+                  icon={Wallet}
+                  label="Cash"
+                  active={cart.payments.some((p) => p.method === "Cash")}
+                  onClick={() => togglePaymentLine("Cash")}
+                />
+                {paymentTerminals.map((t) => (
+                  <PaymentButton
+                    key={t.id}
+                    icon={CreditCard}
+                    logoUrl={t.logoUrl}
+                    label={t.name}
+                    active={cart.payments.some((p) => p.method === t.name)}
+                    onClick={() => tapTerminal(t)}
+                  />
+                ))}
+              </div>
+            </>
+          )}
 
-          {cart.payments.length > 0 && (
+          {!paymentLocked && cart.payments.length > 0 && (
             <div className="mt-3 space-y-2 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
               {cart.payments.map((p) => (
                 <div key={p.method} className="space-y-1.5">
