@@ -35,11 +35,11 @@ interface SimpleCart {
   items: OrderItem[];
   customerName: string;
   customerPhone: string;
-  // Null (the default) keeps today's behavior — unpaid, sent to kitchen, settled later on the
-  // Full Till. "Cash" marks it paid in full immediately, which is what lets a cafe-type
-  // restaurant's auto-serve shortcut (see placeOrderAction) actually trigger from this screen —
-  // card payments still require the Full Till, since those go through a live terminal charge
-  // (SumUp/Teya) that this simplified flow has no room to wait on.
+  // Null (the default) keeps today's behavior — unpaid, settled later on the Full Till. "Cash"
+  // marks it paid in full immediately so it shows correctly in Reports/shift reconciliation —
+  // the order still goes "In Kitchen" either way; placeOrderAction has no serve-on-payment
+  // shortcut today. Card payments aren't offered here since those go through a live terminal
+  // charge (SumUp/Teya) that this simplified flow has no room to wait on; use the Full Till.
   paymentMethod: "Cash" | null;
 }
 
