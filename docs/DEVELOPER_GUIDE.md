@@ -384,9 +384,20 @@ isn't running or isn't reachable, the browser print dialog still opens exactly a
 Settings → Printers has a "Connect Local Network Print" control per (non-display) printer — IP +
 optional port (defaults to 9100), plus a **Test Print** button that exercises the whole chain.
 
-⚠️ **Private Network Access**: some browsers restrict an HTTPS page calling an `http://localhost`
-endpoint; if a Test Print silently does nothing, check the browser console for a blocked/CORS
-warning first before assuming the bridge itself is broken.
+⚠️ **Private Network Access**: Chrome requires the bridge's preflight OPTIONS response to include
+`Access-Control-Allow-Private-Network: true` before it'll let an HTTPS page (the Till, served from
+the production domain) call an `http://127.0.0.1` endpoint at all — without it, the browser fails
+the request silently ("Failed to fetch", nothing useful in the bridge's own logs, since the
+preflight succeeds and only the *real* request gets blocked client-side). `local-print-bridge.js`
+sends this header on every response; if a Test Print still fails after confirming the bridge is
+running, check the browser console for a Private-Network/CORS warning before assuming anything
+else is broken.
+
+⚠️ **Test Print only ever works from the Till device itself** — the bridge call targets
+`127.0.0.1` (loopback) by design, so it only succeeds on whatever device is actually running
+`local-print-bridge.js`. Testing from a different computer (e.g. opening Settings on a laptop)
+will always fail with no bridge listening on *that* machine's `127.0.0.1` — that's expected, not a
+bug, and isn't evidence the bridge or printer setup is wrong.
 
 ## 8. Payment / Card-Machine Integrations
 
@@ -625,6 +636,14 @@ conversation says so.
 > **Instruction for every future change:** add a dated entry here (newest on top), *and* update
 > whichever numbered section above actually describes the thing you changed. A change without
 > both halves is not done.
+
+### 2026-10-12 (later still) — Fix: bridge needed Private Network Access header
+- `scripts/local-print-bridge.js` now sends `Access-Control-Allow-Private-Network: true` on every
+  response — without it, Chrome on the Till silently blocked the real POST to `127.0.0.1:9200`
+  after a successful preflight, surfacing only as a generic "Failed to fetch" with nothing useful
+  logged on the bridge side. Found by testing Test Print from the actual Till device (testing from
+  an unrelated laptop also failed, but that's expected — see §7.8, loopback-only by design).
+- §7.8 updated with both caveats so this doesn't get re-debugged from scratch next time.
 
 ### 2026-10-12 (later same day) — Local network print bridge (the path actually used)
 - Sunmi's Cloud Print partner channel turned out to be a dead end for this account (see below) —

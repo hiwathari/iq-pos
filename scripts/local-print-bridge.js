@@ -30,6 +30,13 @@ function sendJson(res, status, body) {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
+    // Required for Chrome's Private Network Access policy: an HTTPS page (the Till, served from
+    // the production domain) calling an http://127.0.0.1 endpoint sends a preflight OPTIONS first
+    // and Chrome silently fails the real request ("Failed to fetch", no network error logged
+    // server-side) unless the preflight response includes this exact header. Without it, the
+    // bridge looks like it's working (it's listening, curl/Postman can reach it fine) while the
+    // browser itself refuses to ever send the real POST.
+    "Access-Control-Allow-Private-Network": "true",
   });
   res.end(JSON.stringify(body));
 }
