@@ -28,6 +28,8 @@ import type { LoyaltyContactType } from "@/lib/types";
 import { setTableStatusAction } from "@/lib/actions/tables";
 import { setDishStockAction } from "@/lib/actions/menu";
 import { printTicket } from "@/lib/print-ticket";
+import { buildTicketEscPosAction } from "@/lib/actions/local-print";
+import { printViaLocalBridge } from "@/lib/local-print-bridge";
 import { tableOrderQrDataUrl } from "@/lib/table-qr";
 import { unlockOrderAudio, playNewOrderChime, playOrderReadyChime } from "@/lib/order-sounds";
 import { useVisibleInterval } from "@/lib/use-visible-interval";
@@ -183,6 +185,7 @@ export function OrderLineClient({
   invoiceFooterText,
   openTime,
   timezone,
+  localPrintTarget,
 }: {
   categories: Category[];
   dishes: Dish[];
@@ -200,6 +203,7 @@ export function OrderLineClient({
   invoiceFooterText: string;
   openTime: string | null;
   timezone: string;
+  localPrintTarget: { ip: string; port: number | null } | null;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -692,6 +696,31 @@ export function OrderLineClient({
       invoiceLogoUrl,
       invoiceFooterText,
     });
+
+    // Best-effort, silent second print to the local network printer bridge (see
+    // docs/DEVELOPER_GUIDE.md §7.7) alongside the browser print dialog above — fires only when
+    // the restaurant's default printer has a local IP configured in Settings, and never blocks or
+    // interrupts the Till if the bridge isn't running/reachable.
+    if (localPrintTarget) {
+      buildTicketEscPosAction({
+        restaurantName,
+        orderNumber: editingOrder?.orderNumber ?? "NEW",
+        createdAt: editingOrder?.createdAt ?? Date.now(),
+        tableNumber: cart.tableNumber,
+        channel: cart.channel,
+        items: cart.items,
+        subtotal,
+        extraDiscount: extraDiscountAmount || undefined,
+        couponDiscount: couponDiscountAmount || undefined,
+        tax,
+        total,
+        currencySymbol,
+        payments: cart.payments.length > 0 ? cart.payments : undefined,
+        footerText: invoiceFooterText,
+      })
+        .then(({ hex }) => printViaLocalBridge({ printerIp: localPrintTarget.ip, printerPort: localPrintTarget.port, escposHex: hex }))
+        .catch((err) => console.warn("Local print bridge unreachable — browser print still shown.", err));
+    }
   }
 
   const cartPanelProps = {

@@ -67,6 +67,27 @@ export async function deletePrinterAction(printerId: string) {
   revalidatePath("/settings");
 }
 
+// Saving a non-empty IP doesn't call anything external (unlike Sunmi's printerAdd) — raw network
+// printing has no account/binding step, so this just records where to send bytes. Validate at
+// save time with a quick connection check isn't done here since the printer may be briefly
+// offline without that being this field's problem; use "Test Print" to actually confirm.
+export async function saveLocalPrinterAction(printerId: string, ip: string, port: string): Promise<PrinterActionState> {
+  const { session, restaurantId } = await requireRestaurantContext();
+  await assertPermission(session, "settings");
+  const trimmedIp = ip.trim();
+  const parsedPort = port.trim() ? Number(port.trim()) : null;
+  if (parsedPort !== null && (!Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65535)) {
+    return { error: "Port must be a number between 1 and 65535." };
+  }
+  await db
+    .update(printers)
+    .set({ localPrinterIp: trimmedIp || null, localPrinterPort: trimmedIp ? parsedPort : null })
+    .where(and(eq(printers.id, printerId), eq(printers.restaurantId, restaurantId)));
+  revalidatePath("/settings");
+  revalidatePath("/order-line");
+  return {};
+}
+
 export async function setDefaultPrinterAction(printerId: string) {
   const { session, restaurantId } = await requireRestaurantContext();
   await assertPermission(session, "settings");

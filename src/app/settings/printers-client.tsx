@@ -2,9 +2,17 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Bluetooth, Cable, Cloud, Monitor, Plus, Star, Trash2, Wifi, X } from "lucide-react";
-import { createPrinterAction, deletePrinterAction, setDefaultPrinterAction, togglePrinterActiveAction } from "@/lib/actions/printers";
+import { Bluetooth, Cable, Cloud, Monitor, Plus, Router, Star, Trash2, Wifi, X } from "lucide-react";
+import {
+  createPrinterAction,
+  deletePrinterAction,
+  saveLocalPrinterAction,
+  setDefaultPrinterAction,
+  togglePrinterActiveAction,
+} from "@/lib/actions/printers";
 import { saveSunmiPrinterSnAction, sendSunmiTestPrintAction } from "@/lib/actions/sunmi-print";
+import { buildTicketEscPosAction } from "@/lib/actions/local-print";
+import { printViaLocalBridge } from "@/lib/local-print-bridge";
 import type { Printer, PrinterConnection, PrinterKind, PrinterStation } from "@/lib/types";
 
 const STATIONS: PrinterStation[] = ["Kitchen", "Bar", "Receipt", "Expo"];
@@ -93,7 +101,12 @@ export function PrintersClient({ printers }: { printers: Printer[] }) {
                     </span>
                   )}
                 </div>
-                {p.kind !== "display" && <SunmiCloudPrintRow printer={p} />}
+                {p.kind !== "display" && (
+                  <>
+                    <LocalNetworkPrintRow printer={p} />
+                    <SunmiCloudPrintRow printer={p} />
+                  </>
+                )}
               </div>
               <div className="flex flex-col gap-1.5">
                 {!p.isDefault && (p.kind === "printer" || p.kind === "both") && (
@@ -128,6 +141,136 @@ export function PrintersClient({ printers }: { printers: Printer[] }) {
       </div>
 
       {modalOpen && <AddPrinterModal onClose={() => setModalOpen(false)} />}
+    </div>
+  );
+}
+
+// Inline per-printer local-network print control — raw ESC/POS over TCP:9100, the path that
+// actually works without any vendor cloud account (see docs/DEVELOPER_GUIDE.md §7.7). Needs a
+// small local bridge program running on the same network as the printer (scripts/local-print-bridge.js)
+// since the browser itself can't open the raw socket — Test Print exercises that whole chain.
+function LocalNetworkPrintRow({ printer }: { printer: Printer }) {
+  const router = useRouter();
+  const [, startTransition] = useTransition();
+  const [editing, setEditing] = useState(!printer.localPrinterIp);
+  const [ip, setIp] = useState(printer.localPrinterIp ?? "");
+  const [port, setPort] = useState(printer.localPrinterPort?.toString() ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const [testResult, setTestResult] = useState<"sent" | "error" | null>(null);
+
+  function save() {
+    setError(null);
+    setPending(true);
+    startTransition(async () => {
+      const result = await saveLocalPrinterAction(printer.id, ip, port);
+      setPending(false);
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      setEditing(false);
+      router.refresh();
+    });
+  }
+
+  function sendTestPrint() {
+    setTestResult(null);
+    setError(null);
+    setPending(true);
+    startTransition(async () => {
+      try {
+        const { hex } = await buildTicketEscPosAction({
+          restaurantName: "IQ POS",
+          orderNumber: "TEST",
+          createdAt: Date.now(),
+          tableNumber: null,
+          channel: "Test Print",
+          items: [{ name: "Test ticket", qty: 1, price: 0 }],
+          subtotal: 0,
+          tax: 0,
+          total: 0,
+          currencySymbol: "",
+          footerText: "This is a test print from IQ POS Settings.",
+        });
+        await printViaLocalBridge({ printerIp: printer.localPrinterIp!, printerPort: printer.localPrinterPort, escposHex: hex });
+        setTestResult("sent");
+      } catch (err) {
+        setTestResult("error");
+        setError(err instanceof Error ? err.message : "Couldn't reach the local print bridge.");
+      } finally {
+        setPending(false);
+      }
+    });
+  }
+
+  if (!printer.localPrinterIp && !editing) {
+    return (
+      <button
+        onClick={() => setEditing(true)}
+        className="mt-2 flex items-center gap-1 text-xs font-medium text-neutral-400 hover:text-neutral-600"
+      >
+        <Router className="h-3 w-3" /> Connect Local Network Print
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-2 rounded-lg bg-neutral-50 p-2">
+      {editing ? (
+        <div className="flex items-center gap-1.5">
+          <input
+            value={ip}
+            onChange={(e) => setIp(e.target.value.trim())}
+            placeholder="Printer IP"
+            className="w-24 rounded-md border border-neutral-200 px-2 py-1 text-xs outline-none focus:border-teal-500"
+          />
+          <input
+            value={port}
+            onChange={(e) => setPort(e.target.value.replace(/\D/g, ""))}
+            placeholder="9100"
+            inputMode="numeric"
+            className="w-14 rounded-md border border-neutral-200 px-2 py-1 text-xs outline-none focus:border-teal-500"
+          />
+          <button
+            onClick={save}
+            disabled={pending || !ip.trim()}
+            className="rounded-md bg-[var(--brand)] px-2 py-1 text-xs font-semibold text-white disabled:opacity-40"
+          >
+            Save
+          </button>
+          {printer.localPrinterIp && (
+            <button
+              onClick={() => {
+                setEditing(false);
+                setIp(printer.localPrinterIp ?? "");
+                setPort(printer.localPrinterPort?.toString() ?? "");
+                setError(null);
+              }}
+              className="rounded-md border border-neutral-200 px-2 py-1 text-xs text-neutral-500"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="flex items-center justify-between gap-2">
+          <span className="flex items-center gap-1 text-xs font-medium text-neutral-600">
+            <Router className="h-3 w-3 text-teal-600" /> {printer.localPrinterIp}:{printer.localPrinterPort || 9100}
+          </span>
+          <div className="flex gap-1.5">
+            <button onClick={sendTestPrint} disabled={pending} className="rounded-md border border-neutral-200 px-2 py-1 text-xs text-neutral-600 hover:bg-white">
+              Test Print
+            </button>
+            <button onClick={() => setEditing(true)} className="rounded-md border border-neutral-200 px-2 py-1 text-xs text-neutral-600 hover:bg-white">
+              Edit
+            </button>
+          </div>
+        </div>
+      )}
+      {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
+      {testResult === "sent" && <p className="mt-1 text-xs text-emerald-600">Test ticket sent — check the printer.</p>}
+      <p className="mt-1 text-[10px] text-neutral-400">Requires the local print bridge running (see docs/DEVELOPER_GUIDE.md §7.7).</p>
     </div>
   );
 }

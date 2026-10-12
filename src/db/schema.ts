@@ -406,7 +406,20 @@ export const printers = sqliteTable(
     // makes this entry eligible for cloud printing (see lib/sunmi-print.ts) alongside/instead of
     // the existing browser-print flow — same opt-in-by-presence pattern as
     // paymentTerminals.provider. Null for every printer that doesn't use Sunmi Cloud Print.
+    // UNUSED IN PRACTICE as of 2026-10-12 — see localPrinterIp below, which is what every
+    // restaurant actually uses today (Sunmi's cloud partner channel was never enabled).
     sunmiSn: text("sunmi_sn"),
+    // This printer's local network address for raw ESC/POS printing over TCP — the long-standing
+    // "JetDirect"/port-9100 standard most thermal/receipt printers support regardless of any
+    // vendor cloud service. Set once an admin confirms the printer accepts a direct network
+    // connection on that port and enters its IP here. A browser can't open a raw socket itself —
+    // see lib/local-print-bridge.ts and docs/DEVELOPER_GUIDE.md §7.7 for the small local bridge
+    // program that actually forwards the bytes. Null for every printer still on plain browser
+    // print (the default — lib/print-ticket.ts).
+    localPrinterIp: text("local_printer_ip"),
+    // Defaults to 9100 in application code when null — the de facto standard raw ESC/POS port, so
+    // most printers never need this set explicitly.
+    localPrinterPort: int("local_printer_port"),
   },
   (table) => [uniqueIndex("printers_pin_idx").on(table.pin)]
 );

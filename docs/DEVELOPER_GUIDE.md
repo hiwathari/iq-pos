@@ -348,9 +348,45 @@ once — shared across every restaurant — after registering as a partner at
 per-restaurant credential an admin enters in Settings, unlike SumUp/Teya. `shop_id` in Sunmi's API
 is just each restaurant's own `id` — nothing to look up or configure separately.
 
-**Current status (written before this integration was ever run against a real device or Sunmi's
-sandbox):** code-complete but unverified — see the "Known Gaps" entry in §13 before assuming this
-is working in production for any restaurant.
+**Current status: not in use.** Sunmi's Cloud Print partner channel requires an enablement step on
+Sunmi's side that wasn't self-serve for this account, so no `app_id`/`app_key` were ever issued —
+see §13. **Local network printing (below) is what's actually used instead.**
+
+### 7.8 Printing, in practice: local network print via a bridge program
+
+A third path, built after Sunmi's cloud channel turned out to be a dead end — and the one
+actually in use. It needs no vendor account at all, only confirms one fact: most thermal/receipt
+printers (the Sunmi NT311 included, confirmed by testing) accept a direct, unauthenticated raw
+ESC/POS connection on **TCP port 9100** — the decades-old "JetDirect" standard — to anything on
+the same local network, completely independent of any cloud service.
+
+The catch: a **browser cannot open a raw TCP socket**, so the Till's own page can't talk to
+`printer-ip:9100` directly. The fix is `scripts/local-print-bridge.js` — a tiny, dependency-free
+standalone Node program (built from `src/lib/escpos-ticket.ts`'s same ESC/POS output) that:
+
+1. Runs on **any device on the same local network as the printer** — the simplest and recommended
+   setup is directly on the Till itself via **Termux** (a terminal/Node runtime app for Android;
+   `pkg install nodejs` then `node local-print-bridge.js`), since the Till is usually already a
+   Sunmi Android device sitting on that same WiFi.
+2. Listens on `http://127.0.0.1:9200` for a plain HTTP POST from the Till's own browser (a
+   same-device/loopback call, not a vendor API call).
+3. Opens a raw TCP socket to the printer's local IP on port 9100 (or whatever's configured) and
+   writes the hex-decoded ESC/POS bytes straight through.
+
+End-to-end flow when staff tap Print on the Till (`order-line-client.tsx`'s `handlePrint`):
+`lib/actions/local-print.ts` (`buildTicketEscPosAction`, a thin server-action wrapper around
+`buildEscPosTicket`) → `lib/local-print-bridge.ts` (`printViaLocalBridge`, a plain client-side
+`fetch` to the bridge) → the bridge → the printer. This fires **alongside**, not instead of, the
+existing browser-print popup (`lib/print-ticket.ts`) — silently, best-effort, and only when the
+restaurant's **default** printer (`printers.isDefault`) has `localPrinterIp` set; if the bridge
+isn't running or isn't reachable, the browser print dialog still opens exactly as it always has.
+
+Settings → Printers has a "Connect Local Network Print" control per (non-display) printer — IP +
+optional port (defaults to 9100), plus a **Test Print** button that exercises the whole chain.
+
+⚠️ **Private Network Access**: some browsers restrict an HTTPS page calling an `http://localhost`
+endpoint; if a Test Print silently does nothing, check the browser console for a blocked/CORS
+warning first before assuming the bridge itself is broken.
 
 ## 8. Payment / Card-Machine Integrations
 
@@ -432,7 +468,8 @@ don't assume a change to one automatically applies to the other.
 | Inventory | `app/inventory/` | `lib/actions/inventory.ts` | `lib/data/inventory.ts` |
 | Staff & permissions | `app/settings/staff-client.tsx` | `lib/actions/staff.ts` | `lib/data/staff.ts` |
 | Printers / Kitchen Displays | `app/settings/printers-client.tsx` | `lib/actions/printers.ts` | `lib/data/printers.ts` |
-| Sunmi Cloud Print (§7.7) | `app/settings/printers-client.tsx` (`SunmiCloudPrintRow`) | `lib/actions/sunmi-print.ts` | `lib/data/sunmi-print.ts`, `lib/sunmi-print.ts`, `lib/escpos-ticket.ts`, `app/api/sunmi/printTicket/*` |
+| Local network print (§7.8 — the one actually in use) | `app/settings/printers-client.tsx` (`LocalNetworkPrintRow`), `scripts/local-print-bridge.js` | `lib/actions/printers.ts` (`saveLocalPrinterAction`), `lib/actions/local-print.ts` | `lib/local-print-bridge.ts`, `lib/escpos-ticket.ts` |
+| Sunmi Cloud Print (§7.7 — built, not in use) | `app/settings/printers-client.tsx` (`SunmiCloudPrintRow`) | `lib/actions/sunmi-print.ts` | `lib/data/sunmi-print.ts`, `lib/sunmi-print.ts`, `app/api/sunmi/printTicket/*` |
 | Payment terminals (incl. SumUp/Teya) | `app/settings/payment-terminals-client.tsx` | `lib/actions/sumup.ts`, `teya.ts` | `lib/data/sumup.ts`, `teya.ts` |
 | Restaurant settings | `app/settings/restaurant-client.tsx` | `lib/actions/restaurants.ts` | — |
 | Integrations (delivery platforms) | `app/settings/integrations-client.tsx` | — | — *(see §13 — not wired to a real API)* |
@@ -568,22 +605,44 @@ conversation says so.
   started).
 - **Admin-managed loyalty offers** (e.g. "spend £50, get a free item") — not built; loyalty today
   is enrollment + lookup only, no rewards logic.
-- **Sunmi Cloud Print (§7.7) is code-complete but unverified and not wired into any order-placing
-  flow yet.** It was built from Sunmi's documented API spec alone — no `app_id`/`app_key` had been
-  issued and no real device/sandbox call had been made at the time it was written. Specifically
-  unconfirmed: the exact base path Sunmi expects when registering our callback URL (their doc
-  doesn't show one), and whether the ESC/POS formatting in `lib/escpos-ticket.ts` actually renders
-  correctly on a real Sunmi printer. Use the "Test Print" button in Settings → Printers to verify
-  end-to-end once `SUNMI_CLOUD_PRINT_APP_ID`/`SUNMI_CLOUD_PRINT_APP_KEY` are set, **before**
-  assuming any restaurant can rely on it. It also isn't called automatically when an order is
-  placed/sent to kitchen — today it only fires via the explicit Test Print button; wiring it into
-  the real order-to-kitchen/receipt flow is separate, not-yet-done work.
+- **Sunmi Cloud Print (§7.7) is built but not in use and likely never will be for this account.**
+  Sunmi's Cloud Print partner channel needed an enablement step beyond self-serve partner
+  registration, and that was never obtained. The code is left in place (harmless, inert without
+  `SUNMI_CLOUD_PRINT_APP_ID`/`KEY`) in case a future restaurant's Sunmi partner account does get it
+  enabled, but **local network printing (§7.8) is the real, working path** — don't assume the
+  Sunmi cloud route is what's printing tickets for any restaurant.
+- **Local network print (§7.8) only auto-fires from the full desktop Till's Print button today**,
+  guarded by the restaurant's *default* printer having a `localPrinterIp` set — it isn't wired
+  into Kitchen Display ticket printing or the mobile/Simple Till (which has no print button at
+  all). It's also only ever a *second*, best-effort print alongside the existing browser-print
+  popup, never a replacement for it — if the local bridge isn't running, nothing about today's
+  printing behavior changes. The bridge program itself (`scripts/local-print-bridge.js`) has to be
+  kept running by the restaurant (e.g. a persistent Termux session on the Till) — there's no
+  supervision/auto-restart built in if it crashes or the device reboots.
 
 ## 14. Changelog
 
 > **Instruction for every future change:** add a dated entry here (newest on top), *and* update
 > whichever numbered section above actually describes the thing you changed. A change without
 > both halves is not done.
+
+### 2026-10-12 (later same day) — Local network print bridge (the path actually used)
+- Sunmi's Cloud Print partner channel turned out to be a dead end for this account (see below) —
+  no self-serve way to get `app_id`/`app_key`. Pivoted to a much simpler alternative: the Sunmi
+  NT311 (and most thermal printers) accept raw ESC/POS directly over TCP port 9100 on the local
+  network, confirmed by testing against the real device.
+- New: `scripts/local-print-bridge.js` (standalone, dependency-free Node program — not part of
+  the Next.js app — run on any device on the same LAN as the printer, e.g. via Termux on the Till
+  itself), `lib/local-print-bridge.ts` (client-side fetch to that bridge),
+  `lib/actions/local-print.ts` (`buildTicketEscPosAction`, reuses `lib/escpos-ticket.ts`).
+- Schema: `printers.localPrinterIp` + `printers.localPrinterPort`. Migration SQL sent to the
+  user; confirmed applied before this shipped.
+- Settings → Printers: "Connect Local Network Print" control (IP/port + Test Print) alongside the
+  (now unused) Sunmi one.
+- `order-line-client.tsx`'s `handlePrint` now also fires a silent, best-effort local-bridge print
+  when the restaurant's default printer has a local IP set — alongside, never instead of, the
+  existing browser-print popup.
+- Added §7.8 to this guide; marked §7.7 (Sunmi Cloud Print) as built-but-unused in §13.
 
 ### 2026-10-12 — Sunmi Cloud Print integration (code-complete, unverified — see §13)
 - New schema: `printers.sunmiSn` (opt-in per printer) + new table `sunmi_print_jobs` (the
