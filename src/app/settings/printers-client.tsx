@@ -8,6 +8,7 @@ import {
   deletePrinterAction,
   saveLocalPrinterAction,
   setDefaultPrinterAction,
+  setTillReceiptPrinterAction,
   togglePrinterActiveAction,
 } from "@/lib/actions/printers";
 import { saveSunmiPrinterSnAction, sendSunmiTestPrintAction } from "@/lib/actions/sunmi-print";
@@ -159,6 +160,20 @@ function LocalNetworkPrintRow({ printer }: { printer: Printer }) {
   const [pending, setPending] = useState(false);
   const [testResult, setTestResult] = useState<"sent" | "error" | null>(null);
 
+  function toggleTillReceiptPrinter(enabled: boolean) {
+    setError(null);
+    setPending(true);
+    startTransition(async () => {
+      const result = await setTillReceiptPrinterAction(printer.id, enabled);
+      setPending(false);
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
   function save() {
     setError(null);
     setPending(true);
@@ -255,23 +270,40 @@ function LocalNetworkPrintRow({ printer }: { printer: Printer }) {
           )}
         </div>
       ) : (
-        <div className="flex items-center justify-between gap-2">
-          <span className="flex items-center gap-1 text-xs font-medium text-neutral-600">
-            <Router className="h-3 w-3 text-teal-600" /> {printer.localPrinterIp}:{printer.localPrinterPort || 9100}
-          </span>
-          <div className="flex gap-1.5">
-            <button onClick={sendTestPrint} disabled={pending} className="rounded-md border border-neutral-200 px-2 py-1 text-xs text-neutral-600 hover:bg-white">
-              Test Print
-            </button>
-            <button onClick={() => setEditing(true)} className="rounded-md border border-neutral-200 px-2 py-1 text-xs text-neutral-600 hover:bg-white">
-              Edit
-            </button>
+        <>
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1 text-xs font-medium text-neutral-600">
+              <Router className="h-3 w-3 text-teal-600" /> {printer.localPrinterIp}:{printer.localPrinterPort || 9100}
+            </span>
+            <div className="flex gap-1.5">
+              <button onClick={sendTestPrint} disabled={pending} className="rounded-md border border-neutral-200 px-2 py-1 text-xs text-neutral-600 hover:bg-white">
+                Test Print
+              </button>
+              <button onClick={() => setEditing(true)} className="rounded-md border border-neutral-200 px-2 py-1 text-xs text-neutral-600 hover:bg-white">
+                Edit
+              </button>
+            </div>
           </div>
-        </div>
+          <label className="mt-2 flex items-center justify-between gap-2 rounded-md border border-neutral-200 bg-white px-2 py-1.5">
+            <span className="text-xs font-medium text-neutral-600">
+              Use for Till auto-print
+              <span className="block text-[10px] font-normal text-neutral-400">
+                On: the Till prints here, no browser dialog. Off: the Till keeps using the browser print popup.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              checked={printer.tillReceiptPrinter}
+              disabled={pending}
+              onChange={(e) => toggleTillReceiptPrinter(e.target.checked)}
+              className="h-4 w-4 shrink-0 accent-[var(--brand)]"
+            />
+          </label>
+        </>
       )}
       {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
       {testResult === "sent" && <p className="mt-1 text-xs text-emerald-600">Test ticket sent — check the printer.</p>}
-      <p className="mt-1 text-[10px] text-neutral-400">Requires the local print bridge running (see docs/DEVELOPER_GUIDE.md §7.7).</p>
+      <p className="mt-1 text-[10px] text-neutral-400">Requires the local print bridge running (see docs/DEVELOPER_GUIDE.md §7.8).</p>
     </div>
   );
 }

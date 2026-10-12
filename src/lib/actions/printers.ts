@@ -88,6 +88,31 @@ export async function saveLocalPrinterAction(printerId: string, ip: string, port
   return {};
 }
 
+// The explicit switch for "the Till auto-prints receipts to this printer, not the browser popup"
+// — see printers.tillReceiptPrinter in schema.ts for why this is separate from isDefault. Turning
+// one printer on clears every other printer's flag first, same single-selection pattern as
+// setDefaultPrinterAction, since only one printer can be the Till's receipt target at a time.
+export async function setTillReceiptPrinterAction(printerId: string, enabled: boolean): Promise<PrinterActionState> {
+  const { session, restaurantId } = await requireRestaurantContext();
+  await assertPermission(session, "settings");
+  if (enabled) {
+    const [printer] = await db
+      .select({ localPrinterIp: printers.localPrinterIp })
+      .from(printers)
+      .where(and(eq(printers.id, printerId), eq(printers.restaurantId, restaurantId)))
+      .limit(1);
+    if (!printer?.localPrinterIp) return { error: "Save this printer's local IP first." };
+    await db.update(printers).set({ tillReceiptPrinter: false }).where(eq(printers.restaurantId, restaurantId));
+  }
+  await db
+    .update(printers)
+    .set({ tillReceiptPrinter: enabled })
+    .where(and(eq(printers.id, printerId), eq(printers.restaurantId, restaurantId)));
+  revalidatePath("/settings");
+  revalidatePath("/order-line");
+  return {};
+}
+
 export async function setDefaultPrinterAction(printerId: string) {
   const { session, restaurantId } = await requireRestaurantContext();
   await assertPermission(session, "settings");

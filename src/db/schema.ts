@@ -421,6 +421,15 @@ export const printers = sqliteTable(
     // Defaults to 9100 in application code when null — the de facto standard raw ESC/POS port, so
     // most printers never need this set explicitly.
     localPrinterPort: int("local_printer_port"),
+    // Explicit, admin-controlled switch for whether THIS printer is the one the Till auto-prints
+    // receipts to (see printReceiptLocally in order-line-client.tsx) — deliberately separate from
+    // `isDefault` above, which means something unrelated (the printer new categories route to by
+    // default). At most one printer per restaurant should have this on; enforced in code
+    // (setTillReceiptPrinterAction), not at the DB level, same pattern as isDefault. While off
+    // (the default for every printer, including ones with localPrinterIp already set), the Till
+    // keeps using the original browser-print flow untouched — so saving a local IP alone never
+    // silently changes a restaurant's printing behavior until this is turned on too.
+    tillReceiptPrinter: int("till_receipt_printer", { mode: "boolean" }).notNull().default(false),
   },
   (table) => [uniqueIndex("printers_pin_idx").on(table.pin)]
 );

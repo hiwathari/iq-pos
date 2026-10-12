@@ -38,12 +38,14 @@ export default async function OrderLinePage() {
   // always have it; a Staff login only gets it if explicitly granted the till-discount permission.
   const canDiscount = hasPermission(session.role, permissions, "till-discount");
   const taxEnabled = restaurant?.taxEnabled ?? false;
-  // The restaurant's default printer (see setDefaultPrinterAction), if it's set up for local
-  // network printing — see docs/DEVELOPER_GUIDE.md §7.7. Null for every restaurant still on plain
-  // browser print, which is unaffected either way.
-  const defaultLocalPrinter = printers.find((p) => p.isDefault && p.active && p.localPrinterIp);
-  const localPrintTarget = defaultLocalPrinter
-    ? { ip: defaultLocalPrinter.localPrinterIp as string, port: defaultLocalPrinter.localPrinterPort }
+  // The printer explicitly switched on as the Till's receipt printer (see
+  // setTillReceiptPrinterAction) — deliberately NOT the same thing as the "Default" printer
+  // (that flag routes new categories, unrelated to Till printing). Null for every restaurant that
+  // hasn't turned this on, which keeps the original browser-print flow untouched either way —
+  // see docs/DEVELOPER_GUIDE.md §7.8.
+  const receiptPrinter = printers.find((p) => p.tillReceiptPrinter && p.active && p.localPrinterIp);
+  const localPrintTarget = receiptPrinter
+    ? { ip: receiptPrinter.localPrinterIp as string, port: receiptPrinter.localPrinterPort }
     : null;
 
   return (

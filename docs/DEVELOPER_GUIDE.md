@@ -373,13 +373,19 @@ standalone Node program (built from `src/lib/escpos-ticket.ts`'s same ESC/POS ou
 3. Opens a raw TCP socket to the printer's local IP on port 9100 (or whatever's configured) and
    writes the hex-decoded ESC/POS bytes straight through.
 
-End-to-end flow when staff tap Print on the Till (`order-line-client.tsx`'s `handlePrint`):
-`lib/actions/local-print.ts` (`buildTicketEscPosAction`, a thin server-action wrapper around
-`buildEscPosTicket`) → `lib/local-print-bridge.ts` (`printViaLocalBridge`, a plain client-side
-`fetch` to the bridge) → the bridge → the printer. This fires **alongside**, not instead of, the
-existing browser-print popup (`lib/print-ticket.ts`) — silently, best-effort, and only when the
-restaurant's **default** printer (`printers.isDefault`) has `localPrinterIp` set; if the bridge
-isn't running or isn't reachable, the browser print dialog still opens exactly as it always has.
+End-to-end flow when staff tap Print on the Till (`order-line-client.tsx`'s `handlePrint`/
+`printReceiptLocally`): `lib/actions/local-print.ts` (`buildTicketEscPosAction`, a thin
+server-action wrapper around `buildEscPosTicket`) → `lib/local-print-bridge.ts`
+(`printViaLocalBridge`) → the bridge → the printer. Which printer (if any) the Till targets is
+resolved in `order-line/page.tsx` from `printers.tillReceiptPrinter` — an **explicit toggle**
+("Use for Till auto-print" in Settings), deliberately **not** the same thing as `printers.isDefault`
+(which routes new menu categories, unrelated to Till printing — an earlier version of this wired
+the two together, which left the local print path silently unused for any restaurant whose local
+printer wasn't also flagged Default; see the 2026-10-13 changelog entry). While that toggle is off
+— the state of every printer until an admin turns it on — the Till keeps using the original
+browser-print popup (`lib/print-ticket.ts`) exactly as before, even if a `localPrinterIp` is
+already saved. Once it's on for one printer, that popup is replaced entirely for that restaurant;
+there's no "alongside" fallback if the bridge turns out to be unreachable at print time.
 
 Settings → Printers has a "Connect Local Network Print" control per (non-display) printer — IP +
 optional port (defaults to 9100), plus a **Test Print** button that exercises the whole chain.
@@ -689,8 +695,8 @@ conversation says so.
   enabled, but **local network printing (§7.8) is the real, working path** — don't assume the
   Sunmi cloud route is what's printing tickets for any restaurant.
 - **Local network print (§7.8) only auto-fires from the full desktop Till's Print button today**,
-  guarded by the restaurant's *default* printer having a `localPrinterIp` set — it isn't wired
-  into Kitchen Display ticket printing or the mobile/Simple Till (which has no print button at
+  guarded by a printer having both `localPrinterIp` set **and** `tillReceiptPrinter` turned on —
+  it isn't wired into Kitchen Display ticket printing or the mobile/Simple Till (which has no print button at
   all). It's also only ever a *second*, best-effort print alongside the existing browser-print
   popup, never a replacement for it — if the local bridge isn't running, nothing about today's
   printing behavior changes. The bridge program itself (`scripts/local-print-bridge.js`) has to be
@@ -702,6 +708,22 @@ conversation says so.
 > **Instruction for every future change:** add a dated entry here (newest on top), *and* update
 > whichever numbered section above actually describes the thing you changed. A change without
 > both halves is not done.
+
+### 2026-10-13 (later) — Fix: local-print selection was silently tied to the wrong flag
+- The Till was selecting its receipt printer by `printers.isDefault` — a flag that actually means
+  "the printer new menu categories route to," unrelated to Till printing. A restaurant could save
+  a local printer's IP and never see the new receipt format, with no error, because its printer
+  wasn't also flagged Default — discovered via a real restaurant (Al Zayt, with no local printer
+  configured at all) correctly still showing the old browser-print receipt, which led to checking
+  why a *different* restaurant with local printing set up was too.
+- New: `printers.tillReceiptPrinter` — an explicit, admin-controlled "Use for Till auto-print"
+  toggle in Settings → Printers, fully decoupled from `isDefault`. `order-line/page.tsx` now
+  resolves the Till's print target from this flag instead. Migration SQL sent to the user — NOT
+  yet applied to production.
+- `setTillReceiptPrinterAction` in `lib/actions/printers.ts` — same single-selection-per-restaurant
+  pattern as `setDefaultPrinterAction`, refuses to enable it on a printer with no `localPrinterIp`
+  saved yet.
+- §7.8 and §13 updated to describe the real gating condition.
 
 ### 2026-10-13 — Fix: Till APK crashed on launch; added launcher icon
 - The first Till APK crashed immediately on every install — `MainActivity` extended
