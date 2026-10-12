@@ -400,9 +400,43 @@ export const printers = sqliteTable(
     pin: text("pin"),
     active: int("active", { mode: "boolean" }).notNull().default(true),
     isDefault: int("is_default", { mode: "boolean" }).default(false),
+    // This printer's own Sunmi Cloud Print device serial ("msn" in Sunmi's API) — set once an
+    // admin reads it off the physical device (its Settings screen or printed label) and saves it,
+    // which also binds it to this restaurant via Sunmi's printerAdd API. Non-null here is what
+    // makes this entry eligible for cloud printing (see lib/sunmi-print.ts) alongside/instead of
+    // the existing browser-print flow — same opt-in-by-presence pattern as
+    // paymentTerminals.provider. Null for every printer that doesn't use Sunmi Cloud Print.
+    sunmiSn: text("sunmi_sn"),
   },
   (table) => [uniqueIndex("printers_pin_idx").on(table.pin)]
 );
+
+// A ticket queued for a Sunmi Cloud Print device. Sunmi's relay is pull, not push: we tell
+// Sunmi's cloud a printer has a new job (notifySunmiNewOrder), and the printer itself then calls
+// our own callback API (src/app/api/sunmi/printTicket/*) to fetch this row's content and report
+// back whether it printed — see docs/DEVELOPER_GUIDE.md §8.3 for the full flow. `escposHex` is
+// the exact raw ESC/POS command bytes, hex-encoded, handed back verbatim per Sunmi's spec (see
+// lib/escpos-ticket.ts for how it's built — this app's existing browser-print flow in
+// lib/print-ticket.ts is unrelated and untouched).
+export const sunmiPrintJobs = sqliteTable("sunmi_print_jobs", {
+  id: id(),
+  restaurantId: text("restaurant_id")
+    .notNull()
+    .references(() => restaurants.id, { onDelete: "cascade" }),
+  printerId: text("printer_id")
+    .notNull()
+    .references(() => printers.id, { onDelete: "cascade" }),
+  // Purely for audit (which order this ticket was for) — nothing reads it back out today.
+  orderId: text("order_id").references(() => orders.id, { onDelete: "set null" }),
+  escposHex: text("escpos_hex").notNull(),
+  voiceText: text("voice_text"),
+  // "pending" until the printer's first poll picks it up ("fetched"), then "printed"/"failed"
+  // once the printer calls back to report the outcome.
+  status: text("status", { enum: ["pending", "fetched", "printed", "failed"] }).notNull().default("pending"),
+  failureReason: text("failure_reason"),
+  createdAt: timestamp("created_at"),
+  updatedAt: int("updated_at"),
+});
 
 export const paymentTerminals = sqliteTable("payment_terminals", {
   id: id(),

@@ -313,6 +313,45 @@ letters of the restaurant + 5 random alphanumerics — `src/lib/loyalty-code.ts`
 Sign-in to `/my-card` is a magic-link/6-digit-code email flow (`loyalty_magic_links`, hash-only
 storage, sent via Resend) — see `lib/actions/loyalty-auth.ts`.
 
+### 7.7 Printing: browser print vs Sunmi Cloud Print
+
+This app has **two completely separate printing paths**, and most printers only ever use the
+first one:
+
+1. **Browser print (the default, for every printer).** `lib/print-ticket.ts` opens a small popup
+   with a formatted HTML receipt and calls `window.print()` — it prints to whatever printer the
+   *operating system* already has set up (paired via Bluetooth, installed as a network printer,
+   etc.). This app never talks to the printer's hardware/network protocol directly for this path;
+   `printers.connection`/`address` are just descriptive metadata shown in Settings, not something
+   any code connects to.
+2. **Sunmi Cloud Print (opt-in, per printer).** `printers.sunmiSn` being set is what switches a
+   specific printer entry onto this path instead. Unlike every other integration in this app,
+   Sunmi's relay is **pull, not push** — a 4-step round trip:
+   - We call Sunmi's API (`lib/sunmi-print.ts` → `notifySunmiNewOrder`, `POST
+     https://openapi.sunmi.com/v1/printer/newOrderNotice`) to say "printer `msn` has a new job,"
+     after writing that job's content to the `sunmi_print_jobs` table
+     (`lib/data/sunmi-print.ts`).
+   - Sunmi's cloud pushes a wake-up to the physical printer.
+   - **The printer itself** then calls back into *our own* API —
+     `src/app/api/sunmi/printTicket/{getPrintTicketOrderId,getPrintTicketInfo,updatePrintTicketStatus}/route.ts`
+     — to fetch the pending job id(s), then the actual content, then report back success/failure.
+   - The content handed back is **raw ESC/POS command bytes, hex-encoded** (built by
+     `lib/escpos-ticket.ts`) — a different representation entirely from the HTML
+     `lib/print-ticket.ts` generates for browser printing.
+   - Every one of our callback routes verifies the incoming request's `sign` param
+     (`verifySunmiSignature`) using the same MD5 scheme Sunmi documents for our outgoing calls,
+     and fails closed (denies) if `SUNMI_CLOUD_PRINT_APP_KEY` isn't configured.
+
+Platform-level credentials (`SUNMI_CLOUD_PRINT_APP_ID`/`SUNMI_CLOUD_PRINT_APP_KEY`) are issued
+once — shared across every restaurant — after registering as a partner at
+`https://partner.sunmi.com/` and getting the Cloud Print channel enabled; this is **not** a
+per-restaurant credential an admin enters in Settings, unlike SumUp/Teya. `shop_id` in Sunmi's API
+is just each restaurant's own `id` — nothing to look up or configure separately.
+
+**Current status (written before this integration was ever run against a real device or Sunmi's
+sandbox):** code-complete but unverified — see the "Known Gaps" entry in §13 before assuming this
+is working in production for any restaurant.
+
 ## 8. Payment / Card-Machine Integrations
 
 A `payment_terminals` row with `provider: null` is "manual" — staff run the physical machine
@@ -393,6 +432,7 @@ don't assume a change to one automatically applies to the other.
 | Inventory | `app/inventory/` | `lib/actions/inventory.ts` | `lib/data/inventory.ts` |
 | Staff & permissions | `app/settings/staff-client.tsx` | `lib/actions/staff.ts` | `lib/data/staff.ts` |
 | Printers / Kitchen Displays | `app/settings/printers-client.tsx` | `lib/actions/printers.ts` | `lib/data/printers.ts` |
+| Sunmi Cloud Print (§7.7) | `app/settings/printers-client.tsx` (`SunmiCloudPrintRow`) | `lib/actions/sunmi-print.ts` | `lib/data/sunmi-print.ts`, `lib/sunmi-print.ts`, `lib/escpos-ticket.ts`, `app/api/sunmi/printTicket/*` |
 | Payment terminals (incl. SumUp/Teya) | `app/settings/payment-terminals-client.tsx` | `lib/actions/sumup.ts`, `teya.ts` | `lib/data/sumup.ts`, `teya.ts` |
 | Restaurant settings | `app/settings/restaurant-client.tsx` | `lib/actions/restaurants.ts` | — |
 | Integrations (delivery platforms) | `app/settings/integrations-client.tsx` | — | — *(see §13 — not wired to a real API)* |
@@ -417,6 +457,8 @@ actually used in code):
 | `NEXT_PUBLIC_APP_URL` | Lets `proxy.ts` recognize the platform's own domain vs a tenant's custom domain |
 | `RESEND_API_KEY`, `RESEND_SENDING_DOMAIN` | Sending loyalty OTP/magic-link emails (`src/lib/email.ts`) |
 | `SUMUP_AFFILIATE_APP_ID`, `SUMUP_AFFILIATE_KEY` | Platform-level SumUp affiliate credentials (separate from each restaurant's own `sumupApiKey`) |
+| `SUNMI_CLOUD_PRINT_APP_ID`, `SUNMI_CLOUD_PRINT_APP_KEY` | Platform-level Sunmi Cloud Print partner credentials (§7.7) — shared across every restaurant, issued once by Sunmi |
+| `SUNMI_CLOUD_PRINT_BASE_URL` | Optional override, e.g. `https://uat.openapi.sunmi.com` for testing against Sunmi's sandbox before going live. Defaults to the production `https://openapi.sunmi.com` |
 
 Local dev: copy `.env.example` → `.env.local`, fill in at least the Turso + JWT values, then
 `npm install && npm run db:push && npm run db:seed && npm run dev`. `db:seed` is **destructive** —
@@ -526,12 +568,41 @@ conversation says so.
   started).
 - **Admin-managed loyalty offers** (e.g. "spend £50, get a free item") — not built; loyalty today
   is enrollment + lookup only, no rewards logic.
+- **Sunmi Cloud Print (§7.7) is code-complete but unverified and not wired into any order-placing
+  flow yet.** It was built from Sunmi's documented API spec alone — no `app_id`/`app_key` had been
+  issued and no real device/sandbox call had been made at the time it was written. Specifically
+  unconfirmed: the exact base path Sunmi expects when registering our callback URL (their doc
+  doesn't show one), and whether the ESC/POS formatting in `lib/escpos-ticket.ts` actually renders
+  correctly on a real Sunmi printer. Use the "Test Print" button in Settings → Printers to verify
+  end-to-end once `SUNMI_CLOUD_PRINT_APP_ID`/`SUNMI_CLOUD_PRINT_APP_KEY` are set, **before**
+  assuming any restaurant can rely on it. It also isn't called automatically when an order is
+  placed/sent to kitchen — today it only fires via the explicit Test Print button; wiring it into
+  the real order-to-kitchen/receipt flow is separate, not-yet-done work.
 
 ## 14. Changelog
 
 > **Instruction for every future change:** add a dated entry here (newest on top), *and* update
 > whichever numbered section above actually describes the thing you changed. A change without
 > both halves is not done.
+
+### 2026-10-12 — Sunmi Cloud Print integration (code-complete, unverified — see §13)
+- New schema: `printers.sunmiSn` (opt-in per printer) + new table `sunmi_print_jobs` (the
+  queue Sunmi's printer polls). Migration SQL sent to the user; **not yet applied to
+  production** — do not merge/ship further changes to `printers`/`sunmi_print_jobs` ahead of
+  confirming it ran, per §12.1.
+- New: `lib/sunmi-print.ts` (signed API client + incoming-signature verification),
+  `lib/escpos-ticket.ts` (ESC/POS ticket formatter, hex-encoded), `lib/data/sunmi-print.ts`,
+  `lib/actions/sunmi-print.ts` (`saveSunmiPrinterSnAction`, `sendSunmiTestPrintAction`), and three
+  callback routes under `src/app/api/sunmi/printTicket/`.
+- Settings → Printers: each non-display printer now has an inline "Connect Sunmi Cloud Print"
+  control (SN entry + Test Print button).
+- Added §7.7 describing the full pull-based relay architecture, which is a fundamentally
+  different shape from every other integration in this app (SumUp/Teya/webhooks are push-only
+  REST; Sunmi requires us to also host a callback API the device itself calls).
+- **Not done yet**: wiring this into the actual order-placed/sent-to-kitchen flow (today it's
+  Test-Print-only), and end-to-end verification against a real device — both blocked on the
+  user finishing Sunmi's Cloud Print partner channel enablement (`app_id`/`app_key` not yet
+  issued as of this entry).
 
 ### 2026-10-09 — Developer Guide created; mobile Till now records Cash payment; payment-recall lock
 - **Added this document.**

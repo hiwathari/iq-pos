@@ -2,8 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Bluetooth, Cable, Monitor, Plus, Star, Trash2, Wifi, X } from "lucide-react";
+import { Bluetooth, Cable, Cloud, Monitor, Plus, Star, Trash2, Wifi, X } from "lucide-react";
 import { createPrinterAction, deletePrinterAction, setDefaultPrinterAction, togglePrinterActiveAction } from "@/lib/actions/printers";
+import { saveSunmiPrinterSnAction, sendSunmiTestPrintAction } from "@/lib/actions/sunmi-print";
 import type { Printer, PrinterConnection, PrinterKind, PrinterStation } from "@/lib/types";
 
 const STATIONS: PrinterStation[] = ["Kitchen", "Bar", "Receipt", "Expo"];
@@ -92,6 +93,7 @@ export function PrintersClient({ printers }: { printers: Printer[] }) {
                     </span>
                   )}
                 </div>
+                {p.kind !== "display" && <SunmiCloudPrintRow printer={p} />}
               </div>
               <div className="flex flex-col gap-1.5">
                 {!p.isDefault && (p.kind === "printer" || p.kind === "both") && (
@@ -126,6 +128,107 @@ export function PrintersClient({ printers }: { printers: Printer[] }) {
       </div>
 
       {modalOpen && <AddPrinterModal onClose={() => setModalOpen(false)} />}
+    </div>
+  );
+}
+
+// Inline, always-visible per-printer Sunmi Cloud Print control — separate from the browser-print
+// flow every printer already has by default (see lib/print-ticket.ts). Saving a SN here binds it
+// with Sunmi directly (see saveSunmiPrinterSnAction), so a wrong/unregistered SN fails right here
+// instead of silently sitting broken. See docs/DEVELOPER_GUIDE.md §8.3 for the full setup process
+// — this UI alone doesn't make printing work until SUNMI_CLOUD_PRINT_APP_ID/APP_KEY are set and
+// Sunmi's partner channel is actually enabled.
+function SunmiCloudPrintRow({ printer }: { printer: Printer }) {
+  const router = useRouter();
+  const [, startTransition] = useTransition();
+  const [editing, setEditing] = useState(false);
+  const [sn, setSn] = useState(printer.sunmiSn ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const [testResult, setTestResult] = useState<"sent" | "error" | null>(null);
+
+  function save() {
+    setError(null);
+    setPending(true);
+    startTransition(async () => {
+      const result = await saveSunmiPrinterSnAction(printer.id, sn);
+      setPending(false);
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      setEditing(false);
+      router.refresh();
+    });
+  }
+
+  function sendTestPrint() {
+    setTestResult(null);
+    setPending(true);
+    startTransition(async () => {
+      const result = await sendSunmiTestPrintAction(printer.id);
+      setPending(false);
+      setTestResult(result?.error ? "error" : "sent");
+      if (result?.error) setError(result.error);
+    });
+  }
+
+  if (!printer.sunmiSn && !editing) {
+    return (
+      <button
+        onClick={() => setEditing(true)}
+        className="mt-2 flex items-center gap-1 text-xs font-medium text-neutral-400 hover:text-neutral-600"
+      >
+        <Cloud className="h-3 w-3" /> Connect Sunmi Cloud Print
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-2 rounded-lg bg-neutral-50 p-2">
+      {editing ? (
+        <div className="flex items-center gap-1.5">
+          <input
+            value={sn}
+            onChange={(e) => setSn(e.target.value.trim())}
+            placeholder="Printer SN"
+            className="w-28 rounded-md border border-neutral-200 px-2 py-1 text-xs outline-none focus:border-teal-500"
+          />
+          <button
+            onClick={save}
+            disabled={pending}
+            className="rounded-md bg-[var(--brand)] px-2 py-1 text-xs font-semibold text-white disabled:opacity-40"
+          >
+            Save
+          </button>
+          <button
+            onClick={() => {
+              setEditing(false);
+              setSn(printer.sunmiSn ?? "");
+              setError(null);
+            }}
+            className="rounded-md border border-neutral-200 px-2 py-1 text-xs text-neutral-500"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between gap-2">
+          <span className="flex items-center gap-1 text-xs font-medium text-neutral-600">
+            <Cloud className="h-3 w-3 text-teal-600" /> Sunmi SN {printer.sunmiSn}
+          </span>
+          <div className="flex gap-1.5">
+            <button onClick={sendTestPrint} disabled={pending} className="rounded-md border border-neutral-200 px-2 py-1 text-xs text-neutral-600 hover:bg-white">
+              Test Print
+            </button>
+            <button onClick={() => setEditing(true)} className="rounded-md border border-neutral-200 px-2 py-1 text-xs text-neutral-600 hover:bg-white">
+              Edit
+            </button>
+          </div>
+        </div>
+      )}
+      {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
+      {testResult === "sent" && <p className="mt-1 text-xs text-emerald-600">Test ticket sent — check the printer.</p>}
     </div>
   );
 }

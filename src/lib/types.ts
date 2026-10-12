@@ -13,6 +13,7 @@ import type {
   restaurants,
   shifts,
   sumupCheckouts,
+  sunmiPrintJobs,
   tables,
   terminalExpenses,
   terminalPayouts,
@@ -55,6 +56,7 @@ export type TerminalPayout = typeof terminalPayouts.$inferSelect;
 export type TerminalExpense = typeof terminalExpenses.$inferSelect;
 export type SumupCheckout = typeof sumupCheckouts.$inferSelect;
 export type TeyaPayment = typeof teyaPayments.$inferSelect;
+export type SunmiPrintJob = typeof sunmiPrintJobs.$inferSelect;
 
 export interface OrderItem {
   dishId: string;
