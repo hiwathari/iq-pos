@@ -60,12 +60,14 @@ export default async function OrderLinePage() {
         taxEnabled={taxEnabled}
         invoiceAddress={restaurant?.invoiceAddress ?? undefined}
         invoicePhone={restaurant?.invoicePhone ?? undefined}
+        invoiceEmail={restaurant?.invoiceEmail ?? undefined}
         invoiceWebsite={restaurant?.invoiceWebsite ?? undefined}
         invoiceLogoUrl={restaurant?.invoiceLogoUrl ?? undefined}
         invoiceFooterText={restaurant?.invoiceFooterText ?? "Thank you for dining with us!"}
         openTime={restaurant?.openTime ?? null}
         timezone={restaurant?.timezone ?? "UTC"}
         localPrintTarget={localPrintTarget}
+        staffName={session.name}
       />
     </AppShell>
   );

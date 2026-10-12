@@ -6,9 +6,11 @@ const PUBLIC_PATHS = ["/login", "/till-login", "/kitchen-login", "/staff-login"]
 
 // Customer-facing pages that don't use the staff/admin session below — /my-card and /order use
 // their own session cookie (see src/lib/loyalty-session.ts), checked per-page; /invoice/[orderId]
-// needs no session at all, gated only by knowing the order's unguessable id. Also reachable from a
+// needs no session at all, gated only by knowing the order's unguessable id. /get and /downloads
+// are the public Till-APK download page and the static .apk file it links to — reachable from a
+// bare Sunmi device browser with no session at all, same reasoning. Also reachable from a
 // restaurant's custom ordering domain, rewritten in here — see resolveCustomDomain.
-const CUSTOMER_FACING_PREFIXES = ["/my-card", "/order", "/invoice"];
+const CUSTOMER_FACING_PREFIXES = ["/my-card", "/order", "/invoice", "/get", "/downloads"];
 
 // Proxy defaults to the Node.js runtime in Next.js 16 (not Edge), so a real DB lookup here is
 // fine — this only ever runs for a Host header that isn't the platform's own domain, i.e. almost
@@ -45,7 +47,13 @@ async function resolveCustomDomain(request: NextRequest) {
   if (!restaurant || !restaurant.onlineOrderingEnabled) return null;
 
   const { pathname } = request.nextUrl;
-  if (pathname.startsWith("/my-card") || pathname.startsWith("/invoice") || pathname.startsWith(`/order/${restaurant.slug}`)) {
+  if (
+    pathname.startsWith("/my-card") ||
+    pathname.startsWith("/invoice") ||
+    pathname.startsWith("/get") ||
+    pathname.startsWith("/downloads") ||
+    pathname.startsWith(`/order/${restaurant.slug}`)
+  ) {
     return null;
   }
 

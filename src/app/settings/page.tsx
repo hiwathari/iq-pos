@@ -41,6 +41,7 @@ export default async function SettingsPage() {
           <InvoiceDetailsClient
             invoiceAddress={restaurant?.invoiceAddress ?? ""}
             invoicePhone={restaurant?.invoicePhone ?? ""}
+            invoiceEmail={restaurant?.invoiceEmail ?? ""}
             invoiceWebsite={restaurant?.invoiceWebsite ?? ""}
             invoiceLogoUrl={restaurant?.invoiceLogoUrl ?? ""}
             invoiceFooterText={restaurant?.invoiceFooterText ?? "Thank you for dining with us!"}

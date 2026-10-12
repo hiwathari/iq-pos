@@ -96,6 +96,49 @@ function isOrderClosedOut(o: Order) {
   return o.status === "Served" && !!o.paymentMethod;
 }
 
+// Groups a cart/order's items by menu category, in the category's own Manage Dishes order, for
+// the printed receipt (see lib/escpos-ticket.ts's SunmiTicketCategoryGroup — this is deliberately
+// built here rather than inside that module, which stays decoupled from menu data). An item whose
+// dish no longer exists (deleted since the order was placed) or that was a free-typed "custom:"
+// line falls into a trailing "Other" group rather than being dropped from the receipt.
+// Pure cart-total math, pulled out of the render body so it can also run on a captured cart
+// snapshot after the live `cart` state has already been reset (see handlePlaceOrder's auto-print
+// on payment, which fires after setCart(emptyCart)) — both call sites must agree exactly, since
+// this mirrors orderTotal()/orderBreakdown() in lib/types.ts for what actually gets saved.
+function computeCartTotals(cart: CartState) {
+  const subtotal = cart.items.reduce((sum, i) => sum + i.price * i.qty, 0);
+  const extraDiscountRaw =
+    cart.extraDiscountMode === "percent" ? subtotal * (Math.max(0, Number(cart.extraDiscount) || 0) / 100) : Number(cart.extraDiscount) || 0;
+  const extraDiscountAmount = Math.max(0, Math.min(subtotal, extraDiscountRaw));
+  const couponDiscountAmount = cart.appliedCoupon
+    ? Math.max(0, Math.min(subtotal - extraDiscountAmount, cart.appliedCoupon.discount))
+    : 0;
+  const discountedSubtotal = Math.max(0, subtotal - extraDiscountAmount - couponDiscountAmount);
+  const rawTax = cart.items.reduce((sum, i) => sum + i.price * i.qty * ((i.taxRate ?? 0) / 100), 0);
+  const discountFactor = subtotal > 0 ? discountedSubtotal / subtotal : 0;
+  const tax = rawTax * discountFactor;
+  const total = discountedSubtotal + tax;
+  return { subtotal, extraDiscountAmount, couponDiscountAmount, tax, total };
+}
+
+function groupItemsByCategory(items: OrderItem[], dishes: Dish[], categories: Category[]) {
+  const dishById = new Map(dishes.map((d) => [d.id, d]));
+  const groups = new Map<string, OrderItem[]>();
+  for (const item of items) {
+    const dish = dishById.get(item.dishId);
+    const categoryName = dish ? (categories.find((c) => c.id === dish.categoryId)?.name ?? "Other") : "Other";
+    if (!groups.has(categoryName)) groups.set(categoryName, []);
+    groups.get(categoryName)!.push(item);
+  }
+  // Category order follows categories' own configured order; "Other" always trails.
+  const ordered = categories.map((c) => c.name).filter((name) => groups.has(name));
+  if (groups.has("Other")) ordered.push("Other");
+  return ordered.map((categoryName) => ({
+    categoryName,
+    items: groups.get(categoryName)!.map((i) => ({ name: i.name, qty: i.qty, price: i.price, note: i.note })),
+  }));
+}
+
 // A tiny top-level wrapper around Date.now() (rather than calling it directly inside the
 // component's body) keeps the component itself free of impure calls, per the project's
 // react-hooks purity lint rule.
@@ -180,12 +223,14 @@ export function OrderLineClient({
   taxEnabled,
   invoiceAddress,
   invoicePhone,
+  invoiceEmail,
   invoiceWebsite,
   invoiceLogoUrl,
   invoiceFooterText,
   openTime,
   timezone,
   localPrintTarget,
+  staffName,
 }: {
   categories: Category[];
   dishes: Dish[];
@@ -198,12 +243,14 @@ export function OrderLineClient({
   taxEnabled: boolean;
   invoiceAddress?: string;
   invoicePhone?: string;
+  invoiceEmail?: string;
   invoiceWebsite?: string;
   invoiceLogoUrl?: string;
   invoiceFooterText: string;
   openTime: string | null;
   timezone: string;
   localPrintTarget: { ip: string; port: number | null } | null;
+  staffName?: string;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -360,20 +407,7 @@ export function OrderLineClient({
   // line (see addToCart) once different lines carry different kitchen notes.
   const qtyFor = (dishId: string) => cart.items.filter((i) => i.dishId === dishId).reduce((sum, i) => sum + i.qty, 0);
 
-  const subtotal = cart.items.reduce((sum, i) => sum + i.price * i.qty, 0);
-  const extraDiscountRaw =
-    cart.extraDiscountMode === "percent" ? subtotal * (Math.max(0, Number(cart.extraDiscount) || 0) / 100) : Number(cart.extraDiscount) || 0;
-  const extraDiscountAmount = Math.max(0, Math.min(subtotal, extraDiscountRaw));
-  const couponDiscountAmount = cart.appliedCoupon
-    ? Math.max(0, Math.min(subtotal - extraDiscountAmount, cart.appliedCoupon.discount))
-    : 0;
-  const discountedSubtotal = Math.max(0, subtotal - extraDiscountAmount - couponDiscountAmount);
-  // Each line's own tax rate applies to its share of the discounted subtotal — mirrors
-  // orderTotal() in lib/types.ts so the live preview always matches what gets saved.
-  const rawTax = cart.items.reduce((sum, i) => sum + i.price * i.qty * ((i.taxRate ?? 0) / 100), 0);
-  const discountFactor = subtotal > 0 ? discountedSubtotal / subtotal : 0;
-  const tax = rawTax * discountFactor;
-  const total = discountedSubtotal + tax;
+  const { subtotal, extraDiscountAmount, couponDiscountAmount, tax, total } = computeCartTotals(cart);
 
   function applyCoupon() {
     const code = cart.couponCode.trim();
@@ -591,9 +625,14 @@ export function OrderLineClient({
     // again before it visibly responds) firing this twice and creating duplicate orders.
     if (cart.items.length === 0 || placingOrder) return;
     setPlacingOrder(true);
+    // Captured now, before setCart(emptyCart) below wipes the cart this receipt is for — a
+    // payment-included order auto-prints right after placement (see printReceiptLocally), and by
+    // then React may already have cleared cart state.
+    const wasPaid = cart.payments.length > 0;
+    const receiptCart = cart;
     startTransition(async () => {
       try {
-        await placeOrderAction({
+        const result = await placeOrderAction({
           editingOrderId: cart.editingOrderId,
           tableId: cart.tableId,
           tableNumber: cart.tableNumber,
@@ -616,6 +655,16 @@ export function OrderLineClient({
         setTableEditorOpen(true);
         setMobileCartOpen(false);
         router.refresh();
+
+        // Auto-print on payment, not on a plain send-to-kitchen — an order placed with no
+        // payment lines is still awaiting payment at the till later, so nothing should print
+        // until that actually happens (same order, re-placed with payments added, fires this
+        // same branch at that point). Silent/best-effort: never blocks the Till UI either way.
+        if (wasPaid && result && localPrintTarget) {
+          printReceiptLocally(receiptCart, result.orderNumber, Date.now(), result.id).catch((err) =>
+            console.warn("Auto-print on payment failed.", err)
+          );
+        }
       } finally {
         setPlacingOrder(false);
       }
@@ -668,7 +717,54 @@ export function OrderLineClient({
     });
   }
 
+  // Builds the ESC/POS receipt for `receiptCart` and sends it to the local print bridge (native
+  // Android bridge from the APK, or the HTTP one — see lib/local-print-bridge.ts) — the one and
+  // only print path once a restaurant has local printing configured. Used both by the manual
+  // Print button below and by handlePlaceOrder's auto-print on payment.
+  async function printReceiptLocally(receiptCart: CartState, orderNumber: string, createdAt: number, orderId: string | null) {
+    if (!localPrintTarget) return;
+    const totals = computeCartTotals(receiptCart);
+    const { hex } = await buildTicketEscPosAction({
+      restaurantName,
+      invoiceLogoUrl,
+      invoiceAddress,
+      invoicePhone,
+      invoiceEmail,
+      invoiceWebsite,
+      orderNumber,
+      createdAt,
+      channel: receiptCart.channel,
+      tableNumber: receiptCart.tableNumber,
+      guests: receiptCart.tableNumber ? receiptCart.guests : null,
+      staffName,
+      items: groupItemsByCategory(receiptCart.items, dishes, categories),
+      customerName: receiptCart.customerName || undefined,
+      customerPhone: receiptCart.customerPhone || undefined,
+      customerAddress: receiptCart.customerAddress || undefined,
+      subtotal: totals.subtotal,
+      extraDiscount: totals.extraDiscountAmount || undefined,
+      couponCode: receiptCart.appliedCoupon?.code,
+      couponDiscount: totals.couponDiscountAmount || undefined,
+      tax: totals.tax,
+      total: totals.total,
+      currencySymbol,
+      payments: receiptCart.payments.length > 0 ? receiptCart.payments : undefined,
+      footerText: invoiceFooterText,
+      invoiceUrl: orderId ? `${window.location.origin}/invoice/${orderId}` : undefined,
+    });
+    await printViaLocalBridge({ printerIp: localPrintTarget.ip, printerPort: localPrintTarget.port, escposHex: hex });
+  }
+
+  // The web-print popup (lib/print-ticket.ts) is now only a fallback for a restaurant that
+  // hasn't set up local printing at all — once localPrintTarget exists, this is the only path,
+  // per the explicit instruction that staff shouldn't see the old browser print dialog anymore.
   function handlePrint() {
+    if (localPrintTarget) {
+      printReceiptLocally(cart, editingOrder?.orderNumber ?? "NEW", editingOrder?.createdAt ?? Date.now(), cart.editingOrderId).catch(
+        (err) => console.warn("Local print failed.", err)
+      );
+      return;
+    }
     printTicket({
       orderNumber: editingOrder?.orderNumber ?? "NEW",
       createdAt: editingOrder?.createdAt ?? Date.now(),
@@ -696,31 +792,6 @@ export function OrderLineClient({
       invoiceLogoUrl,
       invoiceFooterText,
     });
-
-    // Best-effort, silent second print to the local network printer bridge (see
-    // docs/DEVELOPER_GUIDE.md §7.7) alongside the browser print dialog above — fires only when
-    // the restaurant's default printer has a local IP configured in Settings, and never blocks or
-    // interrupts the Till if the bridge isn't running/reachable.
-    if (localPrintTarget) {
-      buildTicketEscPosAction({
-        restaurantName,
-        orderNumber: editingOrder?.orderNumber ?? "NEW",
-        createdAt: editingOrder?.createdAt ?? Date.now(),
-        tableNumber: cart.tableNumber,
-        channel: cart.channel,
-        items: cart.items,
-        subtotal,
-        extraDiscount: extraDiscountAmount || undefined,
-        couponDiscount: couponDiscountAmount || undefined,
-        tax,
-        total,
-        currencySymbol,
-        payments: cart.payments.length > 0 ? cart.payments : undefined,
-        footerText: invoiceFooterText,
-      })
-        .then(({ hex }) => printViaLocalBridge({ printerIp: localPrintTarget.ip, printerPort: localPrintTarget.port, escposHex: hex }))
-        .catch((err) => console.warn("Local print bridge unreachable — browser print still shown.", err));
-    }
   }
 
   const cartPanelProps = {

@@ -7,12 +7,14 @@ import { updateInvoiceDetailsAction } from "@/lib/actions/restaurants";
 export function InvoiceDetailsClient({
   invoiceAddress,
   invoicePhone,
+  invoiceEmail,
   invoiceWebsite,
   invoiceLogoUrl,
   invoiceFooterText,
 }: {
   invoiceAddress: string;
   invoicePhone: string;
+  invoiceEmail: string;
   invoiceWebsite: string;
   invoiceLogoUrl: string;
   invoiceFooterText: string;
@@ -24,6 +26,7 @@ export function InvoiceDetailsClient({
 
   const [address, setAddress] = useState(invoiceAddress);
   const [phone, setPhone] = useState(invoicePhone);
+  const [email, setEmail] = useState(invoiceEmail);
   const [website, setWebsite] = useState(invoiceWebsite);
   const [logoUrl, setLogoUrl] = useState(invoiceLogoUrl);
   const [footerText, setFooterText] = useState(invoiceFooterText);
@@ -33,6 +36,7 @@ export function InvoiceDetailsClient({
       await updateInvoiceDetailsAction({
         invoiceAddress: address,
         invoicePhone: phone,
+        invoiceEmail: email,
         invoiceWebsite: website,
         invoiceLogoUrl: logoUrl,
         invoiceFooterText: footerText,
@@ -67,6 +71,15 @@ export function InvoiceDetailsClient({
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="+44 20 0000 0000"
+            className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+          />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-neutral-500">Email</label>
+          <input
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="hello@alzayt.co.uk"
             className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
           />
         </div>

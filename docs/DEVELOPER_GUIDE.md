@@ -399,6 +399,63 @@ else is broken.
 will always fail with no bridge listening on *that* machine's `127.0.0.1` — that's expected, not a
 bug, and isn't evidence the bridge or printer setup is wrong.
 
+**Receipt content and when it prints** (`lib/escpos-ticket.ts`, `order-line-client.tsx`'s
+`printReceiptLocally`/`handlePrint`/`handlePlaceOrder`):
+- Formatted for **80mm paper, 48 columns** — `LINE_WIDTH` in `lib/escpos-ticket.ts`; change it if a
+  specific printer's default font renders a different width.
+- Header: restaurant logo (rendered as an ESC/POS raster image via `sharp` — ⚠️ unverified against
+  a real printer, falls back to the restaurant name in large text if the logo can't be
+  fetched/decoded), address, phone/email/website on one line, then a divider, order number
+  (bold), date, time, channel (+ table/guest count when seated), **server name** (the session's
+  own name — see `staffName`), items **grouped by menu category** (via `groupItemsByCategory`,
+  which maps each cart item's `dishId` to its live category — not snapshotted at order time, so a
+  dish moved to a different category later reprints under its *current* category), Delivery/Take
+  Away customer details at the bottom (not inline with items), subtotal/discount/coupon/tax, a
+  **bold** "TOTAL PAYABLE" line, any payment lines, the footer text, and — when the order has
+  actually been saved (an id exists) — a native ESC/POS QR code (⚠️ also unverified) linking to
+  `/invoice/[id]` with a "Link valid for 1 week" note (the invoice page itself has no real
+  7-day expiry enforced anywhere; this is a courtesy note on the receipt, not an access control).
+  There is deliberately **no "packing charge" line** — that's not a real concept anywhere in this
+  app today (no field, no Till UI to set one per order); it was asked for but would need to be
+  built as an actual feature first rather than faked on the printout.
+- **Web print (`lib/print-ticket.ts`) is scoped out, not deleted.** Once a restaurant has
+  `localPrintTarget` configured, the manual Print button and auto-print both go through
+  `printReceiptLocally` only — the old browser print popup no longer appears for that restaurant.
+  A restaurant with **no** local printer configured still gets the original browser-print
+  behavior unchanged, so this doesn't break printing for every other tenant that hasn't set this
+  up.
+- **Auto-print fires on payment, not on every order.** `handlePlaceOrder` prints automatically
+  only when the cart being placed/edited includes at least one payment line (`cart.payments.length
+  > 0`) — a plain "send to kitchen" with no payment yet does **not** auto-print; the same order
+  re-placed later once payment is actually taken does. The manual Print button still works
+  anytime, for reprints.
+
+### 7.9 The IQ POS Till Android app (replaces browser + Termux bridge)
+
+A separate Android project (**not** part of this Next.js repo/build — a standalone Gradle/Kotlin
+project) that wraps the Till in a WebView and exposes printing natively, so a Sunmi/Android device
+doesn't need Termux running at all. Source isn't checked into this repo (it was generated and
+built ad hoc); recreate it from this description if it needs to change:
+
+- `MainActivity.kt` — a single-Activity WebView loading the platform's own URL (`res/values/strings.xml`'s
+  `pos_url`, currently `https://pos.luvder.com/`), with `addJavascriptInterface(PrintBridge(),
+  "AndroidPrintBridge")`.
+- `PrintBridge.kt` — the native counterpart to `lib/local-print-bridge.ts`: a `@JavascriptInterface
+  fun print(printerIp, printerPort, escposHex)` that hex-decodes and writes straight to a raw
+  `java.net.Socket` on a background thread, fire-and-forget. **No local HTTP server at all** inside
+  the app (unlike the Termux bridge) — same-process native call instead, which also sidesteps
+  Chrome's Private Network Access restrictions entirely.
+- `lib/local-print-bridge.ts` on the web side checks `window.AndroidPrintBridge` first and calls it
+  directly when present; it only falls back to the HTTP bridge (`scripts/local-print-bridge.js`,
+  Termux) when that global doesn't exist — so the exact same web code path serves both a plain
+  browser+Termux setup and the APK, with no restaurant-specific branching needed.
+- Distributed as a debug-signed APK (fine for sideloading; not a Play Store release) hosted at
+  **`/get`** (`src/app/get/page.tsx`, linking to the static file at `public/downloads/iq-pos-till.apk`)
+  — a public, unauthenticated page (see `CUSTOMER_FACING_PREFIXES` in `src/proxy.ts`) so it's
+  reachable from a bare device browser before anything else is set up. Rebuilding it requires the
+  Android SDK (`compileSdk 34`, AGP 8.7.2, Kotlin 1.9.24) — not installed in every environment this
+  project gets worked on from; if that tooling isn't available, this is out of reach without it.
+
 ## 8. Payment / Card-Machine Integrations
 
 A `payment_terminals` row with `provider: null` is "manual" — staff run the physical machine
@@ -502,7 +559,7 @@ actually used in code):
 |---|---|
 | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | Database connection (`src/db/client.ts`) |
 | `JWT_SECRET` | Signing staff/admin session JWTs (`src/lib/session.ts`) |
-| `NEXT_PUBLIC_APP_URL` | Lets `proxy.ts` recognize the platform's own domain vs a tenant's custom domain |
+| `NEXT_PUBLIC_APP_URL` | Lets `proxy.ts` recognize the platform's own domain vs a tenant's custom domain. Currently `https://pos.luvder.com` (set in Vercel project env vars, production target) — a custom domain added directly in the Vercel project, not `restaurants.customDomain` (that field is per-restaurant and layered *on top* of this one, see §7.5) |
 | `RESEND_API_KEY`, `RESEND_SENDING_DOMAIN` | Sending loyalty OTP/magic-link emails (`src/lib/email.ts`) |
 | `SUMUP_AFFILIATE_APP_ID`, `SUMUP_AFFILIATE_KEY` | Platform-level SumUp affiliate credentials (separate from each restaurant's own `sumupApiKey`) |
 | `SUNMI_CLOUD_PRINT_APP_ID`, `SUNMI_CLOUD_PRINT_APP_KEY` | Platform-level Sunmi Cloud Print partner credentials (§7.7) — shared across every restaurant, issued once by Sunmi |
@@ -636,6 +693,34 @@ conversation says so.
 > **Instruction for every future change:** add a dated entry here (newest on top), *and* update
 > whichever numbered section above actually describes the thing you changed. A change without
 > both halves is not done.
+
+### 2026-10-12 (latest) — Receipt redesign for 80mm, auto-print on payment, Till APK, custom domain
+- **Receipt content rewritten** for 80mm/48-column paper (`lib/escpos-ticket.ts`): mandatory logo
+  (ESC/POS raster, falls back to restaurant-name text if unavailable — ⚠️ unverified against a
+  real device), full contact block (new `restaurants.invoiceEmail` field + Settings UI field),
+  order number, date/time, channel + table/guest count, **server name**, items grouped by menu
+  category (`groupItemsByCategory` in `order-line-client.tsx`), Delivery/Take Away details moved
+  to the bottom, subtotal/discount/coupon/tax, a **bold** total-payable line, a native ESC/POS QR
+  code to the digital receipt with a "valid 1 week" note. No "packing charge" line — not a real
+  feature in this app yet, see §7.8.
+- **Web print popup removed for any restaurant with local printing configured** — scoped (not
+  global) so restaurants without `localPrintTarget` keep the original browser-print behavior
+  unchanged. See §7.8.
+- **Auto-print on payment**: `placeOrderAction` now returns the placed/edited order's
+  `{id, orderNumber}`; `handlePlaceOrder` uses it to auto-print only when the placement included
+  payment lines, not on a plain send-to-kitchen. See §7.8.
+- **New: the IQ POS Till Android app** (§7.9) — a WebView + native print-bridge APK replacing
+  Termux for devices that can run it. `lib/local-print-bridge.ts` now checks for
+  `window.AndroidPrintBridge` before falling back to the HTTP bridge. Distributed from the new
+  public `/get` page (`src/app/get/page.tsx`, static file at `public/downloads/iq-pos-till.apk`).
+- **Platform domain changed to `pos.luvder.com`** (added as a custom domain directly in the
+  Vercel project, DNS configured by the user) — `NEXT_PUBLIC_APP_URL` updated in Vercel to match.
+  Every restaurant is reachable at this domain (or their own `customDomain`, see §7.5) from here
+  on; `iq-pos.vercel.app` still works (Vercel's own domain is never removed) but is no longer the
+  canonical one referenced anywhere in code/docs.
+- Migration: `restaurants.invoice_email` (text, nullable). SQL sent to the user — confirm applied
+  before/alongside this shipping, per §12.1 (restaurants is the most heavily-queried table in the
+  app).
 
 ### 2026-10-12 (later still) — Fix: bridge needed Private Network Access header
 - `scripts/local-print-bridge.js` now sends `Access-Control-Allow-Private-Network: true` on every

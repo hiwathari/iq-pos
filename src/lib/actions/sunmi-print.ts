@@ -61,13 +61,14 @@ export async function sendSunmiTestPrintAction(printerId: string): Promise<Sunmi
     .limit(1);
   if (!printer?.sunmiSn) return { error: "Save this printer's Sunmi SN first." };
 
-  const { hex, voice } = buildEscPosTicket({
+  const { hex, voice } = await buildEscPosTicket({
     restaurantName: "IQ POS",
     orderNumber: "TEST",
     createdAt: Date.now(),
     tableNumber: null,
+    guests: null,
     channel: "Test Print",
-    items: [{ name: "Test ticket", qty: 1, price: 0 }],
+    items: [{ categoryName: "Test", items: [{ name: "Test ticket", qty: 1, price: 0 }] }],
     subtotal: 0,
     tax: 0,
     total: 0,

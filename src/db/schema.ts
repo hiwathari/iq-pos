@@ -15,6 +15,7 @@ export const restaurants = sqliteTable("restaurants", {
   // Printed on the invoice/ticket header — all optional, editable in Settings.
   invoiceAddress: text("invoice_address"),
   invoicePhone: text("invoice_phone"),
+  invoiceEmail: text("invoice_email"),
   invoiceWebsite: text("invoice_website"),
   invoiceLogoUrl: text("invoice_logo_url"),
   invoiceFooterText: text("invoice_footer_text").notNull().default("Thank you for dining with us!"),

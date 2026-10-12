@@ -231,6 +231,7 @@ export async function dismissAutoVoidNoticeAction() {
 export interface InvoiceDetailsInput {
   invoiceAddress: string;
   invoicePhone: string;
+  invoiceEmail: string;
   invoiceWebsite: string;
   invoiceLogoUrl: string;
   invoiceFooterText: string;
@@ -244,6 +245,7 @@ export async function updateInvoiceDetailsAction(input: InvoiceDetailsInput) {
     .set({
       invoiceAddress: input.invoiceAddress.trim() || null,
       invoicePhone: input.invoicePhone.trim() || null,
+      invoiceEmail: input.invoiceEmail.trim() || null,
       invoiceWebsite: input.invoiceWebsite.trim() || null,
       invoiceLogoUrl: input.invoiceLogoUrl.trim() || null,
       invoiceFooterText: input.invoiceFooterText.trim() || "Thank you for dining with us!",

@@ -37,7 +37,11 @@ export interface PlaceOrderInput {
   customerAddress?: string;
 }
 
-export async function placeOrderAction(input: PlaceOrderInput) {
+// Returns the placed/edited order's id — used by the Till to build the printed receipt's QR
+// link right after placement (see order-line-client.tsx's handlePlaceOrder), since auto-print on
+// payment needs an id to exist before the page's own data has refreshed to include it. undefined
+// for every early-return path (no items, a deduped double-tap) where nothing was actually placed.
+export async function placeOrderAction(input: PlaceOrderInput): Promise<{ id: string; orderNumber: string } | undefined> {
   const { session, restaurantId } = await requireRestaurantContext();
   if (input.items.length === 0) return;
 
@@ -90,6 +94,9 @@ export async function placeOrderAction(input: PlaceOrderInput) {
   // Till only ever hands back an ID it just resolved itself, but never trust a client ID as-is.
   const loyaltyMember = input.loyaltyMemberId ? await findLoyaltyMemberById(restaurantId, input.loyaltyMemberId) : null;
   const loyaltyMemberId = loyaltyMember?.id ?? null;
+
+  let newOrderId: string | undefined;
+  let newOrderNumber: string | undefined;
 
   if (input.editingOrderId) {
     const closedOutAt = existing
@@ -147,11 +154,12 @@ export async function placeOrderAction(input: PlaceOrderInput) {
     );
     if (isDuplicate) return;
 
-    const orderNumber = await nextOrderNumber(restaurantId);
+    newOrderNumber = await nextOrderNumber(restaurantId);
+    newOrderId = crypto.randomUUID();
     await db.insert(orders).values({
-      id: crypto.randomUUID(),
+      id: newOrderId,
       restaurantId,
-      orderNumber,
+      orderNumber: newOrderNumber,
       tableId: input.tableId,
       tableNumber: input.tableNumber,
       guests: input.guests,
@@ -188,6 +196,11 @@ export async function placeOrderAction(input: PlaceOrderInput) {
   revalidatePath("/manage-table");
   revalidatePath("/dashboard");
   revalidatePath("/kitchen");
+
+  return {
+    id: input.editingOrderId ?? newOrderId!,
+    orderNumber: input.editingOrderId ? (existing?.orderNumber ?? "") : newOrderNumber!,
+  };
 }
 
 // itemKey is item.lineId when the item has one, else its dishId — matches whichever identity

@@ -26,12 +26,14 @@ export function TillModeSwitcher({
   taxEnabled,
   invoiceAddress,
   invoicePhone,
+  invoiceEmail,
   invoiceWebsite,
   invoiceLogoUrl,
   invoiceFooterText,
   openTime,
   timezone,
   localPrintTarget,
+  staffName,
 }: {
   categories: Category[];
   dishes: Dish[];
@@ -44,15 +46,17 @@ export function TillModeSwitcher({
   taxEnabled: boolean;
   invoiceAddress?: string;
   invoicePhone?: string;
+  invoiceEmail?: string;
   invoiceWebsite?: string;
   invoiceLogoUrl?: string;
   invoiceFooterText: string;
   openTime: string | null;
   timezone: string;
   // The restaurant's default printer, when set up for local network printing (see
-  // docs/DEVELOPER_GUIDE.md §7.7) — only the full desktop Till acts on it (see MobileTillClient
+  // docs/DEVELOPER_GUIDE.md §7.8) — only the full desktop Till acts on it (see MobileTillClient
   // below, which has no print button at all today).
   localPrintTarget: { ip: string; port: number | null } | null;
+  staffName?: string;
 }) {
   const [mode, setMode] = useState<Mode | null>(null);
 
@@ -110,12 +114,14 @@ export function TillModeSwitcher({
       taxEnabled={taxEnabled}
       invoiceAddress={invoiceAddress}
       invoicePhone={invoicePhone}
+      invoiceEmail={invoiceEmail}
       invoiceWebsite={invoiceWebsite}
       invoiceLogoUrl={invoiceLogoUrl}
       invoiceFooterText={invoiceFooterText}
       openTime={openTime}
       timezone={timezone}
       localPrintTarget={localPrintTarget}
+      staffName={staffName}
     />
   );
 }
