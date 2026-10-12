@@ -439,7 +439,16 @@ built ad hoc); recreate it from this description if it needs to change:
 
 - `MainActivity.kt` — a single-Activity WebView loading the platform's own URL (`res/values/strings.xml`'s
   `pos_url`, currently `https://pos.luvder.com/`), with `addJavascriptInterface(PrintBridge(),
-  "AndroidPrintBridge")`.
+  "AndroidPrintBridge")`. Extends plain `android.app.Activity`, **not**
+  `AppCompatActivity` — the first build used `AppCompatActivity` with a plain `android:Theme.*`
+  parent (`themes.xml`), which crashes on launch every time with `You need to use a Theme.AppCompat
+  theme (or descendant) with this activity`. Nothing here needs AppCompat widgets, so the fix was
+  switching the base class rather than the theme — also dropped the now-unused
+  `androidx.appcompat`/`androidx.core` dependencies entirely, which cut the APK from ~3.4MB to
+  ~0.8MB as a side effect.
+- Launcher icon: `res/mipmap-*/ic_launcher*.png`, a teal rounded-square "IQ POS" wordmark generated
+  from an SVG (`sharp`, the same image library already used for the printed receipt's logo) —
+  not the restaurant's own logo, just the app's own identity on the home screen.
 - `PrintBridge.kt` — the native counterpart to `lib/local-print-bridge.ts`: a `@JavascriptInterface
   fun print(printerIp, printerPort, escposHex)` that hex-decodes and writes straight to a raw
   `java.net.Socket` on a background thread, fire-and-forget. **No local HTTP server at all** inside
@@ -693,6 +702,17 @@ conversation says so.
 > **Instruction for every future change:** add a dated entry here (newest on top), *and* update
 > whichever numbered section above actually describes the thing you changed. A change without
 > both halves is not done.
+
+### 2026-10-13 — Fix: Till APK crashed on launch; added launcher icon
+- The first Till APK crashed immediately on every install — `MainActivity` extended
+  `AppCompatActivity` but the theme wasn't `Theme.AppCompat`-derived. Fixed by switching to a
+  plain `android.app.Activity` (nothing in the app used AppCompat widgets anyway), which also
+  dropped the now-unused AppCompat/core-ktx dependencies and shrank the APK from ~3.4MB to
+  ~0.8MB. See §7.9.
+- Added a real launcher icon (`res/mipmap-*`, a generated teal "IQ POS" wordmark) — the first
+  build shipped with no custom icon at all.
+- `public/downloads/iq-pos-till.apk` replaced with the fixed build (versionCode 2); `/get` serves
+  the same path, nothing else changed there.
 
 ### 2026-10-12 (latest) — Receipt redesign for 80mm, auto-print on payment, Till APK, custom domain
 - **Receipt content rewritten** for 80mm/48-column paper (`lib/escpos-ticket.ts`): mandatory logo
