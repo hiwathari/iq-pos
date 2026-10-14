@@ -79,7 +79,7 @@ export function InvoiceDetailsClient({
           <input
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="hello@alzayt.co.uk"
+            placeholder="hello@restaurant.com"
             className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
           />
         </div>
@@ -88,7 +88,7 @@ export function InvoiceDetailsClient({
           <input
             value={website}
             onChange={(e) => setWebsite(e.target.value)}
-            placeholder="https://alzayt.co.uk"
+            placeholder="https://restaurant.com"
             className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
           />
         </div>
