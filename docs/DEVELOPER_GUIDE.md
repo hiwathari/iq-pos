@@ -574,7 +574,7 @@ actually used in code):
 |---|---|
 | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | Database connection (`src/db/client.ts`) |
 | `JWT_SECRET` | Signing staff/admin session JWTs (`src/lib/session.ts`) |
-| `NEXT_PUBLIC_APP_URL` | Lets `proxy.ts` recognize the platform's own domain vs a tenant's custom domain. Currently `https://pos.luvder.com` (set in Vercel project env vars, production target) — a custom domain added directly in the Vercel project, not `restaurants.customDomain` (that field is per-restaurant and layered *on top* of this one, see §7.5) |
+| `NEXT_PUBLIC_APP_URL` | Lets `proxy.ts` recognize the platform's own domain vs a tenant's custom domain. Currently `https://pos.luvder.com` (set in Vercel project env vars, production target) — a custom domain added directly in the Vercel project, not `restaurants.customDomain` (that field is per-restaurant and layered *on top* of this one, see §7.5). Also the last-resort fallback for building loyalty magic-link email URLs (`lib/actions/loyalty-auth.ts`'s `resolveOrigin`) — in practice those are built from the live request's `Host` header instead, so this only matters if `headers()` can't be read |
 | `RESEND_API_KEY`, `RESEND_SENDING_DOMAIN` | Sending loyalty OTP/magic-link emails (`src/lib/email.ts`) |
 | `SUMUP_AFFILIATE_APP_ID`, `SUMUP_AFFILIATE_KEY` | Platform-level SumUp affiliate credentials (separate from each restaurant's own `sumupApiKey`) |
 | `SUNMI_CLOUD_PRINT_APP_ID`, `SUNMI_CLOUD_PRINT_APP_KEY` | Platform-level Sunmi Cloud Print partner credentials (§7.7) — shared across every restaurant, issued once by Sunmi |
@@ -709,6 +709,33 @@ conversation says so.
 > whichever numbered section above actually describes the thing you changed. A change without
 > both halves is not done.
 
+### 2026-10-14 — Magic-link URLs now follow the live request domain; receipt QR note to 14 days; Rice Club menu import
+- `lib/actions/loyalty-auth.ts`'s `resolveOrigin` (used to build the magic-link URL emailed to
+  customers) previously only chose between a restaurant's `customDomain` and the static
+  `NEXT_PUBLIC_APP_URL` — correct at the time, but meant a tenant reached via a second domain
+  (e.g. `iq-pos.vercel.app`, or a future additional domain) got links pointing at
+  `pos.luvder.com` instead of the domain they were actually using. Now reads the live request's
+  `Host` header via `next/headers` as the preferred fallback (after `customDomain`, before the
+  static env var) — see the updated `NEXT_PUBLIC_APP_URL` row in §12.
+- Receipt QR footer text corrected from "Link valid for 1 week" to "Link valid for 14 days"
+  (`lib/escpos-ticket.ts`) — this is informational copy only; the public `/invoice/[orderId]`
+  page itself has no actual expiry/TTL enforcement (gated only by the order id being unguessable).
+- **Investigated "loyalty email not received" for a newly onboarding restaurant.** Root cause:
+  the `/my-card/[slug]/login` sign-in form calls `requestLoyaltyMagicLinkAction`, which **only
+  sends an email if a matching `loyaltyMembers` row already exists** for that restaurant+contact
+  (by design — the response is always `{ sent: true }` either way, so the flow can't be used to
+  enumerate registered emails). It never creates a member. A brand-new restaurant with no loyalty
+  sign-ups yet (no online orders via `requestOnlineOrderSignInAction`, no Till-side enrollment via
+  `lib/actions/loyalty.ts`) will show the generic "check your email" success state for *any*
+  address tested, with nothing actually sent and nothing logged — this fully explains a 7-day
+  window of zero matching Vercel runtime log entries, since the no-member path never reaches
+  `sendLoyaltyMagicLinkEmail` at all. `RESEND_SENDING_DOMAIN` is unset platform-wide (falls back
+  to `mail.luvder.com`), but that domain is already verified and working for the platform's other
+  tenants, so a Resend/domain misconfiguration was ruled out as the likely cause here.
+- Added `rice-club-menu.sql` (generated from the restaurant's uploaded spreadsheet, not committed
+  to the repo — sent directly to the user to run against production, same pattern as every other
+  one-off data/schema SQL file in this changelog): 18 categories, 124 dishes.
+
 ### 2026-10-13 (later) — Fix: local-print selection was silently tied to the wrong flag
 - The Till was selecting its receipt printer by `printers.isDefault` — a flag that actually means
   "the printer new menu categories route to," unrelated to Till printing. A restaurant could save
@@ -718,8 +745,8 @@ conversation says so.
   why a *different* restaurant with local printing set up was too.
 - New: `printers.tillReceiptPrinter` — an explicit, admin-controlled "Use for Till auto-print"
   toggle in Settings → Printers, fully decoupled from `isDefault`. `order-line/page.tsx` now
-  resolves the Till's print target from this flag instead. Migration SQL sent to the user — NOT
-  yet applied to production.
+  resolves the Till's print target from this flag instead. Migration SQL sent to the user and
+  applied to production.
 - `setTillReceiptPrinterAction` in `lib/actions/printers.ts` — same single-selection-per-restaurant
   pattern as `setDefaultPrinterAction`, refuses to enable it on a printer with no `localPrinterIp`
   saved yet.
