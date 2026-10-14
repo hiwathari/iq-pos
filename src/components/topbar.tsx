@@ -127,18 +127,18 @@ export function Topbar({
             <div className="text-sm font-semibold text-neutral-900">{name}</div>
             <div className="text-xs text-neutral-400">{ROLE_LABEL[role]}</div>
           </div>
+          {/* Always visible here (not just on mobile) — the Sidebar's own Logout can scroll out
+              of view on a long nav list, so this is a second, always-reachable way to log out. */}
+          <form action={logoutAction}>
+            <button
+              type="submit"
+              title="Logout"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-neutral-200 text-neutral-500 hover:bg-neutral-50"
+            >
+              <LogOut className="h-[18px] w-[18px]" />
+            </button>
+          </form>
         </div>
-        {/* The Sidebar (with its own Logout) is desktop-only (hidden below md) — without this,
-            a signed-in user on a phone has no way to log out at all. */}
-        <form action={logoutAction} className="md:hidden">
-          <button
-            type="submit"
-            title="Logout"
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-neutral-200 text-neutral-500 hover:bg-neutral-50"
-          >
-            <LogOut className="h-[18px] w-[18px]" />
-          </button>
-        </form>
       </div>
     </header>
   );

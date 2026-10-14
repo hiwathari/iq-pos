@@ -110,7 +110,7 @@ export function Sidebar({
   return (
     <aside
       className={clsx(
-        "hidden md:flex shrink-0 flex-col border-r border-neutral-200 bg-white py-5 print:hidden transition-[width] duration-150",
+        "hidden md:flex h-full min-h-0 shrink-0 flex-col border-r border-neutral-200 bg-white py-5 print:hidden transition-[width] duration-150",
         collapsed ? "md:w-[72px] px-2" : "md:w-60 px-4"
       )}
     >
@@ -124,7 +124,7 @@ export function Sidebar({
           {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
         </button>
       </div>
-      <nav className="flex-1 flex flex-col gap-1">
+      <nav className="min-h-0 flex-1 flex flex-col gap-1 overflow-y-auto">
         {isSuperOrRegional && (
           <Link
             href="/super-admin"
