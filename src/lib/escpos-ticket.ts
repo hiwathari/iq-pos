@@ -247,7 +247,7 @@ export async function buildEscPosTicket(t: SunmiTicketData): Promise<{ hex: stri
   if (t.invoiceUrl) {
     bytes.push(...qrCommands(t.invoiceUrl), ...feed());
     bytes.push(...textBytes("Scan for your digital receipt"), ...feed());
-    bytes.push(...textBytes("Link valid for 1 week"), ...feed());
+    bytes.push(...textBytes("Link valid for 14 days"), ...feed());
   }
   bytes.push(...feed(2));
   bytes.push(...cutPaper());

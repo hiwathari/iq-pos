@@ -1,7 +1,7 @@
 "use server";
 
 import { randomBytes, createHash, randomInt } from "crypto";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db/client";
@@ -26,10 +26,20 @@ function hashSecret(value: string) {
 
 // A restaurant with its own custom ordering domain (set in Super Admin > Online Ordering — see
 // restaurants.customDomain) gets its magic-link emails built against that domain instead of the
-// platform's own, since that's the address its customers actually know and trust. Falls back to
-// the platform URL for every restaurant that hasn't set one.
-function resolveOrigin(customDomain: string | null) {
+// platform's own, since that's the address its customers actually know and trust. Otherwise,
+// built from whichever domain this actual request came in on (the live Host header) — not a
+// fixed env var — so the link is always correct regardless of which connected domain
+// (pos.luvder.com, iq-pos.vercel.app, a future additional domain, …) the customer is using right
+// now. NEXT_PUBLIC_APP_URL is only a last-resort fallback for the rare case headers() can't be
+// read (e.g. a non-request context).
+async function resolveOrigin(customDomain: string | null) {
   if (customDomain) return `https://${customDomain}`;
+  try {
+    const host = (await headers()).get("host");
+    if (host) return `https://${host}`;
+  } catch {
+    // Fall through to the static fallback below.
+  }
   return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 }
 
@@ -43,7 +53,7 @@ async function createSignInRequest(loyaltyMemberId: string, redirectTo: string, 
     redirectTo,
     expiresAt: Date.now() + TOKEN_TTL_MS,
   });
-  const link = `${resolveOrigin(customDomain)}/my-card/verify?token=${token}`;
+  const link = `${await resolveOrigin(customDomain)}/my-card/verify?token=${token}`;
   return { link, code };
 }
 
