@@ -1,11 +1,8 @@
 export function Logo({ className, showText = true }: { className?: string; showText?: boolean }) {
   return (
     <div className={`flex items-center gap-2.5 ${className ?? ""}`}>
-      <svg width="34" height="34" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
-        <circle cx="17" cy="17" r="17" fill="#0F766E" />
-        <path d="M17 3C17 10.732 10.732 17 3 17C3 9.268 9.268 3 17 3Z" fill="#5EEAD4" />
-        <path d="M17 31C17 23.268 23.268 17 31 17C31 24.732 24.732 31 17 31Z" fill="#5EEAD4" />
-      </svg>
+      {/* eslint-disable-next-line @next/next/no-img-element -- static asset, no benefit from next/image at this size */}
+      <img src="/brand/iq-pos-logo.png" alt="" width={34} height={34} className="h-[34px] w-[34px] shrink-0 object-contain" />
       {showText && (
         <div className="leading-tight">
           <div className="text-[17px] font-bold tracking-tight text-neutral-900">

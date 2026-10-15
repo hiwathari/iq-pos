@@ -10,6 +10,11 @@ const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KE
 // sender, so a customer's inbox shows which restaurant actually emailed them.
 const SENDING_DOMAIN = process.env.RESEND_SENDING_DOMAIN || "mail.luvder.com";
 
+// Email has no live request to read a Host header from (unlike the magic-link URL itself, see
+// resolveOrigin in loyalty-auth.ts) — this is only for a small static footer logo image, not a
+// link the customer clicks, so the platform's own canonical domain is fine here.
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://pos.luvder.com";
+
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
 }
@@ -48,6 +53,10 @@ export async function sendLoyaltyMagicLinkEmail(input: { to: string; restaurantN
           : ""
       }
       <p style="color:#888;font-size:13px">This expires in 15 minutes. If you didn't request this, you can ignore this email.</p>
+      <p style="margin-top:24px">
+        <img src="${APP_URL}/brand/iq-pos-logo.png" alt="IQ POS" width="20" height="20" style="vertical-align:middle;border:0" />
+        <span style="color:#aaa;font-size:11px;vertical-align:middle;margin-left:6px">Powered by IQ POS</span>
+      </p>
     `,
   });
   // Resend's SDK reports a send failure (e.g. a not-yet-verified domain) via this `error` field

@@ -10,7 +10,9 @@ export const metadata: Metadata = { title: "Get the IQ POS Till App" };
 export default function GetAppPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-neutral-50 px-6 py-16 text-center">
-      <h1 className="text-2xl font-bold text-neutral-900">IQ POS Till</h1>
+      {/* eslint-disable-next-line @next/next/no-img-element -- static asset, no benefit from next/image at this size */}
+      <img src="/brand/iq-pos-logo.png" alt="" width={56} height={56} className="h-14 w-14 object-contain" />
+      <h1 className="mt-3 text-2xl font-bold text-neutral-900">IQ POS Till</h1>
       <p className="mt-2 max-w-sm text-sm text-neutral-500">
         For Sunmi / Android till devices. Replaces the browser + print bridge setup with a single app.
       </p>

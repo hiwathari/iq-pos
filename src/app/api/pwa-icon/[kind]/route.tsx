@@ -1,8 +1,25 @@
 import { ImageResponse } from "next/og";
 import { NextRequest } from "next/server";
+import { readFile } from "fs/promises";
+import path from "path";
 import sharp from "sharp";
 import { getActiveRestaurantId, getSession } from "@/lib/auth";
 import { getRestaurant } from "@/lib/data/restaurants";
+
+// The platform's own mark, used whenever no restaurant-specific logo applies yet (no session,
+// or a restaurant that hasn't uploaded one) — read from disk once and cached in memory rather
+// than re-reading the file on every request.
+let iqPosLogoDataUrl: string | null | undefined;
+async function loadIqPosLogoDataUrl(): Promise<string | null> {
+  if (iqPosLogoDataUrl !== undefined) return iqPosLogoDataUrl;
+  try {
+    const bytes = await readFile(path.join(process.cwd(), "public/brand/iq-pos-logo.png"));
+    iqPosLogoDataUrl = `data:image/png;base64,${bytes.toString("base64")}`;
+  } catch {
+    iqPosLogoDataUrl = null;
+  }
+  return iqPosLogoDataUrl;
+}
 
 // "dashboard" has no corner badge (empty letter) — unlike Till/Kitchen, it's not one of
 // several device-specific "apps" that might sit side by side on the same tablet, so there's
@@ -51,7 +68,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ kind
     // No session / restaurant available yet — fall back to the generic branded icon below.
   }
 
-  const logoDataUrl = logoUrl ? await loadLogoAsPngDataUrl(logoUrl) : null;
+  const logoDataUrl = (logoUrl ? await loadLogoAsPngDataUrl(logoUrl) : null) ?? (await loadIqPosLogoDataUrl());
 
   return new ImageResponse(
     (
