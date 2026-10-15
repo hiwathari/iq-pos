@@ -78,8 +78,10 @@ export async function getActiveRestaurantId(session: SessionPayload): Promise<st
   return session.restaurantId;
 }
 
-// Called at every successful PIN/password login that resolves to a specific restaurant — not
-// super_admin/regional_admin, which aren't tied to one. Lets a shared device's own login screen
+// Called at every successful PIN login (Till/Kitchen/Staff — see pin-auth.ts) that resolves to a
+// specific restaurant. Deliberately NOT called from the regular password login (lib/actions/auth.ts)
+// — that happens on personal/dev machines as often as shared devices, so it shouldn't change what
+// that browser's /login shows afterwards. Lets a genuinely shared device's own PIN login screen
 // show that restaurant's branding from then on, surviving logout (see DEVICE_RESTAURANT_COOKIE_NAME).
 export async function rememberDeviceRestaurant(restaurantId: string) {
   const store = await cookies();

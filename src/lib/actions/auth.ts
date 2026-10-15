@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db/client";
 import { users } from "@/db/schema";
-import { createSession, destroySession, getSession, rememberDeviceRestaurant, verifyPassword } from "@/lib/auth";
+import { createSession, destroySession, getSession, verifyPassword } from "@/lib/auth";
 
 export interface LoginState {
   error?: string;
@@ -37,7 +37,12 @@ export async function loginAction(_prevState: LoginState | undefined, formData: 
     role: user.role,
     restaurantId: user.restaurantId,
   });
-  if (user.restaurantId) await rememberDeviceRestaurant(user.restaurantId);
+  // Deliberately does NOT call rememberDeviceRestaurant here — unlike a PIN login (see
+  // pin-auth.ts), a password login happens on a personal laptop/dev machine as often as a
+  // shared device, and "sticking" /login to the last-logged-into restaurant's branding for a
+  // year on an arbitrary browser was surprising, not helpful (e.g. an admin or support person
+  // logging into one restaurant's account briefly shouldn't change what every other visitor to
+  // /login on that machine sees afterwards).
 
   redirect(user.role === "super_admin" || user.role === "regional_admin" ? "/super-admin" : "/dashboard");
 }
