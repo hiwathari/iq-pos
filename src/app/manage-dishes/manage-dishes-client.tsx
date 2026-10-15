@@ -9,6 +9,7 @@ import { formatMoney } from "@/lib/types";
 import {
   createCategoryAction,
   createDishAction,
+  deleteCategoryAction,
   deleteDishAction,
   setDishStockAction,
   updateCategoryAction,
@@ -114,6 +115,21 @@ export function ManageDishesClient({
     });
     setCategoryModalOpen(false);
     setEditingCategory(null);
+  }
+
+  function handleDeleteCategory(categoryId: string) {
+    if (!confirm("Delete this category? This can't be undone.")) return;
+    startTransition(async () => {
+      const result = await deleteCategoryAction(categoryId);
+      if (result.error) {
+        alert(result.error);
+        return;
+      }
+      if (selectedCategory === categoryId) setSelectedCategory("all");
+      setCategoryModalOpen(false);
+      setEditingCategory(null);
+      router.refresh();
+    });
   }
 
   return (
@@ -325,6 +341,7 @@ export function ManageDishesClient({
             setEditingCategory(null);
           }}
           onSave={handleSaveCategory}
+          onDelete={editingCategory ? () => handleDeleteCategory(editingCategory.id) : undefined}
         />
       )}
     </div>
@@ -465,11 +482,13 @@ function CategoryModal({
   category,
   onClose,
   onSave,
+  onDelete,
 }: {
   printers: Printer[];
   category?: Category | null;
   onClose: () => void;
   onSave: (input: UpdateCategoryInput) => void;
+  onDelete?: () => void;
 }) {
   const defaultPrinter = printers.find((p) => p.isDefault) ?? printers[0] ?? null;
   const [name, setName] = useState(category?.name ?? "");
@@ -553,7 +572,15 @@ function CategoryModal({
             </p>
           </div>
         </div>
-        <div className="mt-6 flex gap-3">
+        {onDelete && (
+          <button
+            onClick={onDelete}
+            className="mt-5 flex w-full items-center justify-center gap-1.5 rounded-xl border border-rose-200 py-2.5 text-sm font-medium text-rose-600 hover:bg-rose-50"
+          >
+            <Trash2 className="h-3.5 w-3.5" /> Delete Category
+          </button>
+        )}
+        <div className="mt-3 flex gap-3">
           <button
             onClick={onClose}
             className="flex-1 rounded-xl border border-neutral-200 py-2.5 text-sm font-medium text-neutral-600 hover:bg-neutral-50"

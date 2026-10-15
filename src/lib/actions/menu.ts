@@ -55,6 +55,33 @@ export async function updateCategoryAction(categoryId: string, input: UpdateCate
   revalidatePath("/order-line");
 }
 
+export interface DeleteCategoryState {
+  error?: string;
+}
+
+// Refuses to delete a category that still has dishes in it, rather than silently cascading
+// (the DB foreign key on dishes.categoryId is ON DELETE CASCADE, so an unguarded delete here
+// would wipe every dish in the category with no way back) — the admin has to move or delete
+// those dishes first, same "fix the real problem, don't paper over it" shape as
+// setTillReceiptPrinterAction's local-IP guard.
+export async function deleteCategoryAction(categoryId: string): Promise<DeleteCategoryState> {
+  const { session, restaurantId } = await requireRestaurantContext();
+  await assertPermission(session, "manage-dishes");
+  const remainingDishes = await db
+    .select({ id: dishes.id })
+    .from(dishes)
+    .where(and(eq(dishes.categoryId, categoryId), eq(dishes.restaurantId, restaurantId)));
+  if (remainingDishes.length > 0) {
+    return {
+      error: `This category still has ${remainingDishes.length} dish${remainingDishes.length === 1 ? "" : "es"} in it. Move or delete them first.`,
+    };
+  }
+  await db.delete(categories).where(and(eq(categories.id, categoryId), eq(categories.restaurantId, restaurantId)));
+  revalidatePath("/manage-dishes");
+  revalidatePath("/order-line");
+  return {};
+}
+
 export interface DishInput {
   name: string;
   categoryId: string;
