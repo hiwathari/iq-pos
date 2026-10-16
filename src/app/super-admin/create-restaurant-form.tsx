@@ -29,6 +29,21 @@ export function CreateRestaurantForm({ onDone }: { onDone: () => void }) {
           className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
         />
       </div>
+      <div>
+        <label className="mb-1.5 block text-xs font-medium text-neutral-500">Business Type</label>
+        <select
+          name="businessType"
+          defaultValue="restaurant"
+          className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+        >
+          <option value="restaurant">Restaurant</option>
+          <option value="cafe">Cafe</option>
+        </select>
+        <p className="mt-1 text-xs text-neutral-400">
+          Cafe is counter-service: an order paid in full at the till is saved straight as Served. Editable later in
+          Settings.
+        </p>
+      </div>
       <div className="border-t border-neutral-100 pt-4">
         <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-400">First Admin Account</p>
         <div className="space-y-3">

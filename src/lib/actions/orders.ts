@@ -3,9 +3,9 @@
 import { and, eq, gte } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
-import { orders, tables } from "@/db/schema";
+import { orders, restaurants, tables } from "@/db/schema";
 import type { Order, OrderChannel, OrderItem, OrderStatus, PaymentLine, ThirdPartyProvider } from "@/lib/types";
-import { resolveCouponDiscount } from "@/lib/types";
+import { orderBreakdown, resolveCouponDiscount } from "@/lib/types";
 import { getUserPermissions, requireRestaurantContext } from "@/lib/scope";
 import { hasPermission } from "@/lib/permissions";
 import { findActiveCoupon } from "@/lib/data/coupons";
@@ -156,6 +156,28 @@ export async function placeOrderAction(input: PlaceOrderInput): Promise<{ id: st
 
     newOrderNumber = await nextOrderNumber(restaurantId);
     newOrderId = crypto.randomUUID();
+
+    // A cafe (see restaurants.businessType) is counter-service: a new order that's already paid
+    // in full skips "In Kitchen" and is created straight as Served — the same end state the
+    // normal flow reaches via the kitchen. A part-paid or unpaid order still goes to the kitchen.
+    let status: OrderStatus = input.channel === "Wait List" ? "Wait List" : "In Kitchen";
+    let servedAt: number | null = null;
+    let closedOutAt: number | null = null;
+    const paidTotal = input.payments.reduce((sum, p) => sum + p.amount, 0);
+    const orderTotal = orderBreakdown({ items: input.items, extraDiscount, couponDiscount }).total;
+    if (status === "In Kitchen" && paymentMethod && paidTotal >= orderTotal - 0.01) {
+      const [restaurant] = await db
+        .select({ businessType: restaurants.businessType })
+        .from(restaurants)
+        .where(eq(restaurants.id, restaurantId))
+        .limit(1);
+      if (restaurant?.businessType === "cafe") {
+        status = "Served";
+        servedAt = Date.now();
+        closedOutAt = servedAt;
+      }
+    }
+
     await db.insert(orders).values({
       id: newOrderId,
       restaurantId,
@@ -165,7 +187,9 @@ export async function placeOrderAction(input: PlaceOrderInput): Promise<{ id: st
       guests: input.guests,
       channel: input.channel,
       thirdPartyProvider: input.channel === "Third Party" ? input.thirdPartyProvider : null,
-      status: input.channel === "Wait List" ? "Wait List" : "In Kitchen",
+      status,
+      servedAt,
+      closedOutAt,
       items: input.items,
       paymentMethod,
       payments,

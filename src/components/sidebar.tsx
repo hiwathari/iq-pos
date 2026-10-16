@@ -57,6 +57,7 @@ export function Sidebar({
   isImpersonating,
   restaurantName,
   restaurantLogoUrl,
+  showKitchenDisplay = true,
 }: {
   role: Role;
   name: string;
@@ -64,6 +65,9 @@ export function Sidebar({
   isImpersonating?: boolean;
   restaurantName?: string | null;
   restaurantLogoUrl?: string | null;
+  // False once a restaurant has no Kitchen Display screen added (Settings > Printers) — there's
+  // nothing for the link to show.
+  showKitchenDisplay?: boolean;
 }) {
   const pathname = usePathname();
   const isSuperOrRegional = role === "super_admin" || role === "regional_admin";
@@ -71,7 +75,12 @@ export function Sidebar({
   // restaurant — same nav as its own admin would see — rather than the empty nav they'd
   // otherwise get since neither role is ever a page's own restaurantId owner.
   const effectiveRole: Role = isSuperOrRegional && isImpersonating ? "admin" : role;
-  const items = isSuperOrRegional && !isImpersonating ? [] : NAV.filter((item) => hasPermission(effectiveRole, permissions, item.key));
+  const items =
+    isSuperOrRegional && !isImpersonating
+      ? []
+      : NAV.filter(
+          (item) => hasPermission(effectiveRole, permissions, item.key) && (item.key !== "kitchen" || showKitchenDisplay)
+        );
 
   // Starts expanded (matches the server-rendered markup) and only collapses once mounted, so
   // there's never a server/client markup mismatch — just a brief flash open on page load for

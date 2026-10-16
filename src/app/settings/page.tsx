@@ -30,6 +30,7 @@ export default async function SettingsPage() {
         </div>
 
         <RestaurantClient
+          businessType={restaurant?.businessType ?? "restaurant"}
           currencySymbol={restaurant?.currencySymbol ?? "£"}
           kitchenTimerLimitMinutes={restaurant?.kitchenTimerLimitMinutes ?? 30}
           taxEnabled={restaurant?.taxEnabled ?? false}

@@ -34,6 +34,7 @@ export function TillModeSwitcher({
   timezone,
   localPrintTarget,
   staffName,
+  hasKitchen,
 }: {
   categories: Category[];
   dishes: Dish[];
@@ -57,6 +58,9 @@ export function TillModeSwitcher({
   // below, which has no print button at all today).
   localPrintTarget: { ip: string; port: number | null } | null;
   staffName?: string;
+  // Whether this restaurant has a Kitchen Display or a kitchen ticket printer (see hasKitchen in
+  // lib/types.ts) — without one, the Till says "Place Order" instead of "Send to Kitchen".
+  hasKitchen: boolean;
 }) {
   const [mode, setMode] = useState<Mode | null>(null);
 
@@ -97,6 +101,7 @@ export function TillModeSwitcher({
         restaurantName={restaurantName}
         taxEnabled={taxEnabled}
         onSwitchToFull={switchToFull}
+        hasKitchen={hasKitchen}
       />
     );
   }
@@ -122,6 +127,7 @@ export function TillModeSwitcher({
       timezone={timezone}
       localPrintTarget={localPrintTarget}
       staffName={staffName}
+      hasKitchen={hasKitchen}
     />
   );
 }

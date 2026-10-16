@@ -99,6 +99,22 @@ export type PrinterStation = "Kitchen" | "Bar" | "Receipt" | "Expo";
 export type CategoryDisplayOverride = PrinterStation | "None" | null;
 export type PrinterConnection = "Bluetooth" | "Network" | "WiFi" | "USB";
 export type PrinterKind = "printer" | "display" | "both";
+export type BusinessType = "restaurant" | "cafe";
+
+// Kitchen features only exist for a restaurant that's actually added the device: a Kitchen
+// Display screen (kind "display"/"both"), or a kitchen-side ticket printer (any station other
+// than "Receipt" — the Till's own receipt printer doesn't make a kitchen). With neither, there's
+// nowhere for "Send to Kitchen" to go, so the Till just places the order instead.
+export function hasKitchenDisplay(printers: Pick<Printer, "active" | "kind">[]) {
+  return printers.some((p) => p.active && (p.kind === "display" || p.kind === "both"));
+}
+
+export function hasKitchen(printers: Pick<Printer, "active" | "kind" | "station">[]) {
+  return (
+    hasKitchenDisplay(printers) ||
+    printers.some((p) => p.active && (p.kind === "printer" || p.kind === "both") && p.station !== "Receipt")
+  );
+}
 export type IntegrationProvider = "Uber Eats" | "Deliveroo" | "Just Eat";
 
 export const PRICING_CHANNELS = ["Dine in", "Take Away", "Delivery", "Online", "Uber Eats", "Deliveroo", "Just Eat"] as const;

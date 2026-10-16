@@ -7,6 +7,7 @@ import { listTables } from "@/lib/data/tables";
 import { listOrders } from "@/lib/data/orders";
 import { listPaymentTerminals, listPrinters } from "@/lib/data/printers";
 import { getRestaurant } from "@/lib/data/restaurants";
+import { hasKitchen } from "@/lib/types";
 import { TillModeSwitcher } from "./till-mode-switcher";
 
 export const metadata: Metadata = {
@@ -70,6 +71,7 @@ export default async function OrderLinePage() {
         timezone={restaurant?.timezone ?? "UTC"}
         localPrintTarget={localPrintTarget}
         staffName={session.name}
+        hasKitchen={hasKitchen(printers)}
       />
     </AppShell>
   );

@@ -36,10 +36,10 @@ interface SimpleCart {
   customerName: string;
   customerPhone: string;
   // Null (the default) keeps today's behavior — unpaid, settled later on the Full Till. "Cash"
-  // marks it paid in full immediately so it shows correctly in Reports/shift reconciliation —
-  // the order still goes "In Kitchen" either way; placeOrderAction has no serve-on-payment
-  // shortcut today. Card payments aren't offered here since those go through a live terminal
-  // charge (SumUp/Teya) that this simplified flow has no room to wait on; use the Full Till.
+  // marks it paid in full immediately so it shows correctly in Reports/shift reconciliation (and,
+  // for a cafe, saves it straight as Served — see placeOrderAction). Card payments aren't offered
+  // here since those go through a live terminal charge (SumUp/Teya) that this simplified flow has
+  // no room to wait on; use the Full Till.
   paymentMethod: "Cash" | null;
 }
 
@@ -80,6 +80,7 @@ export function MobileTillClient({
   restaurantName,
   taxEnabled,
   onSwitchToFull,
+  hasKitchen,
 }: {
   categories: Category[];
   dishes: Dish[];
@@ -89,6 +90,7 @@ export function MobileTillClient({
   restaurantName: string;
   taxEnabled: boolean;
   onSwitchToFull: () => void;
+  hasKitchen: boolean;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -516,7 +518,9 @@ export function MobileTillClient({
             <p className="mt-2 text-center text-xs text-neutral-400">
               {cart.paymentMethod
                 ? "Marked paid in full — card payments need the Full Till instead."
-                : "Payment can be taken at the till later — this just sends the order to the kitchen."}
+                : hasKitchen
+                  ? "Payment can be taken at the till later — this just sends the order to the kitchen."
+                  : "Payment can be taken at the till later — this just places the order."}
             </p>
           </div>
           <div className="border-t border-neutral-200 bg-white p-3">
@@ -525,7 +529,7 @@ export function MobileTillClient({
               disabled={cart.items.length === 0 || sending}
               className="w-full rounded-2xl bg-[var(--brand)] py-4 text-base font-bold text-white active:scale-95 disabled:bg-neutral-300"
             >
-              {sending ? "Sending…" : cart.paymentMethod ? "Place Order" : "Send to Kitchen"}
+              {sending ? "Sending…" : cart.paymentMethod ? "Take Payment" : hasKitchen ? "Send to Kitchen" : "Place Order"}
             </button>
             <button onClick={startOver} className="mt-2 w-full py-2 text-center text-xs font-medium text-neutral-400">
               Cancel this order

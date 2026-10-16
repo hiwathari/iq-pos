@@ -9,6 +9,7 @@ import { hashPassword, setImpersonatedRestaurant } from "@/lib/auth";
 import { assertPermission, assertRestaurantAccess, requireRestaurantContext, requireSession } from "@/lib/scope";
 import { isValidHexColor } from "@/lib/color";
 import { generatePin } from "@/lib/pin";
+import type { BusinessType } from "@/lib/types";
 
 // The default Test Staff PIN — easy to remember for training — but tillPin is unique across the
 // whole platform (PIN-login looks a code up with no restaurant context first), so only one
@@ -54,6 +55,7 @@ export async function createRestaurantAction(
   if (session.role !== "super_admin") return { error: "Forbidden." };
 
   const name = String(formData.get("name") || "").trim();
+  const businessType: BusinessType = formData.get("businessType") === "cafe" ? "cafe" : "restaurant";
   const adminName = String(formData.get("adminName") || "").trim();
   const adminEmail = String(formData.get("adminEmail") || "")
     .trim()
@@ -74,7 +76,7 @@ export async function createRestaurantAction(
 
   const restaurantId = crypto.randomUUID();
   const slug = slugify(name);
-  await db.insert(restaurants).values({ id: restaurantId, name, slug });
+  await db.insert(restaurants).values({ id: restaurantId, name, slug, businessType });
 
   const passwordHash = await hashPassword(adminPassword);
   await db.insert(users).values({
@@ -163,6 +165,18 @@ export async function updateRestaurantCurrencyAction(currencySymbol: string) {
   revalidatePath("/pricing");
   revalidatePath("/reports");
   revalidatePath("/dashboard");
+}
+
+export async function updateBusinessTypeAction(businessType: BusinessType) {
+  const { session, restaurantId } = await requireRestaurantContext();
+  await assertPermission(session, "settings");
+  await db
+    .update(restaurants)
+    .set({ businessType: businessType === "cafe" ? "cafe" : "restaurant" })
+    .where(eq(restaurants.id, restaurantId));
+  revalidatePath("/settings");
+  revalidatePath("/order-line");
+  revalidatePath("/kitchen");
 }
 
 export async function updateRestaurantTaxEnabledAction(enabled: boolean) {

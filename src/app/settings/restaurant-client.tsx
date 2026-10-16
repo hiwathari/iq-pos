@@ -3,12 +3,13 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  updateBusinessTypeAction,
   updateKitchenTimerLimitAction,
   updateRestaurantCurrencyAction,
   updateRestaurantTaxEnabledAction,
   updateShopHoursAction,
 } from "@/lib/actions/restaurants";
-import { CURRENCY_OPTIONS } from "@/lib/types";
+import { CURRENCY_OPTIONS, type BusinessType } from "@/lib/types";
 
 // Common IANA zones every restaurant is realistically in — falls back to this if the browser
 // doesn't support Intl.supportedValuesOf (older Safari/WebView on an older Till tablet).
@@ -39,6 +40,7 @@ function timezoneOptions() {
 }
 
 export function RestaurantClient({
+  businessType,
   currencySymbol,
   kitchenTimerLimitMinutes,
   taxEnabled,
@@ -46,6 +48,7 @@ export function RestaurantClient({
   closeTime,
   timezone,
 }: {
+  businessType: BusinessType;
   currencySymbol: string;
   kitchenTimerLimitMinutes: number;
   taxEnabled: boolean;
@@ -55,12 +58,21 @@ export function RestaurantClient({
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
+  const [type, setType] = useState<BusinessType>(businessType);
   const [timerLimit, setTimerLimit] = useState(kitchenTimerLimitMinutes);
   const [taxOn, setTaxOn] = useState(taxEnabled);
   const [shopOpenTime, setShopOpenTime] = useState(openTime ?? "");
   const [shopCloseTime, setShopCloseTime] = useState(closeTime ?? "");
   const [shopTimezone, setShopTimezone] = useState(timezone);
   const [timezones] = useState(timezoneOptions);
+
+  function handleBusinessTypeChange(next: BusinessType) {
+    setType(next);
+    startTransition(async () => {
+      await updateBusinessTypeAction(next);
+      router.refresh();
+    });
+  }
 
   function handleCurrencyChange(symbol: string) {
     startTransition(async () => {
@@ -100,6 +112,26 @@ export function RestaurantClient({
       <h2 className="text-lg font-semibold text-neutral-900">Restaurant</h2>
       <p className="mb-4 text-sm text-neutral-500">Set the currency used across dishes, the till, and reports.</p>
       <div className="flex flex-wrap gap-6">
+        <div className="max-w-xs">
+          <label className="mb-1.5 block text-xs font-medium text-neutral-500">Business Type</label>
+          <div className="flex rounded-xl border border-neutral-200 p-1">
+            {(["restaurant", "cafe"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => handleBusinessTypeChange(t)}
+                className={`flex-1 rounded-lg py-2 text-sm font-medium capitalize ${
+                  type === t ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1 text-xs text-neutral-400">
+            Cafe is counter-service: an order paid in full at the till is saved straight as Served. Restaurant keeps
+            the normal kitchen-then-serve flow.
+          </p>
+        </div>
         <div className="max-w-xs">
           <label className="mb-1.5 block text-xs font-medium text-neutral-500">Currency</label>
           <select

@@ -231,6 +231,7 @@ export function OrderLineClient({
   timezone,
   localPrintTarget,
   staffName,
+  hasKitchen,
 }: {
   categories: Category[];
   dishes: Dish[];
@@ -251,6 +252,7 @@ export function OrderLineClient({
   timezone: string;
   localPrintTarget: { ip: string; port: number | null } | null;
   staffName?: string;
+  hasKitchen: boolean;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -843,6 +845,7 @@ export function OrderLineClient({
     onVoidClick: () => setVoidModalOpen(true),
     onShareInvoiceClick: () => setShareInvoiceOpen(true),
     onClose: () => setMobileCartOpen(false),
+    hasKitchen,
   };
 
   return (
@@ -1264,6 +1267,7 @@ interface CartPanelProps {
   onShareInvoiceClick: () => void;
   onClose: () => void;
   showClose: boolean;
+  hasKitchen: boolean;
 }
 
 function CartPanel({
@@ -1310,6 +1314,7 @@ function CartPanel({
   onShareInvoiceClick,
   onClose,
   showClose,
+  hasKitchen,
 }: CartPanelProps) {
   const canManageTable = !!cart.editingOrderId && !!cart.tableId && editingOrder?.status !== "Voided";
   const [sumupCharging, setSumupCharging] = useState<{ terminal: PaymentTerminal; amount: number } | null>(null);
@@ -1898,7 +1903,7 @@ function CartPanel({
         {editingOrder && editingOrder.status !== "Voided" && (
           <div className="mb-4 flex items-center justify-between rounded-xl bg-neutral-50 px-3 py-2 text-sm">
             <span className="text-neutral-500">Order Status</span>
-            <StatusStepper status={editingOrder.status} onAdvance={handleAdvanceStatus} />
+            <StatusStepper status={editingOrder.status} onAdvance={handleAdvanceStatus} hasKitchen={hasKitchen} />
           </div>
         )}
 
@@ -1913,19 +1918,23 @@ function CartPanel({
             onClick={handlePlaceOrder}
             disabled={cart.items.length === 0 || placingOrder}
             title={
-              !isFullyPaid && cart.payments.length === 0
-                ? "No payment taken yet — order will be sent to the kitchen and can be settled later"
+              cart.payments.length === 0
+                ? hasKitchen
+                  ? "No payment taken yet — order will be sent to the kitchen and can be settled later"
+                  : "No payment taken yet — order is saved and can be paid later"
                 : undefined
             }
             className="flex-1 rounded-xl bg-[var(--brand)] py-3.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {cart.editingOrderId
-              ? isFullyPaid
-                ? "Confirm Payment"
-                : "Update Order"
-              : isFullyPaid
-                ? "Place Order"
-                : "Send to Kitchen"}{" "}
+            {/* "Take Payment" once Cash or a card machine has been added on this Till — not for a
+                recalled order whose payment was already recorded earlier, which is just an edit. */}
+            {cart.payments.length > 0 && !editingOrder?.paymentMethod
+              ? "Take Payment"
+              : cart.editingOrderId
+                ? "Update Order"
+                : hasKitchen
+                  ? "Send to Kitchen"
+                  : "Place Order"}{" "}
             · {formatMoney(total, currencySymbol)}
           </button>
           {editingOrder && editingOrder.status !== "Voided" && editingOrder.status !== "Served" && (
@@ -2633,8 +2642,17 @@ const STATUS_ACTION_LABEL: Record<Order["status"], string> = {
   Voided: "Voided",
 };
 
-function StatusStepper({ status, onAdvance }: { status: Order["status"]; onAdvance: (next: Order["status"]) => void }) {
+function StatusStepper({
+  status,
+  onAdvance,
+  hasKitchen,
+}: {
+  status: Order["status"];
+  onAdvance: (next: Order["status"]) => void;
+  hasKitchen: boolean;
+}) {
   const next = STATUS_FLOW[status];
+  const label = status === "Wait List" && !hasKitchen ? "Start Order" : STATUS_ACTION_LABEL[status];
   return (
     <button
       disabled={!next}
@@ -2643,7 +2661,7 @@ function StatusStepper({ status, onAdvance }: { status: Order["status"]; onAdvan
         next ? "bg-[var(--brand)] text-white hover:bg-[var(--brand-dark)]" : "bg-neutral-200 text-neutral-500"
       }`}
     >
-      {STATUS_ACTION_LABEL[status]}
+      {label}
     </button>
   );
 }

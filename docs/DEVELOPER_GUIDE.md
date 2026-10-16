@@ -703,11 +703,38 @@ conversation says so.
   kept running by the restaurant (e.g. a persistent Termux session on the Till) — there's no
   supervision/auto-restart built in if it crashes or the device reboots.
 
+- **No kitchen ticket (KOT) printing exists.** Adding a printer with a Kitchen/Bar/Expo station
+  makes the Till say "Send to Kitchen" (see `hasKitchen` in `lib/types.ts`), but nothing is ever
+  printed to it — only customer receipts print today (§7.8). Category → printer routing
+  (`categories.printerId`, `dishes.printerId`) is stored but unused for printing.
+
 ## 14. Changelog
 
 > **Instruction for every future change:** add a dated entry here (newest on top), *and* update
 > whichever numbered section above actually describes the thing you changed. A change without
 > both halves is not done.
+
+### 2026-10-16 — Restaurant/Cafe business type; kitchen features follow the devices actually added
+- **`restaurants.businessType`** (`"restaurant"` | `"cafe"`, default `"restaurant"`) — set on the
+  Super Admin create form, editable in Settings → Restaurant. A cafe is counter-service: in
+  `placeOrderAction`, a *new* order whose payments cover its full total (tax included, via
+  `orderBreakdown`) is created straight as `Served` (with `servedAt`/`closedOutAt` set) instead of
+  `In Kitchen`. Unpaid/part-paid cafe orders still go to the kitchen. This was originally built on
+  2026-10-03 (commit `0db25b7`) but only ever lived on the stale `claude/restaurant-pos-system-8huber`
+  branch — it never reached `main`, which is why the toggle "wasn't in the dashboard". Ported fresh.
+  Needs `ALTER TABLE restaurants ADD COLUMN business_type …` — run before deploy.
+- **Kitchen gating** — `hasKitchenDisplay()` / `hasKitchen()` in `lib/types.ts`, computed from the
+  restaurant's printers: a Kitchen Display is an active entry of kind `display`/`both`; a kitchen
+  printer is an active `printer`/`both` entry whose station isn't `Receipt`. The sidebar hides
+  "Kitchen Display" when there's no display; the Till (full + mobile) says "Send to Kitchen" only
+  when `hasKitchen`, otherwise "Place Order"; the Wait List stepper says "Start Order" instead of
+  "Send to Kitchen" likewise.
+- **"Take Payment"** — the Till's main button now reads "Take Payment" once Cash or a card
+  machine has been added on this Till (not for a recalled order whose payment was recorded earlier,
+  which stays "Update Order"). Replaces the old "Place Order"/"Confirm Payment" wording for paid orders.
+- **Known gap found while doing this:** the Till never prints kitchen tickets (KOT) at all — the
+  only printing anywhere is the customer receipt (manual Print + auto-print on payment, §7.8). A
+  kitchen-station printer currently only affects the button wording above. See §13.
 
 ### 2026-10-14 — Magic-link URLs now follow the live request domain; receipt QR note to 14 days; Rice Club menu import
 - `lib/actions/loyalty-auth.ts`'s `resolveOrigin` (used to build the magic-link URL emailed to
