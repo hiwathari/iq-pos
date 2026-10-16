@@ -151,6 +151,9 @@ async function notifyIfShiftDidNotBalance(shift: typeof shifts.$inferSelect, cur
   }
 
   for (const method of new Set([...(shift.terminalSales ?? []).map((t) => t.method), ...(shift.terminalCounts ?? []).map((c) => c.method)])) {
+    // Cash is reconciled above as the whole drawer (cashCounted vs expectedCash) — it's never a
+    // terminal count, so checking it here would always read as "short by every cash sale".
+    if (method === "Cash") continue;
     const expected = shift.terminalSales?.find((t) => t.method === method)?.amount ?? 0;
     const counted = shift.terminalCounts?.find((c) => c.method === method)?.counted ?? 0;
     const variance = counted - expected;

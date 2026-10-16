@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { formatMoney, formatOrderTimestamp, type Shift } from "@/lib/types";
+import { formatMoney, formatOrderTimestamp, shiftTotals, type Shift } from "@/lib/types";
 import { brandCssVars } from "@/lib/color";
 import { ArrowLeft, Printer, Share2, ChefHat } from "lucide-react";
 
@@ -20,10 +20,21 @@ export function ShiftReportClient({
   const [shared, setShared] = useState(false);
   const variance = shift.cashCounted - shift.expectedCash;
   const isBalanced = Math.abs(variance) < 0.01;
-  // Every method that either had sales or got a manager-entered count — so a terminal the
-  // manager counted money for still shows up (and reconciles against zero expected) even on a
-  // slow shift with no sales through it.
-  const terminalMethods = [...new Set([...(shift.terminalSales ?? []).map((t) => t.method), ...(shift.terminalCounts ?? []).map((c) => c.method)])];
+  const totals = shiftTotals(shift);
+  // Every card machine that either had sales or got a manager-entered count — so a terminal the
+  // manager counted money for still shows up (and reconciles against zero) even on a slow shift.
+  // Cash is its own row (counted as the drawer, not a terminal entry).
+  const terminalMethods = [
+    ...new Set([...(shift.terminalSales ?? []).map((t) => t.method), ...(shift.terminalCounts ?? []).map((c) => c.method)]),
+  ].filter((m) => m !== "Cash");
+  const takingsRows = [
+    { method: "Cash", counted: totals.cashTaken, pos: shift.cashSales },
+    ...terminalMethods.map((method) => ({
+      method,
+      counted: shift.terminalCounts?.find((c) => c.method === method)?.counted ?? 0,
+      pos: shift.terminalSales?.find((t) => t.method === method)?.amount ?? 0,
+    })),
+  ];
 
   async function share() {
     const url = window.location.href;
@@ -86,20 +97,52 @@ export function ShiftReportClient({
       </div>
 
       <div className="mb-6 rounded-2xl border-2 border-neutral-900 p-5 text-center">
-        <div className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Total Sales</div>
-        <div className="mt-1 text-4xl font-extrabold text-neutral-900">{formatMoney(shift.totalSales, currencySymbol)}</div>
+        <div className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Total Taken</div>
+        <div className="mt-1 text-4xl font-extrabold text-neutral-900">{formatMoney(totals.finalTotal, currencySymbol)}</div>
+        <div className="mt-1 text-sm text-neutral-600">
+          Cash {formatMoney(totals.cashTaken, currencySymbol)} · Card machines {formatMoney(totals.cardTaken, currencySymbol)}
+        </div>
+        <div className="mt-2 text-xs text-neutral-400">
+          POS recorded {formatMoney(totals.posTotal, currencySymbol)} ·{" "}
+          <Difference value={totals.difference} currencySymbol={currencySymbol} />
+        </div>
         <div className="mt-1 text-xs text-neutral-400">
           {shift.orderCount} order{shift.orderCount === 1 ? "" : "s"}
           {shift.voidCount > 0 ? ` · ${shift.voidCount} voided (${formatMoney(shift.voidAmount, currencySymbol)})` : ""}
         </div>
       </div>
 
-      <h2 className="mb-2 text-sm font-bold text-neutral-900">Sales by Payment Method</h2>
-      <div className="mb-6 overflow-hidden rounded-xl border border-neutral-200">
-        <Row label="Cash" value={shift.cashSales} currencySymbol={currencySymbol} />
-        <Row label="Card / Other Terminal" value={shift.cardSales} currencySymbol={currencySymbol} />
-        <Row label="Other" value={shift.otherSales} currencySymbol={currencySymbol} />
-        <Row label="Total" value={shift.totalSales} currencySymbol={currencySymbol} emphasize />
+      <h2 className="mb-2 text-sm font-bold text-neutral-900">Takings vs POS</h2>
+      <div className="mb-6 overflow-hidden rounded-xl border border-neutral-200 text-sm">
+        <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 bg-neutral-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+          <span>Method</span>
+          <span className="text-right">Taken</span>
+          <span className="text-right">POS</span>
+          <span className="w-24 text-right">Difference</span>
+        </div>
+        {takingsRows.map((r) => (
+          <div key={r.method} className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 border-t border-neutral-100 px-4 py-3 text-neutral-600">
+            <span className="truncate">{r.method}</span>
+            <span className="text-right font-semibold text-neutral-900">{formatMoney(r.counted, currencySymbol)}</span>
+            <span className="text-right">{formatMoney(r.pos, currencySymbol)}</span>
+            <span className="w-24 text-right text-xs">
+              <Difference value={r.counted - r.pos} currencySymbol={currencySymbol} />
+            </span>
+          </div>
+        ))}
+        <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 border-t border-neutral-200 bg-neutral-50 px-4 py-3 font-bold text-neutral-900">
+          <span>Total</span>
+          <span className="text-right">{formatMoney(totals.finalTotal, currencySymbol)}</span>
+          <span className="text-right font-semibold text-neutral-600">{formatMoney(totals.posTotal, currencySymbol)}</span>
+          <span className="w-24 text-right text-xs">
+            <Difference value={totals.difference} currencySymbol={currencySymbol} />
+          </span>
+        </div>
+        {shift.otherSales > 0 && (
+          <div className="border-t border-neutral-100 px-4 py-2.5 text-xs text-neutral-400">
+            Unpaid orders on the POS (not money taken, not included above): {formatMoney(shift.otherSales, currencySymbol)}
+          </div>
+        )}
       </div>
 
       <h2 className="mb-2 text-sm font-bold text-neutral-900">Cash Reconciliation</h2>
@@ -126,36 +169,6 @@ export function ShiftReportClient({
         </div>
       </div>
 
-      {terminalMethods.length > 0 && (
-        <>
-          <h2 className="mb-2 text-sm font-bold text-neutral-900">Card Machine Reconciliation</h2>
-          <div className="mb-6 overflow-hidden rounded-xl border border-neutral-200">
-            {terminalMethods.map((method) => {
-              const expected = shift.terminalSales?.find((t) => t.method === method)?.amount ?? 0;
-              const counted = shift.terminalCounts?.find((c) => c.method === method)?.counted ?? 0;
-              const termVariance = counted - expected;
-              const termBalanced = Math.abs(termVariance) < 0.01;
-              return (
-                <div key={method} className="border-t border-neutral-100 px-4 py-3 text-sm first:border-t-0">
-                  <div className="mb-1.5 flex items-center justify-between font-semibold text-neutral-800">
-                    <span>{method}</span>
-                    {!termBalanced && (
-                      <span className={termVariance > 0 ? "text-emerald-600" : "text-rose-600"}>
-                        {termVariance > 0 ? "Over" : "Short"} {formatMoney(Math.abs(termVariance), currencySymbol)}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex justify-between text-xs text-neutral-500">
-                    <span>Expected: {formatMoney(expected, currencySymbol)}</span>
-                    <span>Counted: {formatMoney(counted, currencySymbol)}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </>
-      )}
-
       {shift.cardExpenses > 0 && (
         <div className="mb-6 flex items-center justify-between rounded-xl border border-neutral-200 px-4 py-3 text-sm">
           <span className="text-neutral-600">Card Expenses</span>
@@ -181,6 +194,15 @@ export function ShiftReportClient({
         }
       `}</style>
     </div>
+  );
+}
+
+function Difference({ value, currencySymbol }: { value: number; currencySymbol: string }) {
+  if (Math.abs(value) < 0.01) return <span className="font-semibold text-emerald-600">Matches</span>;
+  return (
+    <span className={`font-semibold ${value > 0 ? "text-emerald-600" : "text-rose-600"}`}>
+      {value > 0 ? "Over" : "Short"} {formatMoney(Math.abs(value), currencySymbol)}
+    </span>
   );
 }
 

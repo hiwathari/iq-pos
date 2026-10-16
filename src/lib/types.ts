@@ -178,6 +178,21 @@ export function formatOccupiedTime(ms: number) {
   return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 }
 
+// A closed shift's real takings, from what was entered at End Day rather than what the POS
+// recorded. Cash taken = the counted drawer, less the opening float, plus whatever left the
+// drawer during the shift (cash expenses, envelope cash). Card taken = every card machine's own
+// end-of-day report total as entered ("Cash" is counted separately as cashCounted, so it's
+// excluded here). The POS figure is paid sales only — unpaid orders aren't money taken.
+export function shiftTotals(
+  shift: Pick<Shift, "cashCounted" | "openingBalance" | "cashExpenses" | "envelopeCash" | "terminalCounts" | "cashSales" | "cardSales">
+) {
+  const cashTaken = shift.cashCounted - shift.openingBalance + shift.cashExpenses + shift.envelopeCash;
+  const cardTaken = (shift.terminalCounts ?? []).filter((c) => c.method !== "Cash").reduce((sum, c) => sum + c.counted, 0);
+  const finalTotal = cashTaken + cardTaken;
+  const posTotal = shift.cashSales + shift.cardSales;
+  return { cashTaken, cardTaken, finalTotal, posTotal, difference: finalTotal - posTotal };
+}
+
 export function formatMoney(amount: number, currencySymbol: string) {
   return `${currencySymbol}${amount.toFixed(2)}`;
 }

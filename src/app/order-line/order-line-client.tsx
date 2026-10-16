@@ -35,7 +35,7 @@ import { unlockOrderAudio, playNewOrderChime, playOrderReadyChime } from "@/lib/
 import { useVisibleInterval } from "@/lib/use-visible-interval";
 import { startSumupChargeAction, pollSumupChargeAction, cancelSumupChargeAction } from "@/lib/actions/sumup";
 import { startTeyaChargeAction, pollTeyaChargeAction, cancelTeyaChargeAction } from "@/lib/actions/teya";
-import { businessDateKey, businessDayRange, shiftDateKey } from "@/lib/business-day";
+import { businessDateKey, businessDayRange, businessDayStart, shiftDateKey } from "@/lib/business-day";
 import { TableLayoutPicker } from "@/components/table-layout-picker";
 import { CategoryIconView } from "@/components/category-icon";
 import { FullscreenButton } from "@/components/fullscreen-button";
@@ -74,6 +74,9 @@ import {
   FileClock,
   Globe,
   Loader2,
+  ChevronDown,
+  ChevronUp,
+  TicketPercent,
 } from "lucide-react";
 
 const QUEUE_TABS = ["All", "Dine in", "Wait List", "Take Away", "Delivery", "Served"] as const;
@@ -188,6 +191,9 @@ interface CartState {
   appliedCoupon: { code: string; discount: number } | null;
   loyaltyContact: string;
   loyaltyMember: { id: string; code: string; name: string | null } | null;
+  // UI-only: whether staff have picked the order type yet. Until they have, the Order Type picker
+  // shows every option; once one's picked it collapses to just that one (with a Change link).
+  channelChosen: boolean;
 }
 
 const emptyCart: CartState = {
@@ -209,6 +215,7 @@ const emptyCart: CartState = {
   appliedCoupon: null,
   loyaltyContact: "",
   loyaltyMember: null,
+  channelChosen: false,
 };
 
 export function OrderLineClient({
@@ -263,7 +270,7 @@ export function OrderLineClient({
     const tableId = searchParams.get("tableId");
     const tableNumber = searchParams.get("tableNumber");
     if (tableId && tableNumber) {
-      return { ...emptyCart, tableId, tableNumber: Number(tableNumber), guests: 1 };
+      return { ...emptyCart, tableId, tableNumber: Number(tableNumber), guests: 1, channelChosen: true };
     }
     return emptyCart;
   });
@@ -349,8 +356,22 @@ export function OrderLineClient({
     knownStatusRef.current = new Map(orders.map((o) => [o.id, o.status]));
   }, [orders]);
 
+  // A voided order never counts as "closed out" (that needs served + paid), so without this it
+  // would sit in the order queue forever. Today's voids stay visible; anything voided from an
+  // earlier business day drops off once the restaurant's day rolls over (still in History).
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setClock(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  const dayStart = useMemo(() => businessDayStart(clock, openTime, timezone), [clock, openTime, timezone]);
+  const queueOrders = useMemo(
+    () => orders.filter((o) => !(o.status === "Voided" && o.createdAt < dayStart)),
+    [orders, dayStart]
+  );
+
   const filteredOrders = useMemo(() => {
-    return orders.filter((o) => {
+    return queueOrders.filter((o) => {
       if (queueTab === "Served") return o.status === "Served";
       if (isOrderClosedOut(o)) return false;
       if (queueTab === "All") return true;
@@ -360,9 +381,9 @@ export function OrderLineClient({
       if (queueTab === "Delivery") return o.channel === "Delivery" || o.channel === "Third Party";
       return true;
     });
-  }, [orders, queueTab]);
+  }, [queueOrders, queueTab]);
 
-  const activeOrders = useMemo(() => orders.filter((o) => !isOrderClosedOut(o)), [orders]);
+  const activeOrders = useMemo(() => queueOrders.filter((o) => !isOrderClosedOut(o)), [queueOrders]);
 
   const queueCounts = useMemo(() => {
     return {
@@ -546,6 +567,7 @@ export function OrderLineClient({
       order.payments?.length ? order.payments : order.paymentMethod ? [{ method: order.paymentMethod, amount: orderTotalAmount }] : [];
 
     setCart({
+      channelChosen: true,
       editingOrderId: order.id,
       tableId: order.tableId,
       tableNumber: order.tableNumber,
@@ -609,7 +631,7 @@ export function OrderLineClient({
       loadOrderIntoCart(existing);
       return;
     }
-    setCart({ ...emptyCart, tableId: table.id, tableNumber: table.number, channel: "Dine in" });
+    setCart({ ...emptyCart, tableId: table.id, tableNumber: table.number, channel: "Dine in", channelChosen: true });
     setTableEditorOpen(false);
     setMobileCartOpen(true);
     setView("order");
@@ -1319,6 +1341,20 @@ function CartPanel({
   const canManageTable = !!cart.editingOrderId && !!cart.tableId && editingOrder?.status !== "Voided";
   const [sumupCharging, setSumupCharging] = useState<{ terminal: PaymentTerminal; amount: number } | null>(null);
   const [teyaCharging, setTeyaCharging] = useState<{ terminal: PaymentTerminal; amount: number } | null>(null);
+  // The Order Type picker shows every option until one's been picked for this order, then just
+  // that one (Change reopens the full list). Discounts & Loyalty start collapsed.
+  const [channelPickerOpen, setChannelPickerOpen] = useState(false);
+  const showAllChannels = !cart.channelChosen || channelPickerOpen;
+  const [extrasOpen, setExtrasOpen] = useState(false);
+  const discountTotal = couponDiscountAmount + extraDiscountAmount;
+  const setupSummary =
+    cart.channel === "Dine in" || cart.channel === "Wait List"
+      ? `${cart.tableNumber ? `Table ${String(cart.tableNumber).padStart(2, "0")}` : "No table"} · ${cart.guests} ${cart.guests === 1 ? "guest" : "guests"}`
+      : cart.channel === "Take Away" || cart.channel === "Delivery"
+        ? [cart.customerName || "No name", cart.customerPhone].filter(Boolean).join(" · ")
+        : cart.channel === "Third Party"
+          ? cart.thirdPartyProvider
+          : "";
 
   function updatePaymentAmount(method: string, amount: number) {
     setCart((prev) => ({
@@ -1430,12 +1466,6 @@ function CartPanel({
             </button>
           )}
           <button
-            onClick={() => setTableEditorOpen((v) => !v)}
-            className="rounded-lg border border-neutral-200 p-1.5 text-neutral-400 hover:bg-neutral-50 hover:text-teal-600"
-          >
-            <Pencil className="h-4 w-4" />
-          </button>
-          <button
             onClick={() => {
               setCart(emptyCart);
               setTableEditorOpen(true);
@@ -1455,26 +1485,44 @@ function CartPanel({
         </div>
       </div>
 
-      {/* Everything below the header scrolls as one region so the Place Order button at the
-          bottom always stays reachable, however much the order-type/payment sections grow. */}
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
-      {tableEditorOpen && (
-        <div className="space-y-3 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+      {/* Fixed layout: setup box (collapses to a summary once done), the order tray scrolls on its
+          own, and discounts/totals/payment/the main button stay pinned at the bottom. */}
+      <div className="mb-3 shrink-0">
+      {tableEditorOpen ? (
+        <div className="max-h-72 space-y-3 overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 p-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-neutral-500">Order Type</label>
-            <div className="grid grid-cols-3 gap-1.5">
-              {CHANNELS.map((c) => (
-                <button
-                  key={c}
-                  onClick={() => setCart((prev) => ({ ...prev, channel: c }))}
-                  className={`rounded-lg border px-2 py-1.5 text-xs font-medium ${
-                    cart.channel === c ? "border-[var(--brand)] bg-[var(--brand)] text-white" : "border-neutral-200 text-neutral-500"
-                  }`}
-                >
-                  {c}
+            <div className="mb-1 flex items-center justify-between">
+              <label className="block text-xs font-medium text-neutral-500">Order Type</label>
+              {!showAllChannels && (
+                <button onClick={() => setChannelPickerOpen(true)} className="text-xs font-semibold text-teal-600 hover:underline">
+                  Change
                 </button>
-              ))}
+              )}
             </div>
+            {showAllChannels ? (
+              <div className="grid grid-cols-3 gap-1.5">
+                {CHANNELS.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => {
+                      setCart((prev) => ({ ...prev, channel: c, channelChosen: true }));
+                      setChannelPickerOpen(false);
+                    }}
+                    className={`rounded-lg border px-2 py-1.5 text-xs font-medium ${
+                      cart.channel === c && cart.channelChosen
+                        ? "border-[var(--brand)] bg-[var(--brand)] text-white"
+                        : "border-neutral-200 text-neutral-500"
+                    }`}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-[var(--brand)] bg-[var(--brand)] px-2 py-1.5 text-center text-xs font-semibold text-white">
+                {cart.channel}
+              </div>
+            )}
           </div>
 
           {(cart.channel === "Dine in" || cart.channel === "Wait List") && (
@@ -1578,8 +1626,31 @@ function CartPanel({
               </select>
             </div>
           )}
+          <button
+            onClick={() => {
+              setTableEditorOpen(false);
+              setChannelPickerOpen(false);
+            }}
+            className="w-full rounded-lg bg-[var(--brand)] py-2 text-sm font-semibold text-white hover:bg-[var(--brand-dark)]"
+          >
+            Done
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2">
+          <div className="flex min-w-0 items-center gap-2 text-sm">
+            <span className="shrink-0 rounded-md bg-[var(--brand)] px-2 py-0.5 text-xs font-semibold text-white">{cart.channel}</span>
+            <span className="truncate text-neutral-600">{setupSummary}</span>
+          </div>
+          <button
+            onClick={() => setTableEditorOpen(true)}
+            className="flex shrink-0 items-center gap-1 rounded-lg border border-neutral-200 bg-white px-2.5 py-1 text-xs font-semibold text-neutral-600 hover:text-teal-600"
+          >
+            <Pencil className="h-3.5 w-3.5" /> Edit
+          </button>
         </div>
       )}
+      </div>
 
       {tablePickerOpen && (
         <TableLayoutPicker
@@ -1593,8 +1664,8 @@ function CartPanel({
         />
       )}
 
-      <div>
-        <div className="mb-4 flex items-center justify-between">
+      <div className="flex min-h-[7rem] flex-1 flex-col">
+        <div className="mb-2 flex shrink-0 items-center justify-between">
           <h3 className="text-sm font-semibold text-neutral-900">Order Tray</h3>
           <div className="flex items-center gap-2">
             <button
@@ -1609,7 +1680,7 @@ function CartPanel({
           </div>
         </div>
 
-        <div className="space-y-3">
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
           {cart.items.length === 0 && (
             <div className="flex h-32 items-center justify-center text-center text-sm text-neutral-400">
               No items yet.
@@ -1660,140 +1731,161 @@ function CartPanel({
         </div>
       </div>
 
-      <div className="space-y-2 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
-        <h3 className="flex items-center gap-1.5 text-sm font-semibold text-neutral-900">
-          <CreditCard className="h-4 w-4 text-neutral-400" /> Loyalty Card
-        </h3>
-        {cart.loyaltyMember ? (
-          <div className="flex items-center justify-between rounded-lg bg-white px-3 py-2">
-            <div>
-              <div className="font-mono text-sm font-semibold text-neutral-800">{cart.loyaltyMember.code || "Attached"}</div>
-              {cart.loyaltyMember.name && <div className="text-xs text-neutral-500">{cart.loyaltyMember.name}</div>}
-            </div>
-            <button onClick={removeLoyalty} className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-500 hover:bg-neutral-50">
-              Remove
-            </button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2">
-            <input
-              value={cart.loyaltyContact}
-              onChange={(e) => setCart((prev) => ({ ...prev, loyaltyContact: e.target.value }))}
-              placeholder="Phone, email, or card code"
-              className="flex-1 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm outline-none focus:border-teal-500"
-            />
-            <button
-              onClick={findOrEnrollLoyalty}
-              disabled={!cart.loyaltyContact.trim()}
-              className="shrink-0 rounded-lg bg-[var(--brand)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--brand-dark)] disabled:opacity-50"
-            >
-              Find / Enroll
-            </button>
-          </div>
-        )}
-        {loyaltyError && <p className="text-xs font-medium text-rose-600">{loyaltyError}</p>}
-      </div>
+      <div className="mt-3 shrink-0 space-y-3 border-t border-neutral-100 pt-3">
+        <div className="rounded-xl border border-neutral-200 bg-neutral-50">
+          <button
+            onClick={() => setExtrasOpen((v) => !v)}
+            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-sm font-semibold text-neutral-800"
+          >
+            <span className="flex items-center gap-1.5">
+              <TicketPercent className="h-4 w-4 text-neutral-400" /> Discounts &amp; Loyalty
+            </span>
+            <span className="flex items-center gap-2 text-xs font-medium">
+              {discountTotal > 0 && <span className="text-emerald-600">-{formatMoney(discountTotal, currencySymbol)}</span>}
+              {cart.loyaltyMember && <span className="text-teal-600">Card added</span>}
+              {extrasOpen ? <ChevronUp className="h-4 w-4 text-neutral-400" /> : <ChevronDown className="h-4 w-4 text-neutral-400" />}
+            </span>
+          </button>
+          {extrasOpen && (
+            <div className="max-h-52 space-y-3 overflow-y-auto border-t border-neutral-200 p-3">
+              <div className="space-y-1.5">
+                <label className="flex items-center gap-1.5 text-xs font-medium text-neutral-500">
+                  <CreditCard className="h-3.5 w-3.5" /> Loyalty Card
+                </label>
+                {cart.loyaltyMember ? (
+                  <div className="flex items-center justify-between rounded-lg bg-white px-3 py-2">
+                    <div>
+                      <div className="font-mono text-sm font-semibold text-neutral-800">{cart.loyaltyMember.code || "Attached"}</div>
+                      {cart.loyaltyMember.name && <div className="text-xs text-neutral-500">{cart.loyaltyMember.name}</div>}
+                    </div>
+                    <button onClick={removeLoyalty} className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-500 hover:bg-neutral-50">
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={cart.loyaltyContact}
+                      onChange={(e) => setCart((prev) => ({ ...prev, loyaltyContact: e.target.value }))}
+                      placeholder="Phone, email, or card code"
+                      className="flex-1 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm outline-none focus:border-teal-500"
+                    />
+                    <button
+                      onClick={findOrEnrollLoyalty}
+                      disabled={!cart.loyaltyContact.trim()}
+                      className="shrink-0 rounded-lg bg-[var(--brand)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--brand-dark)] disabled:opacity-50"
+                    >
+                      Find / Enroll
+                    </button>
+                  </div>
+                )}
+                {loyaltyError && <p className="text-xs font-medium text-rose-600">{loyaltyError}</p>}
+              </div>
 
-      <div>
-        <div className="space-y-2 border-t border-neutral-100 pt-4">
-          <h3 className="mb-1 text-sm font-semibold text-neutral-900">Payment Summary</h3>
-          <div className="flex justify-between text-sm text-neutral-500">
+              {canDiscount && (
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-medium text-neutral-500">Extra Discount</label>
+                  <div className="flex items-center gap-1.5">
+                    <div className="relative flex-1">
+                      <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-neutral-400">
+                        {cart.extraDiscountMode === "percent" ? "%" : currencySymbol}
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={cart.extraDiscount}
+                        onChange={(e) => setCart((prev) => ({ ...prev, extraDiscount: e.target.value }))}
+                        placeholder="0.00"
+                        className="w-full rounded-lg border border-neutral-200 bg-white py-1.5 pl-6 pr-2 text-right text-sm outline-none focus:border-teal-500"
+                      />
+                    </div>
+                    <div className="flex shrink-0 rounded-lg border border-neutral-200 bg-white p-0.5">
+                      {(["amount", "percent"] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          onClick={() => setCart((prev) => ({ ...prev, extraDiscountMode: mode }))}
+                          className={`rounded-md px-2 py-1 text-xs font-semibold ${
+                            cart.extraDiscountMode === mode ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
+                          }`}
+                        >
+                          {mode === "percent" ? "%" : currencySymbol}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {canDiscount && (
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-medium text-neutral-500">Coupon</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={cart.couponCode}
+                      onChange={(e) => setCart((prev) => ({ ...prev, couponCode: e.target.value.toUpperCase() }))}
+                      placeholder="Coupon code"
+                      disabled={!!cart.appliedCoupon}
+                      className="flex-1 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm font-mono uppercase outline-none focus:border-teal-500 disabled:bg-neutral-50 disabled:text-neutral-400"
+                    />
+                    {cart.appliedCoupon ? (
+                      <button
+                        onClick={removeCoupon}
+                        className="shrink-0 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-500 hover:bg-neutral-50"
+                      >
+                        Remove
+                      </button>
+                    ) : (
+                      <button
+                        onClick={applyCoupon}
+                        disabled={!cart.couponCode.trim()}
+                        className="shrink-0 rounded-lg bg-[var(--brand)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--brand-dark)] disabled:opacity-50"
+                      >
+                        Apply
+                      </button>
+                    )}
+                  </div>
+                  {couponError && <p className="text-xs font-medium text-rose-600">{couponError}</p>}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-1 text-sm">
+          <div className="flex justify-between text-neutral-500">
             <span>Subtotal</span>
             <span>{formatMoney(subtotal, currencySymbol)}</span>
           </div>
-
-          {canDiscount && (
-            <div className="flex items-center justify-between gap-2 text-sm text-neutral-500">
-              <span>Extra Discount</span>
-              <div className="flex items-center gap-1.5">
-                <div className="relative w-24">
-                  <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-neutral-400">
-                    {cart.extraDiscountMode === "percent" ? "%" : currencySymbol}
-                  </span>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={cart.extraDiscount}
-                    onChange={(e) => setCart((prev) => ({ ...prev, extraDiscount: e.target.value }))}
-                    placeholder="0.00"
-                    className="w-full rounded-lg border border-neutral-200 py-1.5 pl-6 pr-2 text-right text-sm outline-none focus:border-teal-500"
-                  />
-                </div>
-                <div className="flex shrink-0 rounded-lg border border-neutral-200 p-0.5">
-                  {(["amount", "percent"] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      onClick={() => setCart((prev) => ({ ...prev, extraDiscountMode: mode }))}
-                      className={`rounded-md px-2 py-1 text-xs font-semibold ${
-                        cart.extraDiscountMode === mode ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
-                      }`}
-                    >
-                      {mode === "percent" ? "%" : currencySymbol}
-                    </button>
-                  ))}
-                </div>
-              </div>
+          {cart.appliedCoupon && (
+            <div className="flex justify-between text-emerald-600">
+              <span>Coupon {cart.appliedCoupon.code}</span>
+              <span>-{formatMoney(couponDiscountAmount, currencySymbol)}</span>
             </div>
           )}
-
-          <div className="space-y-1.5">
-            {canDiscount && (
-              <div className="flex items-center gap-2">
-                <input
-                  value={cart.couponCode}
-                  onChange={(e) => setCart((prev) => ({ ...prev, couponCode: e.target.value.toUpperCase() }))}
-                  placeholder="Coupon code"
-                  disabled={!!cart.appliedCoupon}
-                  className="flex-1 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-mono uppercase outline-none focus:border-teal-500 disabled:bg-neutral-50 disabled:text-neutral-400"
-                />
-                {cart.appliedCoupon ? (
-                  <button
-                    onClick={removeCoupon}
-                    className="shrink-0 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-500 hover:bg-neutral-50"
-                  >
-                    Remove
-                  </button>
-                ) : (
-                  <button
-                    onClick={applyCoupon}
-                    disabled={!cart.couponCode.trim()}
-                    className="shrink-0 rounded-lg bg-[var(--brand)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--brand-dark)] disabled:opacity-50"
-                  >
-                    Apply
-                  </button>
-                )}
-              </div>
-            )}
-            {canDiscount && couponError && <p className="text-xs font-medium text-rose-600">{couponError}</p>}
-            {cart.appliedCoupon && (
-              <div className="flex justify-between text-sm text-emerald-600">
-                <span>Coupon {cart.appliedCoupon.code}</span>
-                <span>-{formatMoney(couponDiscountAmount, currencySymbol)}</span>
-              </div>
-            )}
-            {extraDiscountAmount > 0 && (
-              <div className="flex justify-between text-sm text-neutral-500">
-                <span>Extra discount applied</span>
-                <span>-{formatMoney(extraDiscountAmount, currencySymbol)}</span>
-              </div>
-            )}
-          </div>
-
+          {extraDiscountAmount > 0 && (
+            <div className="flex justify-between text-emerald-600">
+              <span>Discount</span>
+              <span>-{formatMoney(extraDiscountAmount, currencySymbol)}</span>
+            </div>
+          )}
           {tax > 0 && (
-            <div className="flex justify-between text-sm text-neutral-500">
+            <div className="flex justify-between text-neutral-500">
               <span>Tax</span>
               <span>{formatMoney(tax, currencySymbol)}</span>
             </div>
           )}
-          <div className="flex justify-between border-t border-neutral-100 pt-2 text-base font-semibold text-neutral-900">
+          <div className="flex justify-between pt-1 text-base font-semibold text-neutral-900">
             <span>Total Payable</span>
             <span>{formatMoney(total, currencySymbol)}</span>
           </div>
         </div>
 
-        <div className="mt-4">
-          <h3 className="mb-2 text-sm font-semibold text-neutral-900">{paymentLocked ? "Payment Taken" : "Payment Method"}</h3>
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-neutral-900">{paymentLocked ? "Payment Taken" : "Payment Method"}</h3>
+            {!paymentLocked && <span className="text-xs text-neutral-400">Tap more than one to split</span>}
+          </div>
           {paymentLocked ? (
             <div className="space-y-2 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
               {cart.payments.map((p) => (
@@ -1810,33 +1902,28 @@ function CartPanel({
               </button>
             </div>
           ) : (
-            <>
-              <p className="mb-2 text-xs text-neutral-400">
-                Tap a method to apply it, tap again to cancel it — tap more than one to split the bill across them.
-              </p>
-              <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-2">
+              <PaymentButton
+                icon={Wallet}
+                label="Cash"
+                active={cart.payments.some((p) => p.method === "Cash")}
+                onClick={() => togglePaymentLine("Cash")}
+              />
+              {paymentTerminals.map((t) => (
                 <PaymentButton
-                  icon={Wallet}
-                  label="Cash"
-                  active={cart.payments.some((p) => p.method === "Cash")}
-                  onClick={() => togglePaymentLine("Cash")}
+                  key={t.id}
+                  icon={CreditCard}
+                  logoUrl={t.logoUrl}
+                  label={t.name}
+                  active={cart.payments.some((p) => p.method === t.name)}
+                  onClick={() => tapTerminal(t)}
                 />
-                {paymentTerminals.map((t) => (
-                  <PaymentButton
-                    key={t.id}
-                    icon={CreditCard}
-                    logoUrl={t.logoUrl}
-                    label={t.name}
-                    active={cart.payments.some((p) => p.method === t.name)}
-                    onClick={() => tapTerminal(t)}
-                  />
-                ))}
-              </div>
-            </>
+              ))}
+            </div>
           )}
 
           {!paymentLocked && cart.payments.length > 0 && (
-            <div className="mt-3 space-y-2 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+            <div className="mt-2 max-h-40 space-y-2 overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 p-3">
               {cart.payments.map((p) => (
                 <div key={p.method} className="space-y-1.5">
                   <div className="flex items-center gap-2">
@@ -1897,23 +1984,22 @@ function CartPanel({
           )}
         </div>
       </div>
-      </div>
 
-      <div className="shrink-0">
+      <div className="mt-3 shrink-0">
         {editingOrder && editingOrder.status !== "Voided" && (
-          <div className="mb-4 flex items-center justify-between rounded-xl bg-neutral-50 px-3 py-2 text-sm">
+          <div className="mb-3 flex items-center justify-between rounded-xl bg-neutral-50 px-3 py-2 text-sm">
             <span className="text-neutral-500">Order Status</span>
             <StatusStepper status={editingOrder.status} onAdvance={handleAdvanceStatus} hasKitchen={hasKitchen} />
           </div>
         )}
 
         {editingOrder?.status === "Voided" && (
-          <div className="mb-4 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          <div className="mb-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">
             Voided{editingOrder.voidReason ? ` — ${editingOrder.voidReason}` : ""}
           </div>
         )}
 
-        <div className="flex gap-2 border-t border-neutral-100 pt-4">
+        <div className="flex gap-2">
           <button
             onClick={handlePlaceOrder}
             disabled={cart.items.length === 0 || placingOrder}

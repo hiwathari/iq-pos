@@ -11,7 +11,7 @@ import { listShifts } from "@/lib/data/shifts";
 import { listLowStockItems } from "@/lib/data/inventory";
 import { filterOrdersForAccountsRole } from "@/lib/accounts-filter";
 import { businessDateKey, businessDayRange, shiftDateKey } from "@/lib/business-day";
-import { formatMoney, formatOrderTimestamp, orderTotal, type Order } from "@/lib/types";
+import { formatMoney, formatOrderTimestamp, orderTotal, shiftTotals, type Order, type Shift } from "@/lib/types";
 import { DashboardCharts } from "./dashboard-charts";
 import { EndShiftButton } from "./end-shift-button";
 import { OpenTillButton } from "./open-till-button";
@@ -388,20 +388,20 @@ export default async function DashboardPage() {
                     <tr>
                       <th className="px-5 py-3">Closed</th>
                       <th className="px-5 py-3">Closed By</th>
-                      <th className="px-5 py-3 text-right">Total Sales</th>
-                      <th className="px-5 py-3 text-right">Variance</th>
+                      <th className="px-5 py-3 text-right">Total Taken</th>
+                      <th className="px-5 py-3 text-right">vs POS</th>
                       <th className="px-5 py-3 text-right">Report</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-100">
                     {shifts.slice(0, 10).map((s) => {
-                      const variance = s.cashCounted - s.expectedCash;
+                      const { finalTotal, difference: variance } = shiftTotals(s);
                       return (
                         <tr key={s.id}>
                           <td className="px-5 py-3 text-neutral-600">{formatOrderTimestamp(s.closedAt)}</td>
                           <td className="px-5 py-3 text-neutral-600">{s.closedByName ?? "—"}</td>
                           <td className="px-5 py-3 text-right font-semibold text-neutral-900">
-                            {formatMoney(s.totalSales, currencySymbol)}
+                            {formatMoney(finalTotal, currencySymbol)}
                           </td>
                           <td className={`px-5 py-3 text-right font-semibold ${Math.abs(variance) < 0.01 ? "text-emerald-600" : "text-rose-600"}`}>
                             {Math.abs(variance) < 0.01 ? "Balanced" : formatMoney(variance, currencySymbol)}
@@ -493,7 +493,7 @@ function MyShiftRows({
   emptyText,
   showClosedBy,
 }: {
-  shifts: { id: string; closedAt: number; closedByName: string | null; totalSales: number; cashCounted: number; expectedCash: number }[];
+  shifts: Shift[];
   currencySymbol: string;
   emptyText: string;
   showClosedBy?: boolean;
@@ -502,7 +502,7 @@ function MyShiftRows({
   return (
     <div className="space-y-2">
       {shifts.map((s) => {
-        const variance = s.cashCounted - s.expectedCash;
+        const { finalTotal, difference: variance } = shiftTotals(s);
         return (
           <div key={s.id} className="flex items-center justify-between gap-3 rounded-xl border border-neutral-100 px-3.5 py-2.5 text-sm">
             <div className="min-w-0">
@@ -510,7 +510,7 @@ function MyShiftRows({
               {showClosedBy && <div className="truncate text-xs text-neutral-400">{s.closedByName ?? "—"}</div>}
             </div>
             <div className="flex shrink-0 items-center gap-3">
-              <span className="font-semibold text-neutral-900">{formatMoney(s.totalSales, currencySymbol)}</span>
+              <span className="font-semibold text-neutral-900">{formatMoney(finalTotal, currencySymbol)}</span>
               <span className={`text-xs font-semibold ${Math.abs(variance) < 0.01 ? "text-emerald-600" : "text-rose-600"}`}>
                 {Math.abs(variance) < 0.01 ? "Balanced" : formatMoney(variance, currencySymbol)}
               </span>

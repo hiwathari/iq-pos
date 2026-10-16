@@ -714,6 +714,28 @@ conversation says so.
 > whichever numbered section above actually describes the thing you changed. A change without
 > both halves is not done.
 
+### 2026-10-16 (later) — Till cart layout; voids roll off daily; reports use counted takings
+- **Till cart panel (`CartPanel` in `order-line-client.tsx`) is now a fixed layout** instead of
+  one long scroll region: (1) a setup box — Order Type + table/guests or customer details — that
+  collapses to a one-line summary with an Edit button once Done is tapped; the Order Type picker
+  shows every option until one is picked (`CartState.channelChosen`, UI-only), then collapses to
+  that one with a Change link; (2) the Order Tray, which scrolls on its own; (3) a pinned bottom
+  block — a collapsed "Discounts & Loyalty" section (scrolls inside when opened), totals, payment
+  methods (split-payment lines scroll inside), and the main button. The header's pencil button
+  was removed in favour of the summary row's Edit.
+- **Voided orders roll off the Till queue at each business-day start.** A void never counts as
+  "closed out" (served + paid), so they used to sit in the queue forever. `queueOrders` now drops
+  voids created before `businessDayStart(...)`; History still shows them by date.
+- **Shift report headline is now "Total Taken"** = counted cash taken + every card machine's
+  entered end-of-day total (`shiftTotals()` in `lib/types.ts`: cash taken = drawer counted − float
+  + cash expenses + envelope cash). POS-recorded paid sales and the difference are shown as the
+  sub-line, plus a per-method Taken / POS / Difference table. Unpaid orders are listed separately
+  and excluded. The Dashboard's shift lists use the same figure.
+- **Fix:** the old "Card Machine Reconciliation" section and the admin "day close didn't balance"
+  notification both treated POS **Cash** as a card terminal with £0 counted, so every report and
+  notification showed a false "Cash short by <all cash sales>". Cash is now reconciled only as the
+  drawer count.
+
 ### 2026-10-16 — Restaurant/Cafe business type; kitchen features follow the devices actually added
 - **`restaurants.businessType`** (`"restaurant"` | `"cafe"`, default `"restaurant"`) — set on the
   Super Admin create form, editable in Settings → Restaurant. A cafe is counter-service: in
