@@ -1,6 +1,6 @@
 import { AppShell } from "@/components/app-shell";
 import { requirePermission } from "@/lib/scope";
-import { listStaff } from "@/lib/data/staff";
+import { getAccountsLogin, listStaff } from "@/lib/data/staff";
 import { getRestaurant } from "@/lib/data/restaurants";
 import { listIntegrations, listPaymentTerminals, listPrinters } from "@/lib/data/printers";
 import { StaffClient } from "./staff-client";
@@ -9,12 +9,14 @@ import { PaymentTerminalsClient } from "./payment-terminals-client";
 import { IntegrationsClient } from "./integrations-client";
 import { RestaurantClient } from "./restaurant-client";
 import { InvoiceDetailsClient } from "./invoice-details-client";
+import { AccountsLoginClient } from "./accounts-login-client";
 
 export default async function SettingsPage() {
-  const { restaurantId } = await requirePermission("settings");
+  const { session, restaurantId } = await requirePermission("settings");
 
-  const [staff, restaurant, printers, paymentTerminals, integrations] = await Promise.all([
+  const [staff, accountsLogin, restaurant, printers, paymentTerminals, integrations] = await Promise.all([
     listStaff(restaurantId),
+    getAccountsLogin(restaurantId),
     getRestaurant(restaurantId),
     listPrinters(restaurantId),
     listPaymentTerminals(restaurantId),
@@ -50,6 +52,12 @@ export default async function SettingsPage() {
         </div>
         <div className="border-t border-neutral-100 pt-8">
           <StaffClient staff={staff} />
+        </div>
+        <div className="border-t border-neutral-100 pt-8">
+          <AccountsLoginClient
+            accountsLogin={accountsLogin}
+            canManage={session.role !== "staff" && session.role !== "accounts"}
+          />
         </div>
         <div className="border-t border-neutral-100 pt-8">
           <PrintersClient printers={printers} />

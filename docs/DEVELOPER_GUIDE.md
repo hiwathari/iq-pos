@@ -714,6 +714,18 @@ conversation says so.
 > whichever numbered section above actually describes the thing you changed. A change without
 > both halves is not done.
 
+### 2026-10-17 — Accounts login visible in Settings
+- The restricted `accounts` login (role `accounts`, see `lib/accounts-filter.ts`) has existed since
+  2026-10-02 but was invisible: `listStaff` only returns `admin`/`staff`, so no screen showed which
+  accounts@ email a restaurant got. New "Accounts Login" section in Settings (below Staff) shows it
+  via `getAccountsLogin()` in `lib/data/staff.ts`.
+- Restaurants onboarded before auto-creation existed may have no accounts login — the section
+  offers "Create accounts login" (`createAccountsLoginAction` in `lib/actions/staff.ts`), using the
+  same rules as onboarding: accounts@<first admin's domain> (accounts+<slug>@ if taken) with the
+  admin's password hash, so the existing admin→accounts password sync applies from then on.
+  Restricted to admin / super / regional admin — explicitly not `accounts` itself, since the shared
+  `assertAdmin` guard only blocks `staff`.
+
 ### 2026-10-16 (later) — Till cart layout; voids roll off daily; reports use counted takings
 - **Till cart panel (`CartPanel` in `order-line-client.tsx`) is now a fixed layout** instead of
   one long scroll region: (1) a setup box — Order Type + table/guests or customer details — that

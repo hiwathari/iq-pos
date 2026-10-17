@@ -1,9 +1,9 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
-import { users } from "@/db/schema";
+import { restaurants, users } from "@/db/schema";
 import { hashPassword } from "@/lib/auth";
 import { generatePin } from "@/lib/pin";
 import { assertAdmin, requireRestaurantContext } from "@/lib/scope";
@@ -155,4 +155,55 @@ export async function clearStaffPinAction(userId: string) {
     .set({ tillPin: null, kitchenPin: null })
     .where(and(eq(users.id, userId), eq(users.restaurantId, restaurantId)));
   revalidatePath("/settings");
+}
+
+export interface CreateAccountsLoginState {
+  error?: string;
+}
+
+// Creates the restricted "accounts" login for a restaurant that doesn't have one yet (any
+// restaurant onboarded before createRestaurantAction started making it automatically). Same rules
+// as at onboarding: accounts@<the admin's domain>, falling back to accounts+<slug>@ if that's
+// taken, and the admin's own password hash so the two stay in sync from here on. Restaurant admins
+// (and super/regional admins acting as one) only — not the accounts login itself, which would
+// otherwise pass assertAdmin.
+export async function createAccountsLoginAction(): Promise<CreateAccountsLoginState> {
+  const { session, restaurantId } = await requireRestaurantContext();
+  if (session.role === "staff" || session.role === "accounts") return { error: "Only an admin can do this." };
+
+  const [existing] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.restaurantId, restaurantId), eq(users.role, "accounts")))
+    .limit(1);
+  if (existing) return { error: "This restaurant already has an accounts login." };
+
+  const [admin] = await db
+    .select({ email: users.email, passwordHash: users.passwordHash })
+    .from(users)
+    .where(and(eq(users.restaurantId, restaurantId), eq(users.role, "admin")))
+    .orderBy(asc(users.createdAt))
+    .limit(1);
+  const domain = admin?.email.split("@")[1];
+  if (!admin || !domain) return { error: "Add a restaurant admin first — the accounts login uses their email domain and password." };
+
+  const [restaurant] = await db
+    .select({ name: restaurants.name, slug: restaurants.slug })
+    .from(restaurants)
+    .where(eq(restaurants.id, restaurantId))
+    .limit(1);
+
+  const plainEmail = `accounts@${domain}`;
+  const [taken] = await db.select({ id: users.id }).from(users).where(eq(users.email, plainEmail)).limit(1);
+  await db.insert(users).values({
+    id: crypto.randomUUID(),
+    email: taken ? `accounts+${restaurant?.slug ?? restaurantId.slice(0, 6)}@${domain}` : plainEmail,
+    passwordHash: admin.passwordHash,
+    name: `${restaurant?.name ?? "Restaurant"} Accounts`,
+    role: "accounts",
+    restaurantId,
+  });
+
+  revalidatePath("/settings");
+  return {};
 }
