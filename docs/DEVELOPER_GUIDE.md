@@ -714,6 +714,22 @@ conversation says so.
 > whichever numbered section above actually describes the thing you changed. A change without
 > both halves is not done.
 
+### 2026-10-20 — Till sized for touch screens (11"–27")
+- **Full Till only** (`order-line-client.tsx`; the mobile Till and admin pages are untouched).
+  Every tappable control on the Till is now at least ~44px tall (`min-h-11`): toolbar/view tabs,
+  New Order, search (larger input + clear button), queue/history/table tabs, cart header icons,
+  order-type/table/guest controls, note/remove buttons, Discounts & Loyalty, and payment-line
+  controls. Inputs use `text-base` (also stops iOS/Android zoom-on-focus). Icons inside toolbar
+  buttons are enlarged via the `[&>svg]:size-5` arbitrary variant rather than per-icon edits.
+- **Whole dish tile is tappable** — tapping anywhere on an in-stock tile adds it to the cart
+  (`role="button"`, Enter/Space via `onKeyDown`); the stock toggle and −/+ buttons stop
+  propagation so they don't double-add. −/+ are 44px, the image/emoji area is taller, names wrap
+  to two lines.
+- Category boxes, table tiles, payment-method buttons (`min-h-16`) and the main
+  Place Order / Take Payment button (`min-h-14`) are larger; the cart panel is wider (420px).
+- **Extra step for large screens:** at Tailwind `2xl` (≥1536px, i.e. 24–27" displays) grids gain a
+  5th column, the cart grows to 480px, and key buttons/text step up once more.
+
 ### 2026-10-17 — Accounts login visible in Settings
 - The restricted `accounts` login (role `accounts`, see `lib/accounts-filter.ts`) has existed since
   2026-10-02 but was invisible: `listStaff` only returns `admin`/`staff`, so no screen showed which

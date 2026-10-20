@@ -896,11 +896,11 @@ export function OrderLineClient({
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-xl font-semibold text-neutral-900">Till</h1>
           <div className="flex items-center gap-2">
-            <FullscreenButton className="flex items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-500 hover:bg-neutral-50" />
+            <FullscreenButton className="flex min-h-11 items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50 2xl:text-base [&>svg]:size-5" />
             <button
               onClick={() => window.location.reload()}
               title="Refresh — reloads the page and clears any cached data"
-              className="flex items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-500 hover:bg-neutral-50"
+              className="flex min-h-11 items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50 2xl:text-base [&>svg]:size-5"
             >
               <RefreshCw className="h-4 w-4" /> Refresh
             </button>
@@ -942,7 +942,7 @@ export function OrderLineClient({
                 setTableEditorOpen(true);
                 setMobileCartOpen(false);
               }}
-              className="flex items-center gap-1.5 rounded-xl bg-[var(--brand)] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[var(--brand-dark)]"
+              className="flex min-h-11 items-center gap-2 rounded-xl bg-[var(--brand)] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] 2xl:text-base [&>svg]:size-5"
             >
               <Plus className="h-3.5 w-3.5" /> New Order
             </button>
@@ -956,18 +956,18 @@ export function OrderLineClient({
             {/* Menu categories */}
             <div className="mb-4 flex items-center justify-between gap-3">
               <h2 className="shrink-0 text-lg font-semibold text-neutral-900">Foodies Menu</h2>
-              <div className="relative w-full max-w-xs">
+              <div className="relative w-full max-w-sm">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
                 <input
                   value={menuSearch}
                   onChange={(e) => setMenuSearch(e.target.value)}
                   placeholder="Search dishes…"
-                  className="w-full rounded-xl border border-neutral-200 bg-white py-2 pl-9 pr-8 text-sm outline-none focus:border-teal-500"
+                  className="w-full rounded-xl border border-neutral-200 bg-white py-3 pl-10 pr-12 text-base outline-none focus:border-teal-500"
                 />
                 {menuSearch && (
                   <button
                     onClick={() => setMenuSearch("")}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
+                    className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-neutral-400 hover:text-neutral-600 [&>svg]:size-5"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -991,14 +991,26 @@ export function OrderLineClient({
             )}
 
             {/* Dish grid */}
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {menuDishes.map((dish) => {
                 const qty = qtyFor(dish.id);
                 const price = priceFor(dish);
                 return (
                   <div
                     key={dish.id}
-                    className={`relative flex flex-col rounded-2xl border bg-white p-4 transition-shadow ${
+                    role="button"
+                    tabIndex={dish.outOfStock ? -1 : 0}
+                    aria-disabled={dish.outOfStock}
+                    onClick={() => !dish.outOfStock && addToCart(dish)}
+                    onKeyDown={(e) => {
+                      if (!dish.outOfStock && (e.key === "Enter" || e.key === " ")) {
+                        e.preventDefault();
+                        addToCart(dish);
+                      }
+                    }}
+                    className={`relative flex select-none flex-col rounded-2xl border bg-white p-4 transition 2xl:p-5 ${
+                      dish.outOfStock ? "cursor-not-allowed" : "cursor-pointer active:scale-[0.98]"
+                    } ${
                       dish.outOfStock
                         ? "border-neutral-200 opacity-60"
                         : qty > 0
@@ -1007,9 +1019,12 @@ export function OrderLineClient({
                     }`}
                   >
                     <button
-                      onClick={() => handleToggleStock(dish)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleStock(dish);
+                      }}
                       title={dish.outOfStock ? "Mark back in stock" : "Mark out of stock"}
-                      className={`absolute right-2.5 top-2.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white shadow-sm ${
+                      className={`absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white shadow-sm [&>svg]:size-4 ${
                         dish.outOfStock ? "bg-rose-500 text-white hover:bg-rose-600" : "bg-white text-neutral-300 hover:text-rose-500"
                       }`}
                     >
@@ -1019,11 +1034,11 @@ export function OrderLineClient({
                       <img
                         src={dish.imageUrl}
                         alt={dish.name}
-                        className={`mb-3 h-14 w-14 rounded-xl object-cover ${dish.outOfStock ? "grayscale" : ""}`}
+                        className={`mb-3 h-16 w-16 rounded-xl object-cover ${dish.outOfStock ? "grayscale" : ""}`}
                       />
                     ) : (
                       <div
-                        className={`mb-3 flex h-14 w-14 items-center justify-center rounded-full text-2xl ${dish.outOfStock ? "grayscale" : ""}`}
+                        className={`mb-3 flex h-16 w-16 items-center justify-center rounded-full text-3xl ${dish.outOfStock ? "grayscale" : ""}`}
                         style={{ backgroundColor: dish.color }}
                       >
                         {dish.emoji}
@@ -1032,9 +1047,9 @@ export function OrderLineClient({
                     <div className="text-xs text-neutral-400">
                       {categories.find((c) => c.id === dish.categoryId)?.name}
                     </div>
-                    <div className="mb-2 line-clamp-1 font-semibold text-neutral-900">{dish.name}</div>
+                    <div className="mb-2 line-clamp-2 text-[15px] font-semibold leading-snug text-neutral-900 2xl:text-base">{dish.name}</div>
                     <div className="mt-auto flex items-center justify-between">
-                      <span className="font-semibold text-neutral-800">
+                      <span className="text-base font-semibold text-neutral-800">
                         {formatMoney(price, currencySymbol)}
                         {price !== dish.price && <span className="ml-1 text-[10px] font-normal text-teal-600">({cart.channel})</span>}
                       </span>
@@ -1043,16 +1058,22 @@ export function OrderLineClient({
                       ) : (
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => decrementCartItem(dish.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              decrementCartItem(dish.id);
+                            }}
                             disabled={qty === 0}
-                            className="flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 text-neutral-500 hover:bg-neutral-50 disabled:opacity-30"
+                            className="flex h-11 w-11 items-center justify-center rounded-full border border-neutral-200 text-neutral-500 hover:bg-neutral-50 active:scale-95 disabled:opacity-30 [&>svg]:size-5"
                           >
                             <Minus className="h-3.5 w-3.5" />
                           </button>
-                          <span className="w-4 text-center text-sm font-semibold text-neutral-800">{qty}</span>
+                          <span className="w-6 text-center text-base font-semibold text-neutral-800">{qty}</span>
                           <button
-                            onClick={() => addToCart(dish)}
-                            className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--brand)] text-white hover:bg-[var(--brand-dark)]"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              addToCart(dish);
+                            }}
+                            className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--brand)] text-white hover:bg-[var(--brand-dark)] active:scale-95 [&>svg]:size-5"
                           >
                             <Plus className="h-3.5 w-3.5" />
                           </button>
@@ -1077,7 +1098,7 @@ export function OrderLineClient({
                 <button
                   key={tab}
                   onClick={() => setQueueTab(tab)}
-                  className={`flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
+                  className={`flex min-h-11 items-center gap-2 rounded-full border px-5 py-2.5 text-sm font-medium transition-colors 2xl:text-base ${
                     queueTab === tab
                       ? "border-[var(--brand)] bg-[var(--brand)] text-white"
                       : "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
@@ -1096,7 +1117,7 @@ export function OrderLineClient({
             </div>
 
             {/* Open tickets grid */}
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {filteredOrders.map((order) => (
                 <OrderCard
                   key={order.id}
@@ -1135,7 +1156,7 @@ export function OrderLineClient({
               <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => setHistoryDateStr((d) => shiftDateKey(d, -1))}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50"
+                  className="flex h-11 w-11 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 [&>svg]:size-5"
                   aria-label="Previous day"
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -1144,11 +1165,11 @@ export function OrderLineClient({
                   type="date"
                   value={historyDateStr}
                   onChange={(e) => setHistoryDateStr(e.target.value)}
-                  className="rounded-lg border border-neutral-200 px-2.5 py-1.5 text-sm outline-none focus:border-[var(--brand)]"
+                  className="rounded-lg border border-neutral-200 px-3 py-2.5 text-base outline-none focus:border-[var(--brand)]"
                 />
                 <button
                   onClick={() => setHistoryDateStr((d) => shiftDateKey(d, 1))}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50"
+                  className="flex h-11 w-11 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 [&>svg]:size-5"
                   aria-label="Next day"
                 >
                   <ChevronRight className="h-4 w-4" />
@@ -1156,14 +1177,14 @@ export function OrderLineClient({
                 {historyDateStr !== currentBusinessDateKey(openTime, timezone) && (
                   <button
                     onClick={() => setHistoryDateStr(currentBusinessDateKey(openTime, timezone))}
-                    className="rounded-lg px-2.5 py-1.5 text-sm font-semibold text-teal-600 hover:bg-teal-50"
+                    className="min-h-11 rounded-lg px-3.5 py-2.5 text-sm font-semibold text-teal-600 hover:bg-teal-50"
                   >
                     Today
                   </button>
                 )}
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {historyOrders.map((order) => (
                 <OrderCard
                   key={order.id}
@@ -1183,7 +1204,7 @@ export function OrderLineClient({
       </div>
 
       {/* Desktop cart panel — same light theme as the menu area, just a border to separate it. */}
-      <div className="hidden w-[400px] shrink-0 flex-col border-l border-neutral-200 bg-white p-5 lg:flex min-h-0">
+      <div className="hidden w-[420px] shrink-0 flex-col border-l border-neutral-200 bg-white p-5 lg:flex min-h-0 2xl:w-[480px]">
         <CartPanel {...cartPanelProps} showClose={false} />
       </div>
 
@@ -1435,14 +1456,14 @@ function CartPanel({
             <>
               <button
                 onClick={onSwapTableClick}
-                className="rounded-lg border border-neutral-200 p-1.5 text-neutral-400 hover:bg-neutral-50 hover:text-teal-600"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 2xl:h-11 2xl:w-11 [&>svg]:size-5 hover:bg-neutral-50 hover:text-teal-600"
                 title="Move to a different table"
               >
                 <ArrowLeftRight className="h-4 w-4" />
               </button>
               <button
                 onClick={onMergeTableClick}
-                className="rounded-lg border border-neutral-200 p-1.5 text-neutral-400 hover:bg-neutral-50 hover:text-teal-600"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 2xl:h-11 2xl:w-11 [&>svg]:size-5 hover:bg-neutral-50 hover:text-teal-600"
                 title="Merge another table into this order"
               >
                 <Combine className="h-4 w-4" />
@@ -1451,7 +1472,7 @@ function CartPanel({
           )}
           <button
             onClick={handlePrint}
-            className="rounded-lg border border-neutral-200 p-1.5 text-neutral-400 hover:bg-neutral-50 hover:text-teal-600"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 2xl:h-11 2xl:w-11 [&>svg]:size-5 hover:bg-neutral-50 hover:text-teal-600"
             title="Print ticket"
           >
             <Printer className="h-4 w-4" />
@@ -1459,7 +1480,7 @@ function CartPanel({
           {cart.editingOrderId && (
             <button
               onClick={onShareInvoiceClick}
-              className="rounded-lg border border-neutral-200 p-1.5 text-neutral-400 hover:bg-neutral-50 hover:text-teal-600"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 2xl:h-11 2xl:w-11 [&>svg]:size-5 hover:bg-neutral-50 hover:text-teal-600"
               title="Share invoice QR"
             >
               <QrCode className="h-4 w-4" />
@@ -1470,14 +1491,14 @@ function CartPanel({
               setCart(emptyCart);
               setTableEditorOpen(true);
             }}
-            className="rounded-lg border border-neutral-200 p-1.5 text-neutral-400 hover:bg-rose-50 hover:text-rose-600"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 2xl:h-11 2xl:w-11 [&>svg]:size-5 hover:bg-rose-50 hover:text-rose-600"
           >
             <Trash2 className="h-4 w-4" />
           </button>
           {showClose && (
             <button
               onClick={onClose}
-              className="rounded-lg border border-neutral-200 p-1.5 text-neutral-400 hover:bg-neutral-50"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 2xl:h-11 2xl:w-11 [&>svg]:size-5 hover:bg-neutral-50"
             >
               <X className="h-4 w-4" />
             </button>
@@ -1489,12 +1510,12 @@ function CartPanel({
           own, and discounts/totals/payment/the main button stay pinned at the bottom. */}
       <div className="mb-3 shrink-0">
       {tableEditorOpen ? (
-        <div className="max-h-72 space-y-3 overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+        <div className="max-h-80 space-y-3 overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 p-3 2xl:max-h-96">
           <div>
             <div className="mb-1 flex items-center justify-between">
               <label className="block text-xs font-medium text-neutral-500">Order Type</label>
               {!showAllChannels && (
-                <button onClick={() => setChannelPickerOpen(true)} className="text-xs font-semibold text-teal-600 hover:underline">
+                <button onClick={() => setChannelPickerOpen(true)} className="rounded-lg px-2.5 py-1.5 text-sm font-semibold text-teal-600 hover:bg-teal-50">
                   Change
                 </button>
               )}
@@ -1508,7 +1529,7 @@ function CartPanel({
                       setCart((prev) => ({ ...prev, channel: c, channelChosen: true }));
                       setChannelPickerOpen(false);
                     }}
-                    className={`rounded-lg border px-2 py-1.5 text-xs font-medium ${
+                    className={`min-h-11 rounded-lg border px-2 py-2 text-sm font-semibold ${
                       cart.channel === c && cart.channelChosen
                         ? "border-[var(--brand)] bg-[var(--brand)] text-white"
                         : "border-neutral-200 text-neutral-500"
@@ -1519,7 +1540,7 @@ function CartPanel({
                 ))}
               </div>
             ) : (
-              <div className="rounded-lg border border-[var(--brand)] bg-[var(--brand)] px-2 py-1.5 text-center text-xs font-semibold text-white">
+              <div className="flex min-h-11 items-center justify-center rounded-lg border border-[var(--brand)] bg-[var(--brand)] px-2 py-2 text-sm font-semibold text-white">
                 {cart.channel}
               </div>
             )}
@@ -1531,7 +1552,7 @@ function CartPanel({
                 <label className="mb-1 block text-xs font-medium text-neutral-500">Table</label>
                 <button
                   onClick={() => setTablePickerOpen(true)}
-                  className="flex w-full items-center justify-between rounded-lg border border-neutral-200 bg-white px-3 py-2 text-left text-sm text-neutral-700 hover:border-teal-400"
+                  className="flex min-h-12 w-full items-center justify-between rounded-lg border border-neutral-200 bg-white px-3.5 py-2.5 text-left text-base text-neutral-700 hover:border-teal-400 [&>svg]:size-5"
                 >
                   {cart.tableNumber ? (
                     <span className="font-medium">Table {String(cart.tableNumber).padStart(2, "0")}</span>
@@ -1547,17 +1568,17 @@ function CartPanel({
                   <button
                     type="button"
                     onClick={() => setCart((prev) => ({ ...prev, guests: Math.max(1, prev.guests - 1) }))}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 active:scale-95"
+                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 active:scale-95"
                   >
                     <Minus className="h-5 w-5" />
                   </button>
-                  <div className="flex h-11 flex-1 items-center justify-center rounded-xl border border-neutral-200 bg-white text-lg font-semibold text-neutral-900">
+                  <div className="flex h-12 flex-1 items-center justify-center rounded-xl border border-neutral-200 bg-white text-xl font-semibold text-neutral-900">
                     {cart.guests}
                   </div>
                   <button
                     type="button"
                     onClick={() => setCart((prev) => ({ ...prev, guests: prev.guests + 1 }))}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[var(--brand)] text-white hover:bg-[var(--brand-dark)] active:scale-95"
+                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--brand)] text-white hover:bg-[var(--brand-dark)] active:scale-95"
                   >
                     <Plus className="h-5 w-5" />
                   </button>
@@ -1576,7 +1597,7 @@ function CartPanel({
                   value={cart.customerName}
                   onChange={(e) => setCart((prev) => ({ ...prev, customerName: e.target.value }))}
                   placeholder="e.g. Sarah"
-                  className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                  className="w-full rounded-lg border border-neutral-200 px-3.5 py-2.5 text-base outline-none focus:border-teal-500"
                 />
               </div>
               <div>
@@ -1587,7 +1608,7 @@ function CartPanel({
                   value={cart.customerPhone}
                   onChange={(e) => setCart((prev) => ({ ...prev, customerPhone: e.target.value }))}
                   placeholder="+44 7000 000000"
-                  className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                  className="w-full rounded-lg border border-neutral-200 px-3.5 py-2.5 text-base outline-none focus:border-teal-500"
                 />
               </div>
             </>
@@ -1603,7 +1624,7 @@ function CartPanel({
                 onChange={(e) => setCart((prev) => ({ ...prev, customerAddress: e.target.value }))}
                 rows={2}
                 placeholder="Flat, street, postcode…"
-                className="w-full resize-none rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                className="w-full resize-none rounded-lg border border-neutral-200 px-3.5 py-2.5 text-base outline-none focus:border-teal-500"
               />
             </div>
           )}
@@ -1616,7 +1637,7 @@ function CartPanel({
                 onChange={(e) =>
                   setCart((prev) => ({ ...prev, thirdPartyProvider: e.target.value as ThirdPartyProvider }))
                 }
-                className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-teal-500"
+                className="w-full rounded-lg border border-neutral-200 px-3.5 py-2.5 text-base outline-none focus:border-teal-500"
               >
                 {THIRD_PARTY_PROVIDERS.map((p) => (
                   <option key={p} value={p}>
@@ -1631,20 +1652,20 @@ function CartPanel({
               setTableEditorOpen(false);
               setChannelPickerOpen(false);
             }}
-            className="w-full rounded-lg bg-[var(--brand)] py-2 text-sm font-semibold text-white hover:bg-[var(--brand-dark)]"
+            className="min-h-12 w-full rounded-lg bg-[var(--brand)] py-3 text-base font-semibold text-white hover:bg-[var(--brand-dark)]"
           >
             Done
           </button>
         </div>
       ) : (
-        <div className="flex items-center justify-between gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2">
-          <div className="flex min-w-0 items-center gap-2 text-sm">
-            <span className="shrink-0 rounded-md bg-[var(--brand)] px-2 py-0.5 text-xs font-semibold text-white">{cart.channel}</span>
+        <div className="flex items-center justify-between gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5">
+          <div className="flex min-w-0 items-center gap-2 text-[15px]">
+            <span className="shrink-0 rounded-md bg-[var(--brand)] px-2.5 py-1 text-sm font-semibold text-white">{cart.channel}</span>
             <span className="truncate text-neutral-600">{setupSummary}</span>
           </div>
           <button
             onClick={() => setTableEditorOpen(true)}
-            className="flex shrink-0 items-center gap-1 rounded-lg border border-neutral-200 bg-white px-2.5 py-1 text-xs font-semibold text-neutral-600 hover:text-teal-600"
+            className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-4 text-sm font-semibold text-neutral-600 hover:text-teal-600 [&>svg]:size-4"
           >
             <Pencil className="h-3.5 w-3.5" /> Edit
           </button>
@@ -1666,11 +1687,11 @@ function CartPanel({
 
       <div className="flex min-h-[7rem] flex-1 flex-col">
         <div className="mb-2 flex shrink-0 items-center justify-between">
-          <h3 className="text-sm font-semibold text-neutral-900">Order Tray</h3>
+          <h3 className="text-base font-semibold text-neutral-900">Order Tray</h3>
           <div className="flex items-center gap-2">
             <button
               onClick={onAddCustomItem}
-              className="flex items-center gap-1 rounded-lg border border-dashed border-neutral-300 px-2 py-1 text-xs font-medium text-neutral-500 hover:border-teal-400 hover:text-teal-600"
+              className="flex min-h-10 items-center gap-1.5 rounded-lg border border-dashed border-neutral-300 px-3.5 text-sm font-medium text-neutral-500 hover:border-teal-400 hover:text-teal-600 [&>svg]:size-4"
             >
               <Plus className="h-3 w-3" /> Custom
             </button>
@@ -1692,27 +1713,27 @@ function CartPanel({
             const lineId = item.lineId ?? item.dishId;
             return (
             <div key={lineId} className="space-y-1.5">
-              <div className="flex items-center justify-between gap-2 text-sm">
+              <div className="flex items-center justify-between gap-2 text-[15px] 2xl:text-base">
                 <div className="flex min-w-0 items-center gap-2">
                   <span className="shrink-0 font-semibold text-teal-600">{item.qty}x</span>
                   <span className="truncate text-neutral-700">{item.name}</span>
                 </div>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  <span className="font-semibold text-neutral-800">{formatMoney(item.price * item.qty, currencySymbol)}</span>
+                <div className="flex shrink-0 items-center gap-0.5">
+                  <span className="mr-1 font-semibold text-neutral-800">{formatMoney(item.price * item.qty, currencySymbol)}</span>
                   <button
                     onClick={() => setNoteEditorFor(noteEditorFor === lineId ? null : lineId)}
                     title="Add note for kitchen"
-                    className={`rounded p-0.5 ${item.note ? "text-amber-500" : "text-neutral-300 hover:text-teal-600"}`}
+                    className={`flex h-10 w-10 items-center justify-center rounded-lg hover:bg-neutral-50 [&>svg]:size-5 ${item.note ? "text-amber-500" : "text-neutral-300 hover:text-teal-600"}`}
                   >
                     <MessageSquarePlus className="h-3.5 w-3.5" />
                   </button>
-                  <button onClick={() => removeCartItem(lineId)} className="text-neutral-300 hover:text-rose-500">
+                  <button onClick={() => removeCartItem(lineId)} className="flex h-10 w-10 items-center justify-center rounded-lg text-neutral-300 hover:bg-rose-50 hover:text-rose-500 [&>svg]:size-5">
                     <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
               {item.note && noteEditorFor !== lineId && (
-                <div className="ml-5 text-xs italic text-amber-600">Note: {item.note}</div>
+                <div className="ml-5 text-sm italic text-amber-600">Note: {item.note}</div>
               )}
               {noteEditorFor === lineId && (
                 <input
@@ -1722,7 +1743,7 @@ function CartPanel({
                   onBlur={() => setNoteEditorFor(null)}
                   onKeyDown={(e) => e.key === "Enter" && setNoteEditorFor(null)}
                   placeholder="e.g. no onions, extra spicy…"
-                  className="ml-5 w-[calc(100%-1.25rem)] rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs outline-none focus:border-amber-400"
+                  className="ml-5 w-[calc(100%-1.25rem)] rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-base outline-none focus:border-amber-400"
                 />
               )}
             </div>
@@ -1735,7 +1756,7 @@ function CartPanel({
         <div className="rounded-xl border border-neutral-200 bg-neutral-50">
           <button
             onClick={() => setExtrasOpen((v) => !v)}
-            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-sm font-semibold text-neutral-800"
+            className="flex min-h-12 w-full items-center justify-between gap-2 px-3.5 py-3 text-[15px] font-semibold text-neutral-800"
           >
             <span className="flex items-center gap-1.5">
               <TicketPercent className="h-4 w-4 text-neutral-400" /> Discounts &amp; Loyalty
@@ -1747,7 +1768,7 @@ function CartPanel({
             </span>
           </button>
           {extrasOpen && (
-            <div className="max-h-52 space-y-3 overflow-y-auto border-t border-neutral-200 p-3">
+            <div className="max-h-60 space-y-3 overflow-y-auto border-t border-neutral-200 p-3">
               <div className="space-y-1.5">
                 <label className="flex items-center gap-1.5 text-xs font-medium text-neutral-500">
                   <CreditCard className="h-3.5 w-3.5" /> Loyalty Card
@@ -1758,7 +1779,7 @@ function CartPanel({
                       <div className="font-mono text-sm font-semibold text-neutral-800">{cart.loyaltyMember.code || "Attached"}</div>
                       {cart.loyaltyMember.name && <div className="text-xs text-neutral-500">{cart.loyaltyMember.name}</div>}
                     </div>
-                    <button onClick={removeLoyalty} className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-500 hover:bg-neutral-50">
+                    <button onClick={removeLoyalty} className="min-h-11 rounded-lg border border-neutral-200 px-4 py-2 text-sm font-semibold text-neutral-500 hover:bg-neutral-50">
                       Remove
                     </button>
                   </div>
@@ -1768,12 +1789,12 @@ function CartPanel({
                       value={cart.loyaltyContact}
                       onChange={(e) => setCart((prev) => ({ ...prev, loyaltyContact: e.target.value }))}
                       placeholder="Phone, email, or card code"
-                      className="flex-1 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm outline-none focus:border-teal-500"
+                      className="flex-1 rounded-lg border border-neutral-200 bg-white px-3.5 py-2.5 text-base outline-none focus:border-teal-500"
                     />
                     <button
                       onClick={findOrEnrollLoyalty}
                       disabled={!cart.loyaltyContact.trim()}
-                      className="shrink-0 rounded-lg bg-[var(--brand)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--brand-dark)] disabled:opacity-50"
+                      className="min-h-11 shrink-0 rounded-lg bg-[var(--brand)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] disabled:opacity-50"
                     >
                       Find / Enroll
                     </button>
@@ -1797,7 +1818,7 @@ function CartPanel({
                         value={cart.extraDiscount}
                         onChange={(e) => setCart((prev) => ({ ...prev, extraDiscount: e.target.value }))}
                         placeholder="0.00"
-                        className="w-full rounded-lg border border-neutral-200 bg-white py-1.5 pl-6 pr-2 text-right text-sm outline-none focus:border-teal-500"
+                        className="w-full rounded-lg border border-neutral-200 bg-white py-2.5 pl-7 pr-3 text-right text-base outline-none focus:border-teal-500"
                       />
                     </div>
                     <div className="flex shrink-0 rounded-lg border border-neutral-200 bg-white p-0.5">
@@ -1805,7 +1826,7 @@ function CartPanel({
                         <button
                           key={mode}
                           onClick={() => setCart((prev) => ({ ...prev, extraDiscountMode: mode }))}
-                          className={`rounded-md px-2 py-1 text-xs font-semibold ${
+                          className={`min-h-10 min-w-10 rounded-md px-3 py-2 text-sm font-semibold ${
                             cart.extraDiscountMode === mode ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
                           }`}
                         >
@@ -1826,12 +1847,12 @@ function CartPanel({
                       onChange={(e) => setCart((prev) => ({ ...prev, couponCode: e.target.value.toUpperCase() }))}
                       placeholder="Coupon code"
                       disabled={!!cart.appliedCoupon}
-                      className="flex-1 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm font-mono uppercase outline-none focus:border-teal-500 disabled:bg-neutral-50 disabled:text-neutral-400"
+                      className="flex-1 rounded-lg border border-neutral-200 bg-white px-3.5 py-2.5 text-base font-mono uppercase outline-none focus:border-teal-500 disabled:bg-neutral-50 disabled:text-neutral-400"
                     />
                     {cart.appliedCoupon ? (
                       <button
                         onClick={removeCoupon}
-                        className="shrink-0 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-500 hover:bg-neutral-50"
+                        className="shrink-0 min-h-11 rounded-lg border border-neutral-200 px-4 py-2 text-sm font-semibold text-neutral-500 hover:bg-neutral-50"
                       >
                         Remove
                       </button>
@@ -1839,7 +1860,7 @@ function CartPanel({
                       <button
                         onClick={applyCoupon}
                         disabled={!cart.couponCode.trim()}
-                        className="shrink-0 rounded-lg bg-[var(--brand)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--brand-dark)] disabled:opacity-50"
+                        className="min-h-11 shrink-0 rounded-lg bg-[var(--brand)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] disabled:opacity-50"
                       >
                         Apply
                       </button>
@@ -1852,7 +1873,7 @@ function CartPanel({
           )}
         </div>
 
-        <div className="space-y-1 text-sm">
+        <div className="space-y-1 text-[15px]">
           <div className="flex justify-between text-neutral-500">
             <span>Subtotal</span>
             <span>{formatMoney(subtotal, currencySymbol)}</span>
@@ -1875,7 +1896,7 @@ function CartPanel({
               <span>{formatMoney(tax, currencySymbol)}</span>
             </div>
           )}
-          <div className="flex justify-between pt-1 text-base font-semibold text-neutral-900">
+          <div className="flex justify-between pt-1 text-lg font-bold text-neutral-900 2xl:text-xl">
             <span>Total Payable</span>
             <span>{formatMoney(total, currencySymbol)}</span>
           </div>
@@ -1896,7 +1917,7 @@ function CartPanel({
               ))}
               <button
                 onClick={onUnlockPayment}
-                className="mt-1 w-full rounded-lg border border-neutral-200 bg-white py-1.5 text-xs font-semibold text-neutral-600 hover:bg-neutral-50"
+                className="mt-1 min-h-11 w-full rounded-lg border border-neutral-200 bg-white py-2.5 text-sm font-semibold text-neutral-600 hover:bg-neutral-50"
               >
                 Redo Payment
               </button>
@@ -1923,11 +1944,11 @@ function CartPanel({
           )}
 
           {!paymentLocked && cart.payments.length > 0 && (
-            <div className="mt-2 max-h-40 space-y-2 overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+            <div className="mt-2 max-h-48 space-y-2 overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 p-3">
               {cart.payments.map((p) => (
                 <div key={p.method} className="space-y-1.5">
                   <div className="flex items-center gap-2">
-                    <span className="w-20 shrink-0 truncate text-xs font-semibold text-neutral-700">{p.method}</span>
+                    <span className="w-24 shrink-0 truncate text-sm font-semibold text-neutral-700">{p.method}</span>
                     <div className="relative flex-1">
                       <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-neutral-400">
                         {currencySymbol}
@@ -1938,15 +1959,15 @@ function CartPanel({
                         step="0.01"
                         value={p.amount}
                         onChange={(e) => updatePaymentAmount(p.method, Math.max(0, Number(e.target.value) || 0))}
-                        className="w-full rounded-lg border border-neutral-200 bg-white py-1.5 pl-6 pr-2 text-sm outline-none focus:border-teal-500"
+                        className="w-full rounded-lg border border-neutral-200 bg-white py-2.5 pl-7 pr-3 text-base outline-none focus:border-teal-500"
                       />
                     </div>
-                    <button onClick={() => removePaymentLine(p.method)} className="text-neutral-300 hover:text-rose-500">
+                    <button onClick={() => removePaymentLine(p.method)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-neutral-300 hover:bg-rose-50 hover:text-rose-500 [&>svg]:size-5">
                       <X className="h-3.5 w-3.5" />
                     </button>
                   </div>
                   {p.method === "Cash" && (
-                    <div className="ml-[5.5rem] flex items-center gap-2 text-xs">
+                    <div className="ml-[6.5rem] mr-12 flex items-center gap-2 text-sm">
                       <span className="shrink-0 text-neutral-500">Received</span>
                       <div className="relative flex-1">
                         <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400">
@@ -1959,7 +1980,7 @@ function CartPanel({
                           value={cart.cashReceived}
                           onChange={(e) => setCart((prev) => ({ ...prev, cashReceived: e.target.value }))}
                           placeholder={p.amount.toFixed(2)}
-                          className="w-full rounded-lg border border-neutral-200 bg-white py-1.5 pl-6 pr-2 outline-none focus:border-teal-500"
+                          className="w-full rounded-lg border border-neutral-200 bg-white py-2.5 pl-7 pr-3 text-base outline-none focus:border-teal-500"
                         />
                       </div>
                       {changeDue > 0 && (
@@ -2010,7 +2031,7 @@ function CartPanel({
                   : "No payment taken yet — order is saved and can be paid later"
                 : undefined
             }
-            className="flex-1 rounded-xl bg-[var(--brand)] py-3.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-40"
+            className="min-h-14 flex-1 rounded-xl bg-[var(--brand)] py-4 text-base font-bold text-white transition hover:bg-[var(--brand-dark)] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40 2xl:min-h-16 2xl:text-lg"
           >
             {/* "Take Payment" once Cash or a card machine has been added on this Till — not for a
                 recalled order whose payment was already recorded earlier, which is just an edit. */}
@@ -2026,7 +2047,7 @@ function CartPanel({
           {editingOrder && editingOrder.status !== "Voided" && editingOrder.status !== "Served" && (
             <button
               onClick={onVoidClick}
-              className="flex items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-4 text-rose-600 hover:bg-rose-100"
+              className="flex min-w-14 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-4 text-rose-600 hover:bg-rose-100 [&>svg]:size-5"
               title="Void order"
             >
               <Ban className="h-4 w-4" />
@@ -2240,7 +2261,7 @@ function OrderCard({
   return (
     <button
       onClick={onClick}
-      className={`flex flex-col gap-2 rounded-2xl border p-4 text-left transition-shadow hover:shadow-md ${
+      className={`flex flex-col gap-2 rounded-2xl border p-4 text-left transition hover:shadow-md active:scale-[0.98] 2xl:p-5 ${
         CARD_TINTS[order.status]
       } ${selected ? "ring-2 ring-teal-500" : ""} ${isVoided ? "opacity-75" : ""}`}
     >
@@ -2303,7 +2324,7 @@ function TopViewTab({
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-colors ${
+      className={`flex min-h-11 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors 2xl:text-base [&>svg]:size-5 ${
         active ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
       }`}
     >
@@ -2330,7 +2351,7 @@ function ComingSoonButton({ icon: Icon, label }: { icon: typeof ShoppingBag; lab
     <button
       disabled
       title="Coming soon"
-      className="flex cursor-not-allowed items-center gap-1.5 rounded-xl border border-dashed border-neutral-200 px-3.5 py-2 text-xs font-semibold text-neutral-400"
+      className="flex min-h-11 cursor-not-allowed items-center gap-2 rounded-xl border border-dashed border-neutral-200 px-4 py-2.5 text-sm font-semibold text-neutral-400 [&>svg]:size-4"
     >
       <Icon className="h-3.5 w-3.5" /> {label}
       <span className="rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-neutral-400">
@@ -2384,7 +2405,7 @@ function TablesOverview({
           <button
             key={a}
             onClick={() => setArea(a)}
-            className={`flex-1 rounded-lg py-2 text-sm font-medium transition-colors ${
+            className={`min-h-11 flex-1 rounded-lg py-2.5 text-sm font-medium transition-colors 2xl:text-base ${
               area === a ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
             }`}
           >
@@ -2405,7 +2426,7 @@ function TablesOverview({
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
         {areaTables.map((table) => {
           const order = orders.find(
             (o) =>
@@ -2421,7 +2442,7 @@ function TablesOverview({
             <div key={table.id} className="relative">
               <button
                 onClick={() => onSelect(table)}
-                className={`flex w-full flex-col items-center justify-center gap-1 rounded-2xl border-2 p-4 transition-transform hover:scale-[1.02] ${
+                className={`flex min-h-[112px] w-full flex-col items-center justify-center gap-1 rounded-2xl border-2 p-4 transition-transform hover:scale-[1.02] active:scale-[0.98] 2xl:p-5 ${
                   TABLE_STATUS_CARD[table.status]
                 } ${table.id === cartTableId ? "ring-2 ring-teal-500" : ""}`}
               >
@@ -2456,7 +2477,7 @@ function TablesOverview({
                     onClear(table);
                   }}
                   title="Customer left — clear this table"
-                  className="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-rose-500 text-white shadow-sm hover:bg-rose-600"
+                  className="absolute -right-2 -top-2 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-rose-500 [&>svg]:size-4 text-white shadow-sm hover:bg-rose-600"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -2476,14 +2497,14 @@ function CategoryBox({ active, label, icon, onClick }: { active: boolean; label:
   return (
     <button
       onClick={onClick}
-      className={`flex min-h-[84px] flex-col items-center justify-center gap-1.5 rounded-2xl border p-3 text-center transition-colors ${
+      className={`flex min-h-[96px] flex-col items-center justify-center gap-2 rounded-2xl border p-3 text-center transition active:scale-[0.97] 2xl:min-h-[112px] ${
         active
           ? "border-[var(--brand)] bg-[var(--brand)] text-white shadow-sm"
           : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50"
       }`}
     >
-      <CategoryIconView icon={icon} className={`h-6 w-6 shrink-0 ${active ? "text-white" : "text-[var(--brand)]"}`} />
-      <span className="line-clamp-2 text-sm font-bold leading-tight">{label}</span>
+      <CategoryIconView icon={icon} className={`h-7 w-7 shrink-0 ${active ? "text-white" : "text-[var(--brand)]"}`} />
+      <span className="line-clamp-2 text-[15px] font-bold leading-tight 2xl:text-base">{label}</span>
     </button>
   );
 }
@@ -2504,11 +2525,11 @@ function PaymentButton({
   return (
     <button
       onClick={onClick}
-      className={`flex flex-col items-center gap-1.5 rounded-xl border py-2.5 text-xs font-medium transition-colors ${
+      className={`flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl border px-1 py-3 text-sm font-semibold transition active:scale-95 2xl:min-h-[72px] ${
         active ? "border-[var(--brand)] bg-[var(--brand-light)] text-[var(--brand-dark)]" : "border-neutral-200 text-neutral-500 hover:bg-neutral-50"
       }`}
     >
-      {logoUrl ? <img src={logoUrl} alt="" className="h-4 w-4 rounded object-contain" /> : <Icon className="h-4 w-4" />}
+      {logoUrl ? <img src={logoUrl} alt="" className="h-6 w-6 rounded object-contain" /> : <Icon className="h-5 w-5" />}
       {label}
     </button>
   );
@@ -2743,7 +2764,7 @@ function StatusStepper({
     <button
       disabled={!next}
       onClick={() => next && onAdvance(next)}
-      className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
+      className={`min-h-11 rounded-lg px-4 py-2 text-sm font-semibold ${
         next ? "bg-[var(--brand)] text-white hover:bg-[var(--brand-dark)]" : "bg-neutral-200 text-neutral-500"
       }`}
     >
