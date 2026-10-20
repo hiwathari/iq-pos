@@ -871,7 +871,7 @@ export function OrderLineClient({
   };
 
   return (
-    <div className="flex h-full min-h-0">
+    <div className="flex h-full min-h-0 overflow-hidden">
       {/* Order status notifications */}
       {notifications.length > 0 && (
         <div className="pointer-events-none fixed right-4 top-4 z-[60] flex w-72 flex-col gap-2">
@@ -891,18 +891,19 @@ export function OrderLineClient({
         </div>
       )}
 
-      {/* Main column */}
-      <div className="flex-1 overflow-y-auto p-6 pb-24 lg:pb-6">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-xl font-semibold text-neutral-900">Till</h1>
-          <div className="flex items-center gap-2">
+      {/* Main column — header, toolbars and the category row stay put; only the grid below
+          them scrolls (each view wraps its content in its own scroll box). */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col px-6 pt-6 lg:pb-6">
+        <div className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-3">
+          <h1 className="hidden text-xl font-semibold text-neutral-900 2xl:block">Till</h1>
+          <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
             <FullscreenButton className="flex min-h-11 items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50 2xl:text-base [&>svg]:size-5" />
             <button
               onClick={() => window.location.reload()}
               title="Refresh — reloads the page and clears any cached data"
               className="flex min-h-11 items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50 2xl:text-base [&>svg]:size-5"
             >
-              <RefreshCw className="h-4 w-4" /> Refresh
+              <RefreshCw className="h-4 w-4" /> <span className="hidden 2xl:inline">Refresh</span>
             </button>
             <div className="flex items-center gap-1 rounded-2xl border border-neutral-200 bg-white p-1">
               <TopViewTab
@@ -935,7 +936,7 @@ export function OrderLineClient({
         </div>
 
         {view === "order" && (
-          <div className="mb-5 flex flex-wrap items-center gap-2">
+          <div className="mb-4 flex shrink-0 flex-wrap items-center gap-2">
             <button
               onClick={() => {
                 setCart(emptyCart);
@@ -948,36 +949,32 @@ export function OrderLineClient({
             </button>
             <ComingSoonButton icon={QrCode} label="QR Menu Orders" />
             <ComingSoonButton icon={FileClock} label="Draft List" />
+            <div className="relative ml-auto min-w-[220px] max-w-sm flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+              <input
+                value={menuSearch}
+                onChange={(e) => setMenuSearch(e.target.value)}
+                placeholder="Search dishes…"
+                className="w-full rounded-xl border border-neutral-200 bg-white py-3 pl-10 pr-12 text-base outline-none focus:border-teal-500"
+              />
+              {menuSearch && (
+                <button
+                  onClick={() => setMenuSearch("")}
+                  className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-neutral-400 hover:text-neutral-600 [&>svg]:size-5"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
           </div>
         )}
 
         {view === "order" && (
           <>
-            {/* Menu categories */}
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <h2 className="shrink-0 text-lg font-semibold text-neutral-900">Foodies Menu</h2>
-              <div className="relative w-full max-w-sm">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-                <input
-                  value={menuSearch}
-                  onChange={(e) => setMenuSearch(e.target.value)}
-                  placeholder="Search dishes…"
-                  className="w-full rounded-xl border border-neutral-200 bg-white py-3 pl-10 pr-12 text-base outline-none focus:border-teal-500"
-                />
-                {menuSearch && (
-                  <button
-                    onClick={() => setMenuSearch("")}
-                    className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-neutral-400 hover:text-neutral-600 [&>svg]:size-5"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
-            {/* Every category fits on screen at once, wrapping into rows — no sideways
-                scrolling to find one that's off-screen. */}
+            {/* One row of categories, swiped sideways — keeps the dish box as tall as possible
+                instead of categories wrapping into several rows above it. */}
             {!menuSearch && (
-              <div className="mb-6 grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-3 2xl:grid-cols-[repeat(auto-fill,minmax(136px,1fr))]">
+              <div className="-mx-1 mb-3 flex shrink-0 snap-x gap-3 overflow-x-auto px-1 pb-2 [scrollbar-width:thin]">
                 <CategoryBox active={menuCategory === "all"} label="All Menu" icon="all" onClick={() => setMenuCategory("all")} />
                 {categories.map((c) => (
                   <CategoryBox key={c.id} active={menuCategory === c.id} label={c.name} icon={c.icon} onClick={() => setMenuCategory(c.id)} />
@@ -985,12 +982,13 @@ export function OrderLineClient({
               </div>
             )}
             {menuSearch && (
-              <div className="mb-6 text-xs text-neutral-400">
+              <div className="mb-3 shrink-0 text-xs text-neutral-400">
                 {menuDishes.length} result{menuDishes.length === 1 ? "" : "s"} for &ldquo;{menuSearch}&rdquo;
               </div>
             )}
 
-            {/* Dish grid */}
+            {/* Dish grid — its own box; the only part of the order view that scrolls. */}
+            <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-neutral-200 bg-neutral-100/70 p-3 pb-24 lg:pb-3 2xl:p-4">
             <div className="grid grid-cols-[repeat(auto-fill,minmax(176px,1fr))] gap-3 2xl:grid-cols-[repeat(auto-fill,minmax(196px,1fr))] 2xl:gap-4">
               {menuDishes.map((dish) => {
                 const qty = qtyFor(dish.id);
@@ -1008,13 +1006,13 @@ export function OrderLineClient({
                         addToCart(dish);
                       }
                     }}
-                    className={`relative flex min-w-0 select-none flex-col rounded-2xl border bg-white p-3.5 transition 2xl:p-4 ${
+                    className={`relative flex min-w-0 select-none flex-col rounded-2xl border bg-white p-3.5 shadow-sm transition 2xl:p-4 ${
                       dish.outOfStock ? "cursor-not-allowed" : "cursor-pointer active:scale-[0.98]"
                     } ${
                       dish.outOfStock
                         ? "border-neutral-200 opacity-60"
                         : qty > 0
-                          ? "border-teal-400 ring-1 ring-teal-100 hover:shadow-md"
+                          ? "border-[var(--brand)] ring-1 ring-[var(--brand)] hover:shadow-md"
                           : "border-neutral-200 hover:shadow-md"
                     }`}
                   >
@@ -1087,18 +1085,19 @@ export function OrderLineClient({
                 <div className="col-span-full py-16 text-center text-sm text-neutral-400">No dishes in this category.</div>
               )}
             </div>
+            </div>
           </>
         )}
 
         {view === "tickets" && (
           <>
-            {/* Channel/status filter chips */}
-            <div className="mb-5 flex flex-wrap items-center gap-2">
+            {/* Channel/status filter chips — one row, swiped sideways */}
+            <div className="-mx-1 mb-4 flex shrink-0 items-center gap-2 overflow-x-auto px-1 pb-2 [scrollbar-width:thin]">
               {QUEUE_TABS.map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setQueueTab(tab)}
-                  className={`flex min-h-11 items-center gap-2 rounded-full border px-5 py-2.5 text-sm font-medium transition-colors 2xl:text-base ${
+                  className={`flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-full border px-5 py-2.5 text-sm font-medium transition-colors 2xl:text-base ${
                     queueTab === tab
                       ? "border-[var(--brand)] bg-[var(--brand)] text-white"
                       : "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
@@ -1117,6 +1116,7 @@ export function OrderLineClient({
             </div>
 
             {/* Open tickets grid */}
+            <div className="min-h-0 flex-1 overflow-y-auto pb-24 lg:pb-0">
             <div className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-4">
               {filteredOrders.map((order) => (
                 <OrderCard
@@ -1131,6 +1131,7 @@ export function OrderLineClient({
                   No open tickets in this view.
                 </div>
               )}
+            </div>
             </div>
           </>
         )}
@@ -1149,7 +1150,7 @@ export function OrderLineClient({
 
         {view === "history" && (
           <>
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-neutral-500">
                 Completed and voided orders, most recent first — tap one to review or reprint it.
               </p>
@@ -1184,6 +1185,7 @@ export function OrderLineClient({
                 )}
               </div>
             </div>
+            <div className="min-h-0 flex-1 overflow-y-auto pb-24 lg:pb-0">
             <div className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-4">
               {historyOrders.map((order) => (
                 <OrderCard
@@ -1199,12 +1201,13 @@ export function OrderLineClient({
                 </div>
               )}
             </div>
+            </div>
           </>
         )}
       </div>
 
       {/* Desktop cart panel — same light theme as the menu area, just a border to separate it. */}
-      <div className="hidden w-[380px] shrink-0 xl:w-[400px] flex-col border-l border-neutral-200 bg-white p-5 lg:flex min-h-0 2xl:w-[460px]">
+      <div className="hidden w-[380px] shrink-0 xl:w-[400px] flex-col overflow-hidden border-l border-neutral-200 bg-white p-5 lg:flex min-h-0 2xl:w-[460px]">
         <CartPanel {...cartPanelProps} showClose={false} />
       </div>
 
@@ -1508,9 +1511,9 @@ function CartPanel({
 
       {/* Fixed layout: setup box (collapses to a summary once done), the order tray scrolls on its
           own, and discounts/totals/payment/the main button stay pinned at the bottom. */}
-      <div className="mb-3 shrink-0">
+      <div className="mb-3 flex min-h-0 shrink flex-col">
       {tableEditorOpen ? (
-        <div className="max-h-80 space-y-3 overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 p-3 2xl:max-h-96">
+        <div className="max-h-80 min-h-0 space-y-3 overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 p-3 2xl:max-h-96">
           <div>
             <div className="mb-1 flex items-center justify-between">
               <label className="block text-xs font-medium text-neutral-500">Order Type</label>
@@ -1521,7 +1524,7 @@ function CartPanel({
               )}
             </div>
             {showAllChannels ? (
-              <div className="grid grid-cols-3 gap-1.5">
+              <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:thin]">
                 {CHANNELS.map((c) => (
                   <button
                     key={c}
@@ -1529,7 +1532,7 @@ function CartPanel({
                       setCart((prev) => ({ ...prev, channel: c, channelChosen: true }));
                       setChannelPickerOpen(false);
                     }}
-                    className={`min-h-11 rounded-lg border px-2 py-2 text-sm font-semibold ${
+                    className={`min-h-11 shrink-0 whitespace-nowrap rounded-lg border px-4 py-2 text-sm font-semibold ${
                       cart.channel === c && cart.channelChosen
                         ? "border-[var(--brand)] bg-[var(--brand)] text-white"
                         : "border-neutral-200 text-neutral-500"
@@ -1547,22 +1550,22 @@ function CartPanel({
           </div>
 
           {(cart.channel === "Dine in" || cart.channel === "Wait List") && (
-            <>
-              <div>
+            <div className="flex items-end gap-2">
+              <div className="min-w-0 flex-1">
                 <label className="mb-1 block text-xs font-medium text-neutral-500">Table</label>
                 <button
                   onClick={() => setTablePickerOpen(true)}
-                  className="flex min-h-12 w-full items-center justify-between rounded-lg border border-neutral-200 bg-white px-3.5 py-2.5 text-left text-base text-neutral-700 hover:border-teal-400 [&>svg]:size-5"
+                  className="flex min-h-12 w-full items-center justify-between gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-left text-base text-neutral-700 hover:border-teal-400 [&>svg]:size-5"
                 >
                   {cart.tableNumber ? (
                     <span className="font-medium">Table {String(cart.tableNumber).padStart(2, "0")}</span>
                   ) : (
-                    <span className="text-neutral-400">No table selected</span>
+                    <span className="truncate text-neutral-400">Pick table</span>
                   )}
                   <LayoutGrid className="h-4 w-4 text-neutral-400" />
                 </button>
               </div>
-              <div>
+              <div className="shrink-0">
                 <label className="mb-1 block text-xs font-medium text-neutral-500">Guests</label>
                 <div className="flex items-center gap-2">
                   <button
@@ -1572,7 +1575,7 @@ function CartPanel({
                   >
                     <Minus className="h-5 w-5" />
                   </button>
-                  <div className="flex h-12 flex-1 items-center justify-center rounded-xl border border-neutral-200 bg-white text-xl font-semibold text-neutral-900">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-neutral-200 bg-white text-xl font-semibold text-neutral-900">
                     {cart.guests}
                   </div>
                   <button
@@ -1584,7 +1587,7 @@ function CartPanel({
                   </button>
                 </div>
               </div>
-            </>
+            </div>
           )}
 
           {(cart.channel === "Take Away" || cart.channel === "Delivery") && (
@@ -1685,7 +1688,7 @@ function CartPanel({
         />
       )}
 
-      <div className="flex min-h-[7rem] flex-1 flex-col">
+      <div className="flex min-h-[7.5rem] flex-1 flex-col">
         <div className="mb-2 flex shrink-0 items-center justify-between">
           <h3 className="text-base font-semibold text-neutral-900">Order Tray</h3>
           <div className="flex items-center gap-2">
@@ -1703,7 +1706,7 @@ function CartPanel({
 
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
           {cart.items.length === 0 && (
-            <div className="flex h-32 items-center justify-center text-center text-sm text-neutral-400">
+            <div className="flex h-full min-h-16 items-center justify-center text-center text-sm text-neutral-400">
               No items yet.
               <br />
               Tap a dish to add it to the order.
@@ -1756,7 +1759,7 @@ function CartPanel({
         <div className="rounded-xl border border-neutral-200 bg-neutral-50">
           <button
             onClick={() => setExtrasOpen((v) => !v)}
-            className="flex min-h-12 w-full items-center justify-between gap-2 px-3.5 py-3 text-[15px] font-semibold text-neutral-800"
+            className="flex min-h-11 w-full items-center justify-between gap-2 px-3.5 py-2.5 text-[15px] font-semibold text-neutral-800"
           >
             <span className="flex items-center gap-1.5">
               <TicketPercent className="h-4 w-4 text-neutral-400" /> Discounts &amp; Loyalty
@@ -1768,7 +1771,7 @@ function CartPanel({
             </span>
           </button>
           {extrasOpen && (
-            <div className="max-h-60 space-y-3 overflow-y-auto border-t border-neutral-200 p-3">
+            <div className="max-h-52 space-y-3 overflow-y-auto border-t border-neutral-200 p-3">
               <div className="space-y-1.5">
                 <label className="flex items-center gap-1.5 text-xs font-medium text-neutral-500">
                   <CreditCard className="h-3.5 w-3.5" /> Loyalty Card
@@ -1874,10 +1877,12 @@ function CartPanel({
         </div>
 
         <div className="space-y-1 text-[15px]">
-          <div className="flex justify-between text-neutral-500">
-            <span>Subtotal</span>
-            <span>{formatMoney(subtotal, currencySymbol)}</span>
-          </div>
+          {(cart.appliedCoupon || extraDiscountAmount > 0 || tax > 0) && (
+            <div className="flex justify-between text-neutral-500">
+              <span>Subtotal</span>
+              <span>{formatMoney(subtotal, currencySymbol)}</span>
+            </div>
+          )}
           {cart.appliedCoupon && (
             <div className="flex justify-between text-emerald-600">
               <span>Coupon {cart.appliedCoupon.code}</span>
@@ -1944,11 +1949,11 @@ function CartPanel({
           )}
 
           {!paymentLocked && cart.payments.length > 0 && (
-            <div className="mt-2 max-h-48 space-y-2 overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+            <div className="mt-2 max-h-36 space-y-1.5 overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 p-2.5">
               {cart.payments.map((p) => (
                 <div key={p.method} className="space-y-1.5">
                   <div className="flex items-center gap-2">
-                    <span className="w-24 shrink-0 truncate text-sm font-semibold text-neutral-700">{p.method}</span>
+                    <span className="w-16 shrink-0 truncate text-sm font-semibold text-neutral-700">{p.method}</span>
                     <div className="relative flex-1">
                       <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-neutral-400">
                         {currencySymbol}
@@ -1959,7 +1964,7 @@ function CartPanel({
                         step="0.01"
                         value={p.amount}
                         onChange={(e) => updatePaymentAmount(p.method, Math.max(0, Number(e.target.value) || 0))}
-                        className="w-full rounded-lg border border-neutral-200 bg-white py-2.5 pl-7 pr-3 text-base outline-none focus:border-teal-500"
+                        className="w-full rounded-lg border border-neutral-200 bg-white py-2 pl-7 pr-3 text-base outline-none focus:border-teal-500"
                       />
                     </div>
                     <button onClick={() => removePaymentLine(p.method)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-neutral-300 hover:bg-rose-50 hover:text-rose-500 [&>svg]:size-5">
@@ -1967,7 +1972,7 @@ function CartPanel({
                     </button>
                   </div>
                   {p.method === "Cash" && (
-                    <div className="ml-[6.5rem] mr-12 flex items-center gap-2 text-sm">
+                    <div className="ml-[4.5rem] mr-12 flex items-center gap-2 text-sm">
                       <span className="shrink-0 text-neutral-500">Received</span>
                       <div className="relative flex-1">
                         <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400">
@@ -1980,7 +1985,7 @@ function CartPanel({
                           value={cart.cashReceived}
                           onChange={(e) => setCart((prev) => ({ ...prev, cashReceived: e.target.value }))}
                           placeholder={p.amount.toFixed(2)}
-                          className="w-full rounded-lg border border-neutral-200 bg-white py-2.5 pl-7 pr-3 text-base outline-none focus:border-teal-500"
+                          className="w-full rounded-lg border border-neutral-200 bg-white py-2 pl-7 pr-3 text-base outline-none focus:border-teal-500"
                         />
                       </div>
                       {changeDue > 0 && (
@@ -2324,7 +2329,7 @@ function TopViewTab({
   return (
     <button
       onClick={onClick}
-      className={`flex min-h-11 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors 2xl:text-base [&>svg]:size-5 ${
+      className={`flex min-h-11 items-center whitespace-nowrap gap-2 rounded-xl px-3 py-2.5 2xl:px-4 text-sm font-medium transition-colors 2xl:text-base [&>svg]:size-5 ${
         active ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
       }`}
     >
@@ -2351,7 +2356,7 @@ function ComingSoonButton({ icon: Icon, label }: { icon: typeof ShoppingBag; lab
     <button
       disabled
       title="Coming soon"
-      className="flex min-h-11 cursor-not-allowed items-center gap-2 rounded-xl border border-dashed border-neutral-200 px-4 py-2.5 text-sm font-semibold text-neutral-400 [&>svg]:size-4"
+      className="hidden min-h-11 cursor-not-allowed items-center gap-2 rounded-xl border border-dashed border-neutral-200 px-4 py-2.5 text-sm font-semibold text-neutral-400 2xl:flex [&>svg]:size-4"
     >
       <Icon className="h-3.5 w-3.5" /> {label}
       <span className="rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-neutral-400">
@@ -2399,8 +2404,8 @@ function TablesOverview({
   }, []);
 
   return (
-    <div>
-      <div className="mb-4 flex items-center gap-2 rounded-xl border border-neutral-200 bg-white p-1">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="mb-4 flex shrink-0 items-center gap-2 rounded-xl border border-neutral-200 bg-white p-1">
         {TABLE_AREAS.map((a) => (
           <button
             key={a}
@@ -2414,7 +2419,7 @@ function TablesOverview({
         ))}
       </div>
 
-      <div className="mb-4 flex items-center gap-5 text-xs text-neutral-500">
+      <div className="mb-4 flex shrink-0 items-center gap-5 text-xs text-neutral-500">
         <span className="flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-full bg-indigo-400" /> Available
         </span>
@@ -2426,6 +2431,7 @@ function TablesOverview({
         </span>
       </div>
 
+      <div className="min-h-0 flex-1 overflow-y-auto pb-24 pt-2 lg:pb-0">
       <div className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-4">
         {areaTables.map((table) => {
           const order = orders.find(
@@ -2489,6 +2495,7 @@ function TablesOverview({
           <div className="col-span-full py-16 text-center text-sm text-neutral-400">No tables in this area.</div>
         )}
       </div>
+      </div>
     </div>
   );
 }
@@ -2497,13 +2504,13 @@ function CategoryBox({ active, label, icon, onClick }: { active: boolean; label:
   return (
     <button
       onClick={onClick}
-      className={`flex min-h-[96px] min-w-0 flex-col items-center justify-center gap-2 rounded-2xl border p-3 text-center transition active:scale-[0.97] 2xl:min-h-[112px] ${
+      className={`flex min-h-[84px] w-[116px] shrink-0 snap-start flex-col items-center justify-center gap-1.5 rounded-2xl border p-2.5 text-center transition active:scale-[0.97] 2xl:min-h-[100px] 2xl:w-[136px] ${
         active
           ? "border-[var(--brand)] bg-[var(--brand)] text-white shadow-sm"
           : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50"
       }`}
     >
-      <CategoryIconView icon={icon} className={`h-7 w-7 shrink-0 ${active ? "text-white" : "text-[var(--brand)]"}`} />
+      <CategoryIconView icon={icon} name={icon === "all" ? undefined : label} className={`h-7 w-7 shrink-0 ${active ? "text-white" : "text-[var(--brand)]"}`} />
       <span className="line-clamp-2 break-words text-[15px] font-bold leading-tight 2xl:text-base">{label}</span>
     </button>
   );
@@ -2525,12 +2532,12 @@ function PaymentButton({
   return (
     <button
       onClick={onClick}
-      className={`flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl border px-1 py-3 text-sm font-semibold transition active:scale-95 2xl:min-h-[72px] ${
+      className={`flex min-h-12 min-w-0 items-center justify-center gap-2 rounded-xl border px-2 py-2.5 text-sm font-semibold transition active:scale-95 2xl:min-h-14 2xl:text-base ${
         active ? "border-[var(--brand)] bg-[var(--brand-light)] text-[var(--brand-dark)]" : "border-neutral-200 text-neutral-500 hover:bg-neutral-50"
       }`}
     >
-      {logoUrl ? <img src={logoUrl} alt="" className="h-6 w-6 rounded object-contain" /> : <Icon className="h-5 w-5" />}
-      {label}
+      {logoUrl ? <img src={logoUrl} alt="" className="h-6 w-6 rounded object-contain" /> : <Icon className="h-5 w-5 shrink-0" />}
+      <span className="truncate">{label}</span>
     </button>
   );
 }

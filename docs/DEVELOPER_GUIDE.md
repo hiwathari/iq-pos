@@ -714,6 +714,32 @@ conversation says so.
 > whichever numbered section above actually describes the thing you changed. A change without
 > both halves is not done.
 
+### 2026-10-20 (latest) — Till: fixed screen layout, sliding rows, name-matched category icons
+- **Nothing on the Till scrolls as a whole page any more** (`order-line-client.tsx`). The main
+  column is a flex column with `min-h-0`: the view tabs, New Order + search row and category row
+  are `shrink-0`; only each view's own content box scrolls — the dish grid sits in its own grey
+  box (`flex-1 overflow-y-auto`), and Open Tickets / History / Tables wrap their grids the same way.
+- **One-row sliding strips** (`overflow-x-auto snap-x`): menu categories (fixed-width
+  `CategoryBox`), Open Tickets filter chips, and the cart's Order Type picker (was a 3×2 grid).
+- **Cart bottom always fits**: the panel is `overflow-hidden`; the setup box and order tray give up
+  height (`min-h-0`, tray min 7.5rem) so totals, payment methods and the main button stay on screen
+  — previously an open setup box pushed the cart past the screen and the whole page scrolled.
+  Compacted to fit 1280×800: Table + Guests share one row, Subtotal only shows when a
+  discount/coupon/tax sits between it and the total, payment-method buttons are one 48px row
+  (icon beside label), tighter payment lines.
+- Space: the page `h1` "Till" and the Refresh label only show at `2xl` (the top bar already says
+  "Till · <restaurant>"); the "SOON" QR Menu / Draft List placeholders only show at `2xl`; the
+  search box moved onto the New Order row.
+- **Category icons match the category name first** (`NAME_ICONS` in
+  `components/category-icon.tsx`, Till only via the new `name` prop): milk → Milk, juice → Citrus,
+  mojito → Martini, shakes → IceCreamCone, pickle/uppilittathu → Amphora (jar), combos → Package,
+  snacks → Popcorn, etc. — the 14 pickable icons are generic, so a cafe's many drinks categories
+  all showed the same cup. Unmatched names fall back to the icon picked in Manage Dishes.
+- Selected dish tiles use the brand colour outline instead of teal.
+- Verified by rendering the real `OrderLineClient` with sample data (temporary local page, not
+  committed) at 1280×800, 1194×834, 1920×1080 and 2560×1440: the page never scrolls, Done and the
+  main button stay visible.
+
 ### 2026-10-20 (later) — Fix: Till buttons spilling out of their tiles
 - The touch-sizing change below kept viewport breakpoints (`xl:grid-cols-4` etc.), but the menu
   area is the viewport minus the sidebar (240px) and the cart (400px+) — at 1280px a dish tile was
