@@ -977,7 +977,7 @@ export function OrderLineClient({
             {/* Every category fits on screen at once, wrapping into rows — no sideways
                 scrolling to find one that's off-screen. */}
             {!menuSearch && (
-              <div className="mb-6 grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+              <div className="mb-6 grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-3 2xl:grid-cols-[repeat(auto-fill,minmax(136px,1fr))]">
                 <CategoryBox active={menuCategory === "all"} label="All Menu" icon="all" onClick={() => setMenuCategory("all")} />
                 {categories.map((c) => (
                   <CategoryBox key={c.id} active={menuCategory === c.id} label={c.name} icon={c.icon} onClick={() => setMenuCategory(c.id)} />
@@ -991,7 +991,7 @@ export function OrderLineClient({
             )}
 
             {/* Dish grid */}
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(176px,1fr))] gap-3 2xl:grid-cols-[repeat(auto-fill,minmax(196px,1fr))] 2xl:gap-4">
               {menuDishes.map((dish) => {
                 const qty = qtyFor(dish.id);
                 const price = priceFor(dish);
@@ -1008,7 +1008,7 @@ export function OrderLineClient({
                         addToCart(dish);
                       }
                     }}
-                    className={`relative flex select-none flex-col rounded-2xl border bg-white p-4 transition 2xl:p-5 ${
+                    className={`relative flex min-w-0 select-none flex-col rounded-2xl border bg-white p-3.5 transition 2xl:p-4 ${
                       dish.outOfStock ? "cursor-not-allowed" : "cursor-pointer active:scale-[0.98]"
                     } ${
                       dish.outOfStock
@@ -1047,16 +1047,16 @@ export function OrderLineClient({
                     <div className="text-xs text-neutral-400">
                       {categories.find((c) => c.id === dish.categoryId)?.name}
                     </div>
-                    <div className="mb-2 line-clamp-2 text-[15px] font-semibold leading-snug text-neutral-900 2xl:text-base">{dish.name}</div>
-                    <div className="mt-auto flex items-center justify-between">
-                      <span className="text-base font-semibold text-neutral-800">
+                    <div className="mb-1 line-clamp-2 break-words text-[15px] font-semibold leading-snug text-neutral-900 2xl:text-base">{dish.name}</div>
+                    <div className="mt-auto">
+                      <div className="mb-2 text-base font-semibold text-neutral-800">
                         {formatMoney(price, currencySymbol)}
                         {price !== dish.price && <span className="ml-1 text-[10px] font-normal text-teal-600">({cart.channel})</span>}
-                      </span>
+                      </div>
                       {dish.outOfStock ? (
-                        <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">Sold Out</span>
+                        <span className="inline-block rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">Sold Out</span>
                       ) : (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-between gap-2">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -1067,7 +1067,7 @@ export function OrderLineClient({
                           >
                             <Minus className="h-3.5 w-3.5" />
                           </button>
-                          <span className="w-6 text-center text-base font-semibold text-neutral-800">{qty}</span>
+                          <span className="min-w-6 text-center text-base font-semibold text-neutral-800">{qty}</span>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -1117,7 +1117,7 @@ export function OrderLineClient({
             </div>
 
             {/* Open tickets grid */}
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-4">
               {filteredOrders.map((order) => (
                 <OrderCard
                   key={order.id}
@@ -1184,7 +1184,7 @@ export function OrderLineClient({
                 )}
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-4">
               {historyOrders.map((order) => (
                 <OrderCard
                   key={order.id}
@@ -1204,7 +1204,7 @@ export function OrderLineClient({
       </div>
 
       {/* Desktop cart panel — same light theme as the menu area, just a border to separate it. */}
-      <div className="hidden w-[420px] shrink-0 flex-col border-l border-neutral-200 bg-white p-5 lg:flex min-h-0 2xl:w-[480px]">
+      <div className="hidden w-[380px] shrink-0 xl:w-[400px] flex-col border-l border-neutral-200 bg-white p-5 lg:flex min-h-0 2xl:w-[460px]">
         <CartPanel {...cartPanelProps} showClose={false} />
       </div>
 
@@ -2426,7 +2426,7 @@ function TablesOverview({
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-4">
         {areaTables.map((table) => {
           const order = orders.find(
             (o) =>
@@ -2477,7 +2477,7 @@ function TablesOverview({
                     onClear(table);
                   }}
                   title="Customer left — clear this table"
-                  className="absolute -right-2 -top-2 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-rose-500 [&>svg]:size-4 text-white shadow-sm hover:bg-rose-600"
+                  className="absolute right-1.5 top-1.5 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-rose-500 [&>svg]:size-4 text-white shadow-sm hover:bg-rose-600"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -2497,14 +2497,14 @@ function CategoryBox({ active, label, icon, onClick }: { active: boolean; label:
   return (
     <button
       onClick={onClick}
-      className={`flex min-h-[96px] flex-col items-center justify-center gap-2 rounded-2xl border p-3 text-center transition active:scale-[0.97] 2xl:min-h-[112px] ${
+      className={`flex min-h-[96px] min-w-0 flex-col items-center justify-center gap-2 rounded-2xl border p-3 text-center transition active:scale-[0.97] 2xl:min-h-[112px] ${
         active
           ? "border-[var(--brand)] bg-[var(--brand)] text-white shadow-sm"
           : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50"
       }`}
     >
       <CategoryIconView icon={icon} className={`h-7 w-7 shrink-0 ${active ? "text-white" : "text-[var(--brand)]"}`} />
-      <span className="line-clamp-2 text-[15px] font-bold leading-tight 2xl:text-base">{label}</span>
+      <span className="line-clamp-2 break-words text-[15px] font-bold leading-tight 2xl:text-base">{label}</span>
     </button>
   );
 }

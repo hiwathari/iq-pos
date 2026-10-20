@@ -714,6 +714,20 @@ conversation says so.
 > whichever numbered section above actually describes the thing you changed. A change without
 > both halves is not done.
 
+### 2026-10-20 (later) — Fix: Till buttons spilling out of their tiles
+- The touch-sizing change below kept viewport breakpoints (`xl:grid-cols-4` etc.), but the menu
+  area is the viewport minus the sidebar (240px) and the cart (400px+) — at 1280px a dish tile was
+  ~127px wide while its price + 44px −/qty/+ row needs ~190px, so buttons overflowed onto
+  neighbouring tiles. Till grids (categories, dishes, open tickets, history, tables) now use
+  `grid-cols-[repeat(auto-fill,minmax(<min>,1fr))]`, so column count follows the space actually
+  available and a tile never drops below its minimum (dish 176px / 196px at 2xl, category 120px,
+  order card 210px, table 170px).
+- Dish tile footer is stacked: price on its own line, then a full-width − qty + row.
+- The table tile's "clear" X sits inside the tile (`right-1.5 top-1.5`) instead of hanging over the
+  neighbour; cart panel is 380px (400px at xl, 460px at 2xl).
+- Checked with a static Tailwind harness of the tile markup at 1280/1366/1920/2560px — no child
+  overflows its tile — not the live app with real data.
+
 ### 2026-10-20 — Till sized for touch screens (11"–27")
 - **Full Till only** (`order-line-client.tsx`; the mobile Till and admin pages are untouched).
   Every tappable control on the Till is now at least ~44px tall (`min-h-11`): toolbar/view tabs,
