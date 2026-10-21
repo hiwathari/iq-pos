@@ -377,7 +377,9 @@ export function KitchenClient({
             {/* Dense, uniform grid (no outlier-sized card) — the goal is fitting at least 8 full
                 tickets on screen at once with large, legible text, not decoration. See
                 OrderTicket for the matching low-chrome layout. */}
-            <div className="grid grid-cols-2 items-start gap-2 sm:grid-cols-3 lg:grid-cols-4">
+            {/* Columns follow the panel's own width (it sits beside the sidebar and Completed list),
+                so a ticket never gets too narrow for its header and buttons. */}
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] items-start gap-2">
               {pendingOrders.map((order, idx) => (
                 <OrderTicket
                   key={order.id}
@@ -682,7 +684,9 @@ function OrderTicket({
         ) : isDone ? (
           <span className="text-sm font-bold text-emerald-600">Done</span>
         ) : elapsedMs !== null && band ? (
-          <span className={`rounded-md px-1.5 py-0.5 text-sm font-bold ${TIMER_STYLES[band]}`}>{formatElapsed(elapsedMs)}</span>
+          <span suppressHydrationWarning className={`rounded-md px-1.5 py-0.5 text-sm font-bold ${TIMER_STYLES[band]}`}>
+            {formatElapsed(elapsedMs)}
+          </span>
         ) : (
           <span className="text-sm font-medium text-neutral-400">{formatOrderTimestamp(order.createdAt)}</span>
         )}
@@ -785,13 +789,13 @@ function OrderTicket({
         </div>
       )}
       {!isVoided && !isDone && showTicketActions && (
-        <div className="flex gap-1.5">
+        <div className="flex flex-wrap gap-1.5">
           {order.status === "In Kitchen" && (
             <button
               onClick={() => onAdvance("Served")}
               disabled={!allItemsReady}
               title={allItemsReady ? undefined : "Tick off every item first"}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[var(--brand)] py-2.5 text-base font-bold text-white active:scale-95 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-400"
+              className="flex min-w-[6.5rem] flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-[var(--brand)] py-2.5 text-base font-bold text-white active:scale-95 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-400"
             >
               <CheckCircle2 className="h-5 w-5" /> Served
             </button>
@@ -799,7 +803,7 @@ function OrderTicket({
           {order.status === "Wait List" && (
             <button
               onClick={() => onAdvance("In Kitchen")}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-500 py-2.5 text-base font-bold text-white active:scale-95"
+              className="flex min-w-[6.5rem] flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-amber-500 py-2.5 text-base font-bold text-white active:scale-95"
             >
               Send to Kitchen
             </button>
@@ -807,7 +811,7 @@ function OrderTicket({
           <button
             onClick={onComplete}
             title="Marks every item on this ticket ready and completes the order in one tap"
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 py-2.5 text-base font-bold text-white active:scale-95"
+            className="flex min-w-[6.5rem] flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-emerald-600 py-2.5 text-base font-bold text-white active:scale-95"
           >
             <CheckCheck className="h-5 w-5" /> Complete
           </button>

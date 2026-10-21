@@ -744,6 +744,28 @@ conversation says so.
 > whichever numbered section above actually describes the thing you changed. A change without
 > both halves is not done.
 
+### 2026-10-22 — Help Center FAQ with marked screenshots; fixes it surfaced
+- **Help Center** (`app/help-center`) replaces the "coming soon" placeholder: 42 Q&As in 9 sections
+  (`faq.ts`), searchable, collapsible, with a section nav. Each how-to has numbered steps that
+  match red numbered markers on its screenshot in `public/help/*.webp` (34 images, ~1.8MB,
+  clickable to enlarge). Screenshots are of a made-up "Demo Café" (generic staff, dishes, "Card
+  A/B" card machines) captured from the real pages against a throwaway local database — to
+  refresh them, re-seed and re-run that capture rather than editing images by hand.
+- Fixes found while capturing:
+  - Kitchen Display: ticket grid used viewport breakpoints (`lg:grid-cols-4`) inside a narrower
+    panel, so Served/Complete overflowed the card; now `auto-fill minmax(210px,1fr)` and the
+    action buttons wrap. The ticket timer gets `suppressHydrationWarning` (server and browser
+    render it seconds apart — it was a dev-overlay hydration error).
+  - Till cart header on an open order (title + 5 icons + 3-line subtitle) overflowed the 380px
+    cart; title/subtitle now truncate and icons are 36px below `xl`.
+  - Till: loyalty "Find / Enroll" was pushed out of the cart (input now `min-w-0`); the cash
+    "Received" box was squeezed to ~45px by the change amount (change now on its own line); the
+    tray's 7.5rem minimum only applies on screens ≥860px tall.
+  - Manage Tables header buttons no longer wrap their labels onto two lines.
+  - Dashboard billing badges said "Pending" for unpaid orders — confusing now that "Pending"
+    means "awaiting acceptance" — they read "Unpaid", or "To accept" for customer orders.
+- A 4-page A4 brochure for restaurants was made separately as a Design canvas (not in the repo).
+
 ### 2026-10-21 (late night) — Free a table, or all tables at once
 - New `freeTablesAction(tableIds?)` in `lib/actions/tables.ts`: sets the given tables (or, with no
   ids, every table of the restaurant) to available / 0 seated / no seatedAt. Orders are never

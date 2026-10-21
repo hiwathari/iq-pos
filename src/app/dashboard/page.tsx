@@ -106,7 +106,7 @@ export default async function DashboardPage() {
 
   const isOrderClosedOut = (o: (typeof orders)[number]) => o.status === "Served" && !!o.paymentMethod;
   const liveOrders = orders.filter((o) => o.status !== "Voided");
-  // "Active"/"Finished" is about kitchen progress (still cooking vs served); "Pending"/"Billed"
+  // "Active"/"Finished" is about kitchen progress (still cooking vs served); "Unpaid"/"Billed"
   // just below is about payment instead — a finished, served order can still be unpaid.
   const activeOrders = liveOrders.filter((o) => o.status === "Pending" || o.status === "Wait List" || o.status === "In Kitchen");
   const finishedOrders = liveOrders.filter((o) => o.status === "Served");
@@ -221,7 +221,7 @@ export default async function DashboardPage() {
                       isOrderClosedOut(o) ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
                     }`}
                   >
-                    {o.status === "Voided" ? "Voided" : isOrderClosedOut(o) ? "Billed" : "Pending"}
+                    {o.status === "Voided" ? "Voided" : isOrderClosedOut(o) ? "Billed" : o.status === "Pending" ? "To accept" : "Unpaid"}
                   </span>
                 </div>
               ))}
@@ -268,7 +268,7 @@ export default async function DashboardPage() {
             <div className="mb-4 grid grid-cols-2 gap-3">
               <div className="rounded-xl bg-amber-50 p-3 text-center">
                 <div className="text-xl font-bold text-amber-700">{pendingOrders.length}</div>
-                <div className="text-xs text-amber-600">Pending</div>
+                <div className="text-xs text-amber-600">Unpaid</div>
               </div>
               <div className="rounded-xl bg-emerald-50 p-3 text-center">
                 <div className="text-xl font-bold text-emerald-700">{billedOrders.length}</div>
@@ -281,10 +281,12 @@ export default async function DashboardPage() {
                   <span className="text-neutral-700">
                     #{o.orderNumber} · {channelLabel(o)}
                   </span>
-                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">{o.status}</span>
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                    {o.status === "Pending" ? "To accept" : o.status}
+                  </span>
                 </div>
               ))}
-              {pendingOrders.length === 0 && <p className="text-sm text-neutral-400">Nothing pending right now.</p>}
+              {pendingOrders.length === 0 && <p className="text-sm text-neutral-400">Nothing unpaid right now.</p>}
             </div>
           </div>
 

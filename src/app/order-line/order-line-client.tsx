@@ -1504,9 +1504,10 @@ function CartPanel({
   }
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="mb-4 flex shrink-0 items-start justify-between">
-        <div>
-          <h2 className="flex items-center gap-2 text-lg font-semibold text-neutral-900">
+      <div className="mb-4 flex shrink-0 items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h2 className="flex min-w-0 items-center gap-2 text-lg font-semibold text-neutral-900">
+            <span className="truncate">
             {cart.tableNumber
               ? `Table No #${String(cart.tableNumber).padStart(2, "0")}${
                   editingOrder?.mergedTableNumbers?.length
@@ -1516,10 +1517,11 @@ function CartPanel({
               : cart.customerName
                 ? `${cart.channel} · ${cart.customerName}`
                 : `${cart.channel} Order`}
+            </span>
             {cart.channel === "Delivery" && <Bike className="h-4 w-4 text-blue-500" />}
             {cart.channel === "Take Away" && <ShoppingBag className="h-4 w-4 text-amber-500" />}
           </h2>
-          <p className="mt-0.5 text-sm text-neutral-400">
+          <p className="mt-0.5 truncate text-sm text-neutral-400">
             {cart.editingOrderId && editingOrder
               ? `Order #${editingOrder.orderNumber} · Seq ${orderSequence(editingOrder.orderNumber)} · ${formatOrderTimestamp(editingOrder.createdAt)}`
               : "New Order"}
@@ -1531,19 +1533,19 @@ function CartPanel({
             ) : null}
           </p>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1 2xl:gap-1.5">
           {canManageTable && (
             <>
               <button
                 onClick={onSwapTableClick}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 2xl:h-11 2xl:w-11 [&>svg]:size-5 hover:bg-neutral-50 hover:text-teal-600"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 xl:h-10 xl:w-10 2xl:h-11 2xl:w-11 [&>svg]:size-5 hover:bg-neutral-50 hover:text-teal-600"
                 title="Move to a different table"
               >
                 <ArrowLeftRight className="h-4 w-4" />
               </button>
               <button
                 onClick={onMergeTableClick}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 2xl:h-11 2xl:w-11 [&>svg]:size-5 hover:bg-neutral-50 hover:text-teal-600"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 xl:h-10 xl:w-10 2xl:h-11 2xl:w-11 [&>svg]:size-5 hover:bg-neutral-50 hover:text-teal-600"
                 title="Merge another table into this order"
               >
                 <Combine className="h-4 w-4" />
@@ -1552,7 +1554,7 @@ function CartPanel({
           )}
           <button
             onClick={handlePrint}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 2xl:h-11 2xl:w-11 [&>svg]:size-5 hover:bg-neutral-50 hover:text-teal-600"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 xl:h-10 xl:w-10 2xl:h-11 2xl:w-11 [&>svg]:size-5 hover:bg-neutral-50 hover:text-teal-600"
             title="Print ticket"
           >
             <Printer className="h-4 w-4" />
@@ -1560,7 +1562,7 @@ function CartPanel({
           {cart.editingOrderId && (
             <button
               onClick={onShareInvoiceClick}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 2xl:h-11 2xl:w-11 [&>svg]:size-5 hover:bg-neutral-50 hover:text-teal-600"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 xl:h-10 xl:w-10 2xl:h-11 2xl:w-11 [&>svg]:size-5 hover:bg-neutral-50 hover:text-teal-600"
               title="Share invoice QR"
             >
               <QrCode className="h-4 w-4" />
@@ -1571,14 +1573,14 @@ function CartPanel({
               setCart(emptyCart);
               setTableEditorOpen(false);
             }}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 2xl:h-11 2xl:w-11 [&>svg]:size-5 hover:bg-rose-50 hover:text-rose-600"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 xl:h-10 xl:w-10 2xl:h-11 2xl:w-11 [&>svg]:size-5 hover:bg-rose-50 hover:text-rose-600"
           >
             <Trash2 className="h-4 w-4" />
           </button>
           {showClose && (
             <button
               onClick={onClose}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 2xl:h-11 2xl:w-11 [&>svg]:size-5 hover:bg-neutral-50"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 xl:h-10 xl:w-10 2xl:h-11 2xl:w-11 [&>svg]:size-5 hover:bg-neutral-50"
             >
               <X className="h-4 w-4" />
             </button>
@@ -1749,7 +1751,7 @@ function CartPanel({
         />
       )}
 
-      <div className={`flex flex-1 flex-col ${tableEditorOpen ? "min-h-16" : "min-h-16 [@media(min-height:760px)]:min-h-[7.5rem]"}`}>
+      <div className={`flex flex-1 flex-col ${tableEditorOpen ? "min-h-16" : "min-h-16 [@media(min-height:860px)]:min-h-[7.5rem]"}`}>
         <div className="mb-2 flex shrink-0 items-center justify-between">
           <h3 className="text-base font-semibold text-neutral-900">Order Tray</h3>
           <div className="flex items-center gap-2">
@@ -1853,7 +1855,7 @@ function CartPanel({
                       value={cart.loyaltyContact}
                       onChange={(e) => setCart((prev) => ({ ...prev, loyaltyContact: e.target.value }))}
                       placeholder="Phone, email, or card code"
-                      className="flex-1 rounded-lg border border-neutral-200 bg-white px-3.5 py-2.5 text-base outline-none focus:border-teal-500"
+                      className="min-w-0 flex-1 rounded-lg border border-neutral-200 bg-white px-3.5 py-2.5 text-base outline-none focus:border-teal-500"
                     />
                     <button
                       onClick={findOrEnrollLoyalty}
@@ -2033,9 +2035,9 @@ function CartPanel({
                     </button>
                   </div>
                   {p.method === "Cash" && (
-                    <div className="ml-[4.5rem] mr-12 flex items-center gap-2 text-sm">
+                    <div className="ml-[4.5rem] mr-12 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
                       <span className="shrink-0 text-neutral-500">Received</span>
-                      <div className="relative flex-1">
+                      <div className="relative min-w-[6rem] flex-1">
                         <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400">
                           {currencySymbol}
                         </span>
@@ -2050,7 +2052,7 @@ function CartPanel({
                         />
                       </div>
                       {changeDue > 0 && (
-                        <span className="shrink-0 font-semibold text-emerald-600">
+                        <span className="basis-full text-right font-semibold text-emerald-600">
                           Change {formatMoney(changeDue, currencySymbol)}
                         </span>
                       )}
