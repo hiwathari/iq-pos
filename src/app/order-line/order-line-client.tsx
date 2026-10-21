@@ -289,6 +289,7 @@ export function OrderLineClient({
   const [tablesArea, setTablesArea] = useState<(typeof TABLE_AREAS)[number]>("Ground Floor");
   const [menuCategory, setMenuCategory] = useState<string>("all");
   const [menuSearch, setMenuSearch] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [noteEditorFor, setNoteEditorFor] = useState<string | null>(null);
   const [customItemModalOpen, setCustomItemModalOpen] = useState(false);
   // Open by default for a brand-new order so Order Type/table selection is the first thing
@@ -894,102 +895,114 @@ export function OrderLineClient({
       {/* Main column — header, toolbars and the category row stay put; only the grid below
           them scrolls (each view wraps its content in its own scroll box). */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col px-6 pt-6 lg:pb-6">
-        <div className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-3">
-          <h1 className="hidden text-xl font-semibold text-neutral-900 2xl:block">Till</h1>
-          <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
-            <FullscreenButton className="flex min-h-11 items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50 2xl:text-base [&>svg]:size-5" />
-            <button
-              onClick={() => window.location.reload()}
-              title="Refresh — reloads the page and clears any cached data"
-              className="flex min-h-11 items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50 2xl:text-base [&>svg]:size-5"
-            >
-              <RefreshCw className="h-4 w-4" /> <span className="hidden 2xl:inline">Refresh</span>
-            </button>
-            <div className="flex items-center gap-1 rounded-2xl border border-neutral-200 bg-white p-1">
-              <TopViewTab
-                active={view === "order"}
-                icon={ShoppingBag}
-                label="Order"
-                onClick={() => setView("order")}
-              />
-              <TopViewTab
-                active={view === "tickets"}
-                icon={ClipboardList}
-                label="Open Tickets"
-                count={queueCounts.All}
-                onClick={() => setView("tickets")}
-              />
-              <TopViewTab
-                active={view === "tables"}
-                icon={LayoutGrid}
-                label="Tables"
-                onClick={() => setView("tables")}
-              />
-              <TopViewTab
-                active={view === "history"}
-                icon={History}
-                label="History"
-                onClick={() => setView("history")}
-              />
-            </div>
-          </div>
-        </div>
-
-        {view === "order" && (
-          <div className="mb-4 flex shrink-0 flex-wrap items-center gap-2">
+        <div className="mb-3 flex shrink-0 flex-wrap items-center gap-2">
+          {view === "order" && (
             <button
               onClick={() => {
                 setCart(emptyCart);
                 setTableEditorOpen(true);
                 setMobileCartOpen(false);
               }}
-              className="flex min-h-11 items-center gap-2 rounded-xl bg-[var(--brand)] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] 2xl:text-base [&>svg]:size-5"
+              className="flex min-h-11 items-center gap-2 whitespace-nowrap rounded-xl bg-[var(--brand)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] 2xl:px-5 2xl:text-base [&>svg]:size-5"
             >
               <Plus className="h-3.5 w-3.5" /> New Order
             </button>
-            <ComingSoonButton icon={QrCode} label="QR Menu Orders" />
-            <ComingSoonButton icon={FileClock} label="Draft List" />
-            <div className="relative ml-auto min-w-[220px] max-w-sm flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-              <input
-                value={menuSearch}
-                onChange={(e) => setMenuSearch(e.target.value)}
-                placeholder="Search dishes…"
-                className="w-full rounded-xl border border-neutral-200 bg-white py-3 pl-10 pr-12 text-base outline-none focus:border-teal-500"
-              />
-              {menuSearch && (
-                <button
-                  onClick={() => setMenuSearch("")}
-                  className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-neutral-400 hover:text-neutral-600 [&>svg]:size-5"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
+          )}
+          <div className="flex items-center gap-1 rounded-2xl border border-neutral-200 bg-white p-1">
+            <TopViewTab
+              active={view === "order"}
+              icon={ShoppingBag}
+              label="Order"
+              onClick={() => setView("order")}
+            />
+            <TopViewTab
+              active={view === "tickets"}
+              icon={ClipboardList}
+              label="Open Tickets"
+              count={queueCounts.All}
+              onClick={() => setView("tickets")}
+            />
+            <TopViewTab
+              active={view === "tables"}
+              icon={LayoutGrid}
+              label="Tables"
+              onClick={() => setView("tables")}
+            />
+            <TopViewTab
+              active={view === "history"}
+              icon={History}
+              label="History"
+              onClick={() => setView("history")}
+            />
           </div>
-        )}
+          <ComingSoonButton icon={QrCode} label="QR Menu Orders" />
+          <ComingSoonButton icon={FileClock} label="Draft List" />
+          <div className="ml-auto flex items-center gap-2">
+            <FullscreenButton className="flex min-h-11 items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50 2xl:text-base [&>svg]:size-5" />
+            <button
+              onClick={() => window.location.reload()}
+              title="Refresh — reloads the page and clears any cached data"
+              className="flex min-h-11 items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50 2xl:text-base [&>svg]:size-5"
+            >
+              <RefreshCw className="h-4 w-4" /> <span className="hidden 2xl:inline">Refresh</span>
+            </button>
+          </div>
+        </div>
 
         {view === "order" && (
           <>
-            {/* One row of categories, swiped sideways — keeps the dish box as tall as possible
-                instead of categories wrapping into several rows above it. */}
-            {!menuSearch && (
-              <div className="-mx-1 mb-3 flex shrink-0 snap-x gap-3 overflow-x-auto px-1 pb-2 [scrollbar-width:thin]">
-                <CategoryBox active={menuCategory === "all"} label="All Menu" icon="all" onClick={() => setMenuCategory("all")} />
-                {categories.map((c) => (
-                  <CategoryBox key={c.id} active={menuCategory === c.id} label={c.name} icon={c.icon} onClick={() => setMenuCategory(c.id)} />
-                ))}
+            {/* One row: a fixed Search tile, then the categories swiped sideways. Tapping Search
+                turns the row into the search box (categories don't apply while searching), so
+                search doesn't need a row of its own above the dish box. */}
+            {searchOpen || menuSearch ? (
+              <div className="mb-3 flex min-h-[76px] shrink-0 items-center gap-3 2xl:min-h-[92px]">
+                <div className="relative flex-1">
+                  <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-neutral-400" />
+                  <input
+                    autoFocus
+                    value={menuSearch}
+                    onChange={(e) => setMenuSearch(e.target.value)}
+                    placeholder="Search dishes…"
+                    className="w-full rounded-2xl border border-[var(--brand)] bg-white py-4 pl-12 pr-4 text-lg outline-none"
+                  />
+                </div>
+                {menuSearch && (
+                  <span className="shrink-0 text-sm text-neutral-400">
+                    {menuDishes.length} result{menuDishes.length === 1 ? "" : "s"}
+                  </span>
+                )}
+                <button
+                  onClick={() => {
+                    setMenuSearch("");
+                    setSearchOpen(false);
+                  }}
+                  className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 [&>svg]:size-6"
+                  aria-label="Close search"
+                >
+                  <X className="h-5 w-5" />
+                </button>
               </div>
-            )}
-            {menuSearch && (
-              <div className="mb-3 shrink-0 text-xs text-neutral-400">
-                {menuDishes.length} result{menuDishes.length === 1 ? "" : "s"} for &ldquo;{menuSearch}&rdquo;
+            ) : (
+              <div className="mb-3 flex shrink-0 gap-2.5">
+                <button
+                  onClick={() => setSearchOpen(true)}
+                  className="flex min-h-[76px] w-[76px] shrink-0 flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-neutral-300 bg-white text-neutral-500 hover:bg-neutral-50 active:scale-[0.97] 2xl:min-h-[92px] 2xl:w-[92px] [&>svg]:size-6"
+                >
+                  <Search className="h-5 w-5" />
+                  <span className="text-xs font-semibold">Search</span>
+                </button>
+                <div className="-mr-1 flex min-w-0 flex-1 snap-x gap-2.5 overflow-x-auto pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [mask-image:linear-gradient(to_right,black_88%,transparent)]">
+                  <CategoryBox active={menuCategory === "all"} label="All Menu" icon="all" onClick={() => setMenuCategory("all")} />
+                  {categories.map((c) => (
+                    <CategoryBox key={c.id} active={menuCategory === c.id} label={c.name} icon={c.icon} onClick={() => setMenuCategory(c.id)} />
+                  ))}
+                </div>
               </div>
             )}
 
             {/* Dish grid — its own box; the only part of the order view that scrolls. */}
-            <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-neutral-200 bg-neutral-100/70 p-3 pb-24 lg:pb-3 2xl:p-4">
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(176px,1fr))] gap-3 2xl:grid-cols-[repeat(auto-fill,minmax(196px,1fr))] 2xl:gap-4">
+            <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-neutral-200 bg-neutral-100/70 p-2.5 pb-24 lg:pb-2.5 2xl:p-3">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(130px,1fr))] gap-2.5 2xl:grid-cols-[repeat(auto-fill,minmax(168px,1fr))] 2xl:gap-3">
               {menuDishes.map((dish) => {
                 const qty = qtyFor(dish.id);
                 const price = priceFor(dish);
@@ -1006,7 +1019,7 @@ export function OrderLineClient({
                         addToCart(dish);
                       }
                     }}
-                    className={`relative flex min-w-0 select-none flex-col rounded-2xl border bg-white p-3.5 shadow-sm transition 2xl:p-4 ${
+                    className={`relative flex min-w-0 select-none flex-col rounded-xl border bg-white p-2.5 shadow-sm transition 2xl:p-3 ${
                       dish.outOfStock ? "cursor-not-allowed" : "cursor-pointer active:scale-[0.98]"
                     } ${
                       dish.outOfStock
@@ -1022,7 +1035,7 @@ export function OrderLineClient({
                         handleToggleStock(dish);
                       }}
                       title={dish.outOfStock ? "Mark back in stock" : "Mark out of stock"}
-                      className={`absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white shadow-sm [&>svg]:size-4 ${
+                      className={`absolute right-1.5 top-1.5 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white shadow-sm [&>svg]:size-4 ${
                         dish.outOfStock ? "bg-rose-500 text-white hover:bg-rose-600" : "bg-white text-neutral-300 hover:text-rose-500"
                       }`}
                     >
@@ -1032,36 +1045,36 @@ export function OrderLineClient({
                       <img
                         src={dish.imageUrl}
                         alt={dish.name}
-                        className={`mb-3 h-16 w-16 rounded-xl object-cover ${dish.outOfStock ? "grayscale" : ""}`}
+                        className={`mb-1.5 h-12 w-12 rounded-lg object-cover 2xl:h-14 2xl:w-14 ${dish.outOfStock ? "grayscale" : ""}`}
                       />
                     ) : (
                       <div
-                        className={`mb-3 flex h-16 w-16 items-center justify-center rounded-full text-3xl ${dish.outOfStock ? "grayscale" : ""}`}
+                        className={`mb-1.5 flex h-12 w-12 items-center justify-center rounded-full text-2xl 2xl:h-14 2xl:w-14 2xl:text-3xl ${dish.outOfStock ? "grayscale" : ""}`}
                         style={{ backgroundColor: dish.color }}
                       >
                         {dish.emoji}
                       </div>
                     )}
-                    <div className="text-xs text-neutral-400">
+                    <div className="truncate text-[11px] text-neutral-400">
                       {categories.find((c) => c.id === dish.categoryId)?.name}
                     </div>
-                    <div className="mb-1 line-clamp-2 break-words text-[15px] font-semibold leading-snug text-neutral-900 2xl:text-base">{dish.name}</div>
+                    <div className="mb-1 line-clamp-2 break-words text-sm font-semibold leading-snug text-neutral-900 2xl:text-[15px]">{dish.name}</div>
                     <div className="mt-auto">
-                      <div className="mb-2 text-base font-semibold text-neutral-800">
+                      <div className="mb-1.5 text-[15px] font-semibold text-neutral-800">
                         {formatMoney(price, currencySymbol)}
                         {price !== dish.price && <span className="ml-1 text-[10px] font-normal text-teal-600">({cart.channel})</span>}
                       </div>
                       {dish.outOfStock ? (
                         <span className="inline-block rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">Sold Out</span>
                       ) : (
-                        <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center justify-between gap-1">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               decrementCartItem(dish.id);
                             }}
                             disabled={qty === 0}
-                            className="flex h-11 w-11 items-center justify-center rounded-full border border-neutral-200 text-neutral-500 hover:bg-neutral-50 active:scale-95 disabled:opacity-30 [&>svg]:size-5"
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-neutral-200 text-neutral-500 hover:bg-neutral-50 active:scale-95 disabled:opacity-30 2xl:h-11 2xl:w-11 [&>svg]:size-5"
                           >
                             <Minus className="h-3.5 w-3.5" />
                           </button>
@@ -1071,7 +1084,7 @@ export function OrderLineClient({
                               e.stopPropagation();
                               addToCart(dish);
                             }}
-                            className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--brand)] text-white hover:bg-[var(--brand-dark)] active:scale-95 [&>svg]:size-5"
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--brand)] text-white hover:bg-[var(--brand-dark)] active:scale-95 2xl:h-11 2xl:w-11 [&>svg]:size-5"
                           >
                             <Plus className="h-3.5 w-3.5" />
                           </button>
@@ -1511,9 +1524,9 @@ function CartPanel({
 
       {/* Fixed layout: setup box (collapses to a summary once done), the order tray scrolls on its
           own, and discounts/totals/payment/the main button stay pinned at the bottom. */}
-      <div className="mb-3 flex min-h-0 shrink flex-col">
+      <div className={`mb-3 flex flex-col ${tableEditorOpen ? "min-h-0 shrink" : "shrink-0"}`}>
       {tableEditorOpen ? (
-        <div className="max-h-80 min-h-0 space-y-3 overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 p-3 2xl:max-h-96">
+        <div className="max-h-80 min-h-0 space-y-2.5 overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 [scrollbar-width:none] 2xl:max-h-96">
           <div>
             <div className="mb-1 flex items-center justify-between">
               <label className="block text-xs font-medium text-neutral-500">Order Type</label>
@@ -1524,7 +1537,7 @@ function CartPanel({
               )}
             </div>
             {showAllChannels ? (
-              <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:thin]">
+              <div className="flex gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [mask-image:linear-gradient(to_right,black_88%,transparent)]">
                 {CHANNELS.map((c) => (
                   <button
                     key={c}
@@ -1532,7 +1545,7 @@ function CartPanel({
                       setCart((prev) => ({ ...prev, channel: c, channelChosen: true }));
                       setChannelPickerOpen(false);
                     }}
-                    className={`min-h-11 shrink-0 whitespace-nowrap rounded-lg border px-4 py-2 text-sm font-semibold ${
+                    className={`min-h-11 shrink-0 whitespace-nowrap rounded-lg border bg-white px-3 py-2 text-sm font-semibold ${
                       cart.channel === c && cart.channelChosen
                         ? "border-[var(--brand)] bg-[var(--brand)] text-white"
                         : "border-neutral-200 text-neutral-500"
@@ -1555,7 +1568,7 @@ function CartPanel({
                 <label className="mb-1 block text-xs font-medium text-neutral-500">Table</label>
                 <button
                   onClick={() => setTablePickerOpen(true)}
-                  className="flex min-h-12 w-full items-center justify-between gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-left text-base text-neutral-700 hover:border-teal-400 [&>svg]:size-5"
+                  className="flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-left text-base text-neutral-700 hover:border-teal-400 [&>svg]:size-5"
                 >
                   {cart.tableNumber ? (
                     <span className="font-medium">Table {String(cart.tableNumber).padStart(2, "0")}</span>
@@ -1571,17 +1584,17 @@ function CartPanel({
                   <button
                     type="button"
                     onClick={() => setCart((prev) => ({ ...prev, guests: Math.max(1, prev.guests - 1) }))}
-                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 active:scale-95"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 active:scale-95"
                   >
                     <Minus className="h-5 w-5" />
                   </button>
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-neutral-200 bg-white text-xl font-semibold text-neutral-900">
+                  <div className="flex h-11 w-9 items-center justify-center text-xl font-semibold text-neutral-900">
                     {cart.guests}
                   </div>
                   <button
                     type="button"
                     onClick={() => setCart((prev) => ({ ...prev, guests: prev.guests + 1 }))}
-                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--brand)] text-white hover:bg-[var(--brand-dark)] active:scale-95"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[var(--brand)] text-white hover:bg-[var(--brand-dark)] active:scale-95"
                   >
                     <Plus className="h-5 w-5" />
                   </button>
@@ -1655,7 +1668,7 @@ function CartPanel({
               setTableEditorOpen(false);
               setChannelPickerOpen(false);
             }}
-            className="min-h-12 w-full rounded-lg bg-[var(--brand)] py-3 text-base font-semibold text-white hover:bg-[var(--brand-dark)]"
+            className="min-h-11 w-full rounded-lg bg-[var(--brand)] py-2.5 text-base font-semibold text-white hover:bg-[var(--brand-dark)]"
           >
             Done
           </button>
@@ -1688,7 +1701,7 @@ function CartPanel({
         />
       )}
 
-      <div className="flex min-h-[7.5rem] flex-1 flex-col">
+      <div className={`flex flex-1 flex-col ${tableEditorOpen ? "min-h-16" : "min-h-16 [@media(min-height:760px)]:min-h-[7.5rem]"}`}>
         <div className="mb-2 flex shrink-0 items-center justify-between">
           <h3 className="text-base font-semibold text-neutral-900">Order Tray</h3>
           <div className="flex items-center gap-2">
@@ -1949,7 +1962,7 @@ function CartPanel({
           )}
 
           {!paymentLocked && cart.payments.length > 0 && (
-            <div className="mt-2 max-h-36 space-y-1.5 overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 p-2.5">
+            <div className="mt-2 max-h-28 space-y-1.5 overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 [@media(min-height:760px)]:max-h-36">
               {cart.payments.map((p) => (
                 <div key={p.method} className="space-y-1.5">
                   <div className="flex items-center gap-2">
@@ -2504,14 +2517,14 @@ function CategoryBox({ active, label, icon, onClick }: { active: boolean; label:
   return (
     <button
       onClick={onClick}
-      className={`flex min-h-[84px] w-[116px] shrink-0 snap-start flex-col items-center justify-center gap-1.5 rounded-2xl border p-2.5 text-center transition active:scale-[0.97] 2xl:min-h-[100px] 2xl:w-[136px] ${
+      className={`flex min-h-[76px] w-[108px] shrink-0 snap-start flex-col items-center justify-center gap-1 rounded-2xl border p-2 text-center transition active:scale-[0.97] 2xl:min-h-[92px] 2xl:w-[128px] ${
         active
           ? "border-[var(--brand)] bg-[var(--brand)] text-white shadow-sm"
           : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50"
       }`}
     >
-      <CategoryIconView icon={icon} name={icon === "all" ? undefined : label} className={`h-7 w-7 shrink-0 ${active ? "text-white" : "text-[var(--brand)]"}`} />
-      <span className="line-clamp-2 break-words text-[15px] font-bold leading-tight 2xl:text-base">{label}</span>
+      <CategoryIconView icon={icon} name={icon === "all" ? undefined : label} className={`h-6 w-6 shrink-0 ${active ? "text-white" : "text-[var(--brand)]"}`} />
+      <span className="line-clamp-2 break-words text-sm font-bold leading-tight 2xl:text-base">{label}</span>
     </button>
   );
 }

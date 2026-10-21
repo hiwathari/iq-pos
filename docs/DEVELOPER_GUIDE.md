@@ -714,6 +714,25 @@ conversation says so.
 > whichever numbered section above actually describes the thing you changed. A change without
 > both halves is not done.
 
+### 2026-10-21 — Till: denser dish grid, one header row, setup box fits
+From photos of the Hello Chai Till (11", collapsed sidebar):
+- **Dish tiles are compact** — grid min 130px (168px at `2xl`), 48px emoji, 40px −/+ (44px at
+  `2xl`), smaller text/padding — 5 columns on a 1280px screen instead of 3 large, mostly-empty ones.
+- **One header row**: New Order + the view tabs on the left, fullscreen/refresh pushed right (the
+  "SOON" placeholders sit after the tabs at `2xl`). The separate New Order/search row is gone.
+- **Search lives in the category row**: a fixed "Search" tile before the swiped categories; tapping
+  it swaps the row for a large search box with a result count and close button (`searchOpen`
+  state). Categories are smaller (108×76px).
+- **Swipe rows hide their scrollbar** (`[scrollbar-width:none]` + webkit) and fade at the right edge
+  (`mask-image`) to hint at more — the visible bar read as a grey line under Order Type.
+- **Cart setup box fits without inner scrollbars**: tighter padding, 44px Order Type chips, 44px
+  table/guest controls with the guest count unboxed, 44px Done; while it's open the tray's minimum
+  drops to 4rem. The one-line setup summary is `shrink-0` (at 720px tall it was being squashed under
+  the Order Tray heading). On screens under 760px tall the tray minimum and the payment-lines box
+  shrink further so the main button always fits.
+- Verified with the real `OrderLineClient` and sample data (temporary page, not committed) at
+  1280×800, 1280×720, 1194×834, 1920×1080, 2560×1440.
+
 ### 2026-10-20 (latest) — Till: fixed screen layout, sliding rows, name-matched category icons
 - **Nothing on the Till scrolls as a whole page any more** (`order-line-client.tsx`). The main
   column is a flex column with `min-h-0`: the view tabs, New Order + search row and category row
