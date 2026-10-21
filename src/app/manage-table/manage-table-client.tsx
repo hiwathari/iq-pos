@@ -24,8 +24,11 @@ import {
   X,
   Globe,
   QrCode,
+  Download,
+  Printer,
+  AlertTriangle,
 } from "lucide-react";
-import { tableOrderQrDataUrl } from "@/lib/table-qr";
+import { downloadDataUrl, printTableQrCards, tableQrCardDataUrl } from "@/lib/table-qr";
 
 const AREAS: TableArea[] = ["Ground Floor", "1st Floor", "Basement"];
 
@@ -46,16 +49,20 @@ const RES_STATUS_META: Record<string, { label: string; className: string }> = {
 export function ManageTableClient({
   tables,
   reservations,
-  restaurantSlug,
+  restaurantName,
+  tableQrPaths,
   qrTableOrderingEnabled,
 }: {
   tables: RestaurantTable[];
   reservations: Reservation[];
-  restaurantSlug: string;
+  restaurantName: string;
+  // tableId → signed ordering path (/order/<slug>/table/<token>), signed server-side.
+  tableQrPaths: Record<string, string>;
   qrTableOrderingEnabled: boolean;
 }) {
   const router = useRouter();
   const [qrForTable, setQrForTable] = useState<RestaurantTable | null>(null);
+  const [allQrOpen, setAllQrOpen] = useState(false);
   const [, startTransition] = useTransition();
 
   const [area, setArea] = useState<TableArea>("Ground Floor");
@@ -220,6 +227,12 @@ export function ManageTableClient({
               ))}
             </div>
             <button
+              onClick={() => setAllQrOpen(true)}
+              className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
+            >
+              <QrCode className="h-4 w-4" /> Table QR Codes
+            </button>
+            <button
               onClick={() => setAddTableModalOpen(true)}
               className="flex items-center gap-2 rounded-xl bg-[var(--brand)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)]"
             >
@@ -255,6 +268,14 @@ export function ManageTableClient({
                   <span className={`flex items-center gap-1 text-xs ${meta.text}`}>
                     <Users className="h-3.5 w-3.5" /> {table.status === "available" ? 0 : table.seated}
                   </span>
+                </button>
+                <button
+                  onClick={() => setQrForTable(table)}
+                  title={`Table ${table.number} QR code`}
+                  aria-label={`Table ${table.number} QR code`}
+                  className="absolute right-1.5 top-7 flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-500 shadow-sm hover:text-[var(--brand-dark)]"
+                >
+                  <QrCode className="h-4 w-4" />
                 </button>
                 <div className="mt-1 flex gap-1.5">
                   {Array.from({ length: Math.floor(table.capacity / 2) }).map((_, i) => (
@@ -292,18 +313,16 @@ export function ManageTableClient({
                       >
                         Start Order →
                       </button>
-                      {qrTableOrderingEnabled && (
-                        <button
-                          onClick={() => {
-                            setQrForTable(table);
-                            setOpenTableId(null);
-                          }}
-                          title="Table QR code for online ordering"
-                          className="flex items-center justify-center rounded-lg border border-neutral-200 px-2.5 text-neutral-500 hover:bg-neutral-50"
-                        >
-                          <QrCode className="h-3.5 w-3.5" />
-                        </button>
-                      )}
+                      <button
+                        onClick={() => {
+                          setQrForTable(table);
+                          setOpenTableId(null);
+                        }}
+                        title="Table QR code for ordering"
+                        className="flex items-center justify-center rounded-lg border border-neutral-200 px-2.5 text-neutral-500 hover:bg-neutral-50"
+                      >
+                        <QrCode className="h-3.5 w-3.5" />
+                      </button>
                       <button
                         onClick={() => handleDeleteTable(table.id)}
                         title="Delete table"
@@ -324,39 +343,214 @@ export function ManageTableClient({
         <AddReservationModal onClose={() => setReservationModalOpen(false)} tables={tables} onSave={handleAddReservation} />
       )}
       {addTableModalOpen && <AddTableModal onClose={() => setAddTableModalOpen(false)} defaultArea={area} />}
-      {qrForTable && <TableQrModal table={qrForTable} restaurantSlug={restaurantSlug} onClose={() => setQrForTable(null)} />}
+      {qrForTable && (
+        <TableQrModal
+          table={qrForTable}
+          path={tableQrPaths[qrForTable.id]}
+          restaurantName={restaurantName}
+          enabled={qrTableOrderingEnabled}
+          onClose={() => setQrForTable(null)}
+        />
+      )}
+      {allQrOpen && (
+        <AllTablesQrModal
+          tables={tables}
+          paths={tableQrPaths}
+          restaurantName={restaurantName}
+          enabled={qrTableOrderingEnabled}
+          onClose={() => setAllQrOpen(false)}
+        />
+      )}
     </div>
   );
 }
 
-function TableQrModal({ table, restaurantSlug, onClose }: { table: RestaurantTable; restaurantSlug: string; onClose: () => void }) {
-  const [dataUrl, setDataUrl] = useState<string | null>(null);
-  const url = typeof window !== "undefined" ? `${window.location.origin}/order/${restaurantSlug}?table=${table.number}` : "";
+// The brand colour comes from the --brand CSS variable AppShell sets, so the printed cards match
+// the restaurant's own colour.
+function useBrandColor(ref: React.RefObject<HTMLElement | null>) {
+  const [color, setColor] = useState<string | null>(null);
+  useEffect(() => {
+    if (ref.current) setColor(getComputedStyle(ref.current).getPropertyValue("--brand").trim() || "#0d9488");
+  }, [ref]);
+  return color;
+}
+
+function QrDisabledNotice() {
+  return (
+    <div className="mb-4 flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2.5 text-left text-xs text-amber-800">
+      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+      Table QR ordering is switched off for this restaurant, so scanning shows &ldquo;unavailable&rdquo; until it&apos;s turned on
+      (Super Admin → Online Ordering). You can still print the codes now — they won&apos;t change.
+    </div>
+  );
+}
+
+function TableQrModal({
+  table,
+  path,
+  restaurantName,
+  enabled,
+  onClose,
+}: {
+  table: RestaurantTable;
+  path: string | undefined;
+  restaurantName: string;
+  enabled: boolean;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const brandColor = useBrandColor(ref);
+  const [card, setCard] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const url = typeof window !== "undefined" && path ? `${window.location.origin}${path}` : "";
 
   useEffect(() => {
     let cancelled = false;
-    if (url) tableOrderQrDataUrl(url).then((v) => !cancelled && setDataUrl(v));
+    if (url && brandColor) {
+      tableQrCardDataUrl({ url, restaurantName, tableNumber: table.number, brandColor }).then((v) => !cancelled && setCard(v));
+    }
     return () => {
       cancelled = true;
     };
-  }, [url]);
+  }, [url, brandColor, restaurantName, table.number]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
-      <div className="w-full max-w-xs rounded-2xl bg-white p-6 text-center shadow-xl" onClick={(e) => e.stopPropagation()}>
+      <div ref={ref} className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-neutral-900">Table {table.number} QR</h2>
           <button onClick={onClose} className="rounded-full p-1 text-neutral-400 hover:bg-neutral-100">
             <X className="h-5 w-5" />
           </button>
         </div>
-        {dataUrl ? (
-          <img src={dataUrl} alt={`Table ${table.number} order QR`} className="mx-auto mb-4 h-48 w-48" />
+        {!enabled && <QrDisabledNotice />}
+        {card ? (
+          <img src={card} alt={`Table ${table.number} order QR`} className="mx-auto mb-4 w-56 rounded-lg border border-neutral-100" />
         ) : (
-          <div className="mx-auto mb-4 flex h-48 w-48 items-center justify-center text-sm text-neutral-400">Generating…</div>
+          <div className="mx-auto mb-4 flex h-72 w-56 items-center justify-center text-sm text-neutral-400">Generating…</div>
         )}
-        <p className="break-all text-xs text-neutral-400">{url}</p>
-        <p className="mt-2 text-xs text-neutral-400">Print this and stick it on the table — scanning it opens the menu with this table pre-selected.</p>
+        <div className="mb-3 grid grid-cols-2 gap-2">
+          <button
+            disabled={!card}
+            onClick={() => card && downloadDataUrl(card, `table-${table.number}-qr.png`)}
+            className="flex items-center justify-center gap-1.5 rounded-xl bg-[var(--brand)] py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] disabled:opacity-50"
+          >
+            <Download className="h-4 w-4" /> Download
+          </button>
+          <button
+            disabled={!card}
+            onClick={() => card && printTableQrCards([{ tableNumber: table.number, dataUrl: card }], `Table ${table.number} QR`)}
+            className="flex items-center justify-center gap-1.5 rounded-xl border border-neutral-200 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+          >
+            <Printer className="h-4 w-4" /> Print
+          </button>
+        </div>
+        <button
+          onClick={async () => {
+            await navigator.clipboard.writeText(url).catch(() => {});
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          }}
+          className="mb-3 w-full rounded-xl border border-neutral-200 py-2 text-xs font-medium text-neutral-500 hover:bg-neutral-50"
+        >
+          {copied ? "Link copied!" : "Copy link"}
+        </button>
+        <p className="text-xs text-neutral-400">
+          Stick this on Table {table.number}. Scanning opens the menu with this table already set — the table is locked into the
+          code, so it can&apos;t be changed to another table. Customers just add their name and email or phone to order.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function AllTablesQrModal({
+  tables,
+  paths,
+  restaurantName,
+  enabled,
+  onClose,
+}: {
+  tables: RestaurantTable[];
+  paths: Record<string, string>;
+  restaurantName: string;
+  enabled: boolean;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const brandColor = useBrandColor(ref);
+  const sorted = useMemo(() => [...tables].sort((a, b) => a.number - b.number), [tables]);
+  const [cards, setCards] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!brandColor) return;
+    let cancelled = false;
+    (async () => {
+      for (const t of sorted) {
+        const path = paths[t.id];
+        if (!path) continue;
+        const dataUrl = await tableQrCardDataUrl({ url: `${window.location.origin}${path}`, restaurantName, tableNumber: t.number, brandColor });
+        if (cancelled) return;
+        if (dataUrl) setCards((prev) => ({ ...prev, [t.id]: dataUrl }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [brandColor, sorted, paths, restaurantName]);
+
+  const ready = sorted.filter((t) => cards[t.id]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
+      <div
+        ref={ref}
+        className="flex max-h-[90vh] w-full max-w-4xl flex-col rounded-2xl bg-white p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-neutral-900">Table QR Codes</h2>
+            <p className="text-xs text-neutral-400">One code per table, with the table number locked in. Download one, or print them all.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              disabled={ready.length === 0}
+              onClick={() =>
+                printTableQrCards(
+                  ready.map((t) => ({ tableNumber: t.number, dataUrl: cards[t.id] })),
+                  `${restaurantName} table QR codes`
+                )
+              }
+              className="flex items-center gap-1.5 rounded-xl bg-[var(--brand)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] disabled:opacity-50"
+            >
+              <Printer className="h-4 w-4" /> Print / Save all as PDF
+            </button>
+            <button onClick={onClose} className="rounded-full p-1 text-neutral-400 hover:bg-neutral-100">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+        {!enabled && <QrDisabledNotice />}
+        <div className="grid min-h-0 flex-1 grid-cols-2 gap-4 overflow-y-auto sm:grid-cols-3 md:grid-cols-4">
+          {sorted.map((t) => (
+            <div key={t.id} className="flex flex-col items-center rounded-xl border border-neutral-200 p-3">
+              {cards[t.id] ? (
+                <img src={cards[t.id]} alt={`Table ${t.number} QR`} className="mb-2 w-full rounded-md" />
+              ) : (
+                <div className="mb-2 flex aspect-[4/5] w-full items-center justify-center text-xs text-neutral-400">Generating…</div>
+              )}
+              <button
+                disabled={!cards[t.id]}
+                onClick={() => downloadDataUrl(cards[t.id], `table-${t.number}-qr.png`)}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-neutral-200 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+              >
+                <Download className="h-3.5 w-3.5" /> Table {t.number}
+              </button>
+            </div>
+          ))}
+          {sorted.length === 0 && <div className="col-span-full py-10 text-center text-sm text-neutral-400">No tables yet — add one first.</div>}
+        </div>
       </div>
     </div>
   );

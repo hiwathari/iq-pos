@@ -11,7 +11,8 @@ import { revalidatePath } from "next/cache";
 import { and, eq, gte, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
 import { dishes, loyaltyMembers, orders, tables } from "@/db/schema";
-import { getRestaurantBySlug } from "@/lib/data/restaurants";
+import { getRestaurant, getRestaurantBySlug } from "@/lib/data/restaurants";
+import { resolveTableQrToken } from "@/lib/table-qr-token";
 import { findLoyaltyMemberByContact, findLoyaltyMemberById } from "@/lib/data/loyalty";
 import { decrementInventoryForOrder, nextOrderNumber } from "@/lib/order-helpers";
 import { generateLoyaltyCode } from "@/lib/loyalty-code";
@@ -77,26 +78,7 @@ export async function placePublicOrderAction(input: PlacePublicOrderInput): Prom
   if (!customerName) return { error: "Enter your name." };
   if (!customerPhone) return { error: "Enter your phone number." };
 
-  // Re-derive every item server-side from the live menu — dishId and qty are the only client
-  // input trusted at all, and qty is clamped to a sane range.
-  const dishIds = [...new Set(input.items.map((i) => String(i.dishId)))];
-  const liveDishes = await db.select().from(dishes).where(and(eq(dishes.restaurantId, restaurant.id), inArray(dishes.id, dishIds)));
-  const items: OrderItem[] = [];
-  for (const raw of input.items) {
-    const dish = liveDishes.find((d) => d.id === raw.dishId);
-    if (!dish || dish.outOfStock) continue;
-    const qty = Math.max(1, Math.min(50, Math.floor(Number(raw.qty) || 0)));
-    if (qty <= 0) continue;
-    const price = dish.channelPrices?.[input.channel] ?? dish.price;
-    items.push({
-      dishId: dish.id,
-      name: dish.name,
-      price,
-      qty,
-      note: raw.note?.trim().slice(0, 200) || undefined,
-      lineId: crypto.randomUUID(),
-    });
-  }
+  const items = await buildItemsFromLiveMenu(restaurant.id, input.items, input.channel);
   if (items.length === 0) return { error: "None of the items in your cart are available anymore." };
 
   let tableId: string | null = null;
@@ -118,6 +100,63 @@ export async function placePublicOrderAction(input: PlacePublicOrderInput): Prom
     loyaltyMemberId = member?.id ?? null;
   }
 
+  const orderNumber = await insertPublicOrder({
+    restaurantId: restaurant.id,
+    placedVia: input.placedVia,
+    createdByName: input.placedVia === "kiosk" ? "Kiosk" : "Online Order",
+    channel: input.channel,
+    tableId,
+    tableNumber,
+    guests,
+    items,
+    customerName,
+    customerPhone,
+    loyaltyMemberId,
+  });
+  return { orderNumber };
+}
+
+// Re-derive every item server-side from the live menu — dishId and qty are the only client
+// input trusted at all, and qty is clamped to a sane range.
+async function buildItemsFromLiveMenu(restaurantId: string, rawItems: PublicOrderItemInput[], channel: "Dine in" | "Take Away") {
+  const dishIds = [...new Set(rawItems.map((i) => String(i.dishId)))];
+  const liveDishes = await db.select().from(dishes).where(and(eq(dishes.restaurantId, restaurantId), inArray(dishes.id, dishIds)));
+  const items: OrderItem[] = [];
+  for (const raw of rawItems) {
+    const dish = liveDishes.find((d) => d.id === raw.dishId);
+    if (!dish || dish.outOfStock) continue;
+    const qty = Math.max(1, Math.min(50, Math.floor(Number(raw.qty) || 0)));
+    if (qty <= 0) continue;
+    const price = dish.channelPrices?.[channel] ?? dish.price;
+    items.push({
+      dishId: dish.id,
+      name: dish.name,
+      price,
+      qty,
+      note: raw.note?.trim().slice(0, 200) || undefined,
+      lineId: crypto.randomUUID(),
+    });
+  }
+  return items;
+}
+
+interface PublicOrderRow {
+  restaurantId: string;
+  placedVia: "online" | "kiosk";
+  createdByName: string;
+  channel: "Dine in" | "Take Away";
+  tableId: string | null;
+  tableNumber: number | null;
+  guests: number;
+  items: OrderItem[];
+  customerName: string;
+  customerPhone: string;
+  loyaltyMemberId: string | null;
+}
+
+// Shared by every public ordering surface: dedupes a double-tap, inserts the order straight into
+// the kitchen queue, seats the table, and refreshes the staff screens. Returns the order number.
+async function insertPublicOrder(row: PublicOrderRow) {
   // Guard against a customer double/triple-tapping "Place Order" on a slow connection and getting
   // charged or fed twice — if an identical order (same phone, channel/table, items) from this
   // same ordering surface was just placed in the last few seconds, hand back that one instead of
@@ -126,48 +165,116 @@ export async function placePublicOrderAction(input: PlacePublicOrderInput): Prom
   const recentOrders = await db
     .select({ orderNumber: orders.orderNumber, tableId: orders.tableId, channel: orders.channel, items: orders.items, customerPhone: orders.customerPhone })
     .from(orders)
-    .where(and(eq(orders.restaurantId, restaurant.id), eq(orders.placedVia, input.placedVia), gte(orders.createdAt, dedupeCutoff)));
+    .where(and(eq(orders.restaurantId, row.restaurantId), eq(orders.placedVia, row.placedVia), gte(orders.createdAt, dedupeCutoff)));
   const duplicate = recentOrders.find(
     (o) =>
-      o.channel === input.channel &&
-      o.customerPhone === customerPhone &&
-      o.tableId === tableId &&
-      itemsMatchIgnoringLineId(o.items ?? [], items)
+      o.channel === row.channel &&
+      o.customerPhone === row.customerPhone &&
+      o.tableId === row.tableId &&
+      itemsMatchIgnoringLineId(o.items ?? [], row.items)
   );
-  if (duplicate) return { orderNumber: duplicate.orderNumber };
+  if (duplicate) return duplicate.orderNumber;
 
-  const orderNumber = await nextOrderNumber(restaurant.id);
+  const orderNumber = await nextOrderNumber(row.restaurantId);
   await db.insert(orders).values({
     id: crypto.randomUUID(),
-    restaurantId: restaurant.id,
+    restaurantId: row.restaurantId,
     orderNumber,
-    tableId,
-    tableNumber,
-    guests,
-    channel: input.channel,
+    tableId: row.tableId,
+    tableNumber: row.tableNumber,
+    guests: row.guests,
+    channel: row.channel,
     status: "In Kitchen",
-    items,
+    items: row.items,
     paymentMethod: null,
-    customerName,
-    customerPhone,
-    loyaltyMemberId,
-    placedVia: input.placedVia,
+    customerName: row.customerName,
+    customerPhone: row.customerPhone,
+    loyaltyMemberId: row.loyaltyMemberId,
+    placedVia: row.placedVia,
     createdByUserId: null,
-    createdByName: input.placedVia === "kiosk" ? "Kiosk" : "Online Order",
+    createdByName: row.createdByName,
     createdLabel: "Just now",
   });
 
-  if (tableId) {
-    await db.update(tables).set({ status: "on-dine", seated: guests, seatedAt: Date.now() }).where(eq(tables.id, tableId));
+  if (row.tableId) {
+    await db.update(tables).set({ status: "on-dine", seated: row.guests, seatedAt: Date.now() }).where(eq(tables.id, row.tableId));
   }
 
-  await decrementInventoryForOrder(restaurant.id, items);
+  await decrementInventoryForOrder(row.restaurantId, row.items);
 
   revalidatePath("/order-line");
   revalidatePath("/manage-table");
   revalidatePath("/dashboard");
   revalidatePath("/kitchen");
 
+  return orderNumber;
+}
+
+export interface PlaceTableQrOrderInput {
+  token: string;
+  items: PublicOrderItemInput[];
+  guests: number;
+  customerName: string;
+  // Email or phone — whichever the customer typed. No verification: they're sat at the table.
+  contact: string;
+}
+
+// Orders placed by scanning a table's QR code (see lib/table-qr-token.ts). No sign-in or email
+// code — the customer is physically at the table — so the signed token is what's trusted: the
+// table and restaurant both come from it, never from client input. To blunt a photographed QR
+// being used to spam orders from off-premises, each table accepts a limited number of QR orders
+// in a rolling window; staff still see every order on the Till/Kitchen Display as usual.
+const QR_ORDER_LIMIT = 6;
+const QR_ORDER_WINDOW_MS = 15 * 60_000;
+
+export async function placeTableQrOrderAction(input: PlaceTableQrOrderInput): Promise<PlacePublicOrderResult> {
+  const table = await resolveTableQrToken(String(input.token));
+  if (!table) return { error: "This table's QR code isn't valid. Please ask a member of staff." };
+  const restaurant = await getRestaurant(table.restaurantId);
+  if (!restaurant || !restaurant.onlineOrderingEnabled || !restaurant.qrTableOrderingEnabled) {
+    return { error: "Table ordering isn't available right now. Please order at the counter." };
+  }
+
+  if (!Array.isArray(input.items) || input.items.length === 0) return { error: "Your cart is empty." };
+  const customerName = String(input.customerName ?? "").trim().slice(0, 100);
+  const rawContact = String(input.contact ?? "").trim();
+  if (!customerName) return { error: "Enter your name." };
+  if (!rawContact) return { error: "Enter your email or phone number." };
+  const isEmail = rawContact.includes("@");
+  const contact = isEmail ? rawContact.toLowerCase().slice(0, 120) : rawContact.slice(0, 30);
+  if (isEmail ? !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact) : contact.replace(/\D/g, "").length < 6) {
+    return { error: isEmail ? "That email doesn't look right." : "That phone number doesn't look right." };
+  }
+
+  const items = await buildItemsFromLiveMenu(restaurant.id, input.items, "Dine in");
+  if (items.length === 0) return { error: "None of the items in your cart are available anymore." };
+
+  const recentForTable = await db
+    .select({ id: orders.id })
+    .from(orders)
+    .where(and(eq(orders.tableId, table.id), eq(orders.placedVia, "online"), gte(orders.createdAt, Date.now() - QR_ORDER_WINDOW_MS)));
+  if (recentForTable.length >= QR_ORDER_LIMIT) {
+    return { error: "This table has placed several orders just now — please ask a member of staff to add more." };
+  }
+
+  // Link an existing loyalty member with this contact (earning only — nothing is redeemed here),
+  // but never create one from an unverified contact.
+  const member = await findLoyaltyMemberByContact(restaurant.id, contact);
+
+  const orderNumber = await insertPublicOrder({
+    restaurantId: restaurant.id,
+    placedVia: "online",
+    createdByName: "Table QR",
+    channel: "Dine in",
+    tableId: table.id,
+    tableNumber: table.number,
+    guests: Math.max(1, Math.min(30, Math.floor(Number(input.guests) || 1))),
+    items,
+    customerName,
+    // orders has no email column — the contact field holds whichever the customer gave.
+    customerPhone: contact,
+    loyaltyMemberId: member?.id ?? null,
+  });
   return { orderNumber };
 }
 

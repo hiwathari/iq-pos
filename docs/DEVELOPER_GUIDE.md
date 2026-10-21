@@ -306,6 +306,25 @@ way go through `placePublicOrderAction` (`lib/actions/public-order.ts`) — a se
 the staff-facing `placeOrderAction`, with its own server-side trust checks, and are tagged
 `placedVia: "online" | "kiosk"` so Kitchen/Till can flag them distinctly.
 
+**Table QR codes (no sign-in).** Each table's QR encodes `/order/<slug>/table/<tableId>.<sig>`,
+where `sig` is an HMAC-SHA256 over `table-qr:v1:<restaurantId>:<tableId>` keyed by `JWT_SECRET`
+(`lib/table-qr-token.ts`, server-only; 22 base64url chars). The table is fixed by the code:
+editing the id, the restaurant slug or the signature all resolve to "This QR code isn't valid".
+The page (`app/order/[slug]/table/[token]`) opens the menu straight away — no email code — and
+checkout asks only for name + email *or* phone (`placeTableQrOrderAction`). Server-side it trusts
+only the token for the table/restaurant, re-prices from the live menu (shared
+`buildItemsFromLiveMenu` / `insertPublicOrder` with `placePublicOrderAction`), links an
+*existing* loyalty member with that contact (never creates one), and caps each table at 6 QR
+orders per 15 minutes against a photographed code being abused off-premises. The contact is
+stored in `orders.customerPhone` (there's no email column). Orders show as `createdByName:
+"Table QR"`. Staff get the codes in **Manage Tables**: a QR button on every table tile (card
+preview, Download PNG, Print, Copy link) and **Table QR Codes** for all tables (per-table
+download + "Print / Save all as PDF"). Cards are drawn client-side (`tableQrCardDataUrl` in
+`lib/table-qr.ts`) with restaurant name, "TABLE n" in the brand colour and the QR; the signed
+paths are computed server-side in `manage-table/page.tsx`. Codes don't change unless
+`JWT_SECRET` does (rotating it invalidates every printed code). The older `/order/<slug>?table=n`
+link still works but goes through the email sign-in flow.
+
 ### 7.6 Loyalty
 
 A loyalty card (`loyalty_members`) is keyed by phone or email, with a 7-character `code` (first 2
@@ -713,6 +732,22 @@ conversation says so.
 > **Instruction for every future change:** add a dated entry here (newest on top), *and* update
 > whichever numbered section above actually describes the thing you changed. A change without
 > both halves is not done.
+
+### 2026-10-21 (latest) — Signed table QR codes: order with no sign-in, download/print per table
+- New `lib/table-qr-token.ts` (HMAC-signed `<tableId>.<sig>` tokens), page
+  `app/order/[slug]/table/[token]`, and `placeTableQrOrderAction` in `lib/actions/public-order.ts`
+  — see §7.5 for the full design. `placePublicOrderAction`'s item re-pricing and
+  dedupe/insert/seat steps were extracted into `buildItemsFromLiveMenu` / `insertPublicOrder` so
+  both actions share them unchanged.
+- `OnlineOrderClient` gains a `tableQr` mode: table badge in the header, table fixed in checkout
+  (no picker), "Email or Phone Number" field, no loyalty-code badge (`loyaltyMember` now optional).
+- Manage Tables: QR button on every table tile and in the table popover (previously only shown
+  when the flag was on, and it encoded the forgeable `?table=n` link); new "Table QR Codes" sheet.
+  If the restaurant's table-QR flag is off, the modals warn that scanning shows "unavailable".
+- Verified end to end against a local SQLite copy of the schema (not production): scan → order →
+  row in `orders` (table 5, Dine in, In Kitchen, prices from the menu, contact saved) and table
+  seated; swapped table id / other restaurant slug / edited signature all rejected; 7th order in
+  15 min refused; the downloaded PNG decodes back to the signed link.
 
 ### 2026-10-21 (later) — Till: today's takings in the header; table & guests collapsed by default
 - **"Today" Cash / Card / total beside "Till · <restaurant>"** — new `components/today-sales.tsx`,

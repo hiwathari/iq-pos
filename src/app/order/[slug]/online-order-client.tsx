@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import type { Category, Dish, OrderItem, RestaurantTable } from "@/lib/types";
 import { formatMoney } from "@/lib/types";
-import { placePublicOrderAction } from "@/lib/actions/public-order";
+import { placePublicOrderAction, placeTableQrOrderAction } from "@/lib/actions/public-order";
 import { ShoppingBag, Plus, Minus, X, CreditCard, CheckCircle2, Users } from "lucide-react";
 
 export function OnlineOrderClient({
@@ -17,6 +17,7 @@ export function OnlineOrderClient({
   tables,
   initialTableNumber,
   loyaltyMember,
+  tableQr,
 }: {
   restaurantSlug: string;
   restaurantName: string;
@@ -27,7 +28,11 @@ export function OnlineOrderClient({
   dishes: Dish[];
   tables: RestaurantTable[];
   initialTableNumber: number | null;
-  loyaltyMember: { code: string; name: string | null };
+  // Absent for a table-QR order, which has no sign-in at all.
+  loyaltyMember?: { code: string; name: string | null };
+  // Set when the customer scanned a table's QR code: the table is fixed by the signed token, and
+  // checkout asks for a name + email or phone instead of relying on a signed-in account.
+  tableQr?: { token: string; tableNumber: number };
 }) {
   const channel: "Dine in" | "Take Away" = qrTableOrderingEnabled ? "Dine in" : "Take Away";
 
@@ -37,7 +42,7 @@ export function OnlineOrderClient({
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [tableNumber, setTableNumber] = useState<number | null>(initialTableNumber);
   const [guests, setGuests] = useState(2);
-  const [customerName, setCustomerName] = useState(loyaltyMember.name ?? "");
+  const [customerName, setCustomerName] = useState(loyaltyMember?.name ?? "");
   const [customerPhone, setCustomerPhone] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [orderNumber, setOrderNumber] = useState<string | null>(null);
@@ -78,7 +83,21 @@ export function OnlineOrderClient({
       return;
     }
     if (!customerPhone.trim()) {
-      setError("Enter your phone number.");
+      setError(tableQr ? "Enter your email or phone number." : "Enter your phone number.");
+      return;
+    }
+    if (tableQr) {
+      startTransition(async () => {
+        const result = await placeTableQrOrderAction({ token: tableQr.token, items, guests, customerName, contact: customerPhone });
+        if (result.error) {
+          setError(result.error);
+          return;
+        }
+        setOrderNumber(result.orderNumber ?? null);
+        setCheckoutOpen(false);
+        setCartOpen(false);
+        setItems([]);
+      });
       return;
     }
     const table = channel === "Dine in" ? tables.find((t) => t.number === tableNumber) : undefined;
@@ -110,7 +129,10 @@ export function OnlineOrderClient({
         <div className="w-full max-w-sm rounded-2xl border border-neutral-200 bg-white p-7 text-center shadow-sm">
           <CheckCircle2 className="mx-auto mb-3 h-12 w-12 text-emerald-500" />
           <h1 className="mb-1 text-lg font-semibold text-neutral-900">Order sent to the kitchen!</h1>
-          <p className="mb-4 text-sm text-neutral-500">Order #{orderNumber} · Pay at the counter when ready.</p>
+          <p className="mb-4 text-sm text-neutral-500">
+            Order #{orderNumber}
+            {tableQr ? ` · Table ${tableQr.tableNumber}` : ""} · Pay at the counter when ready.
+          </p>
           <button
             onClick={() => setOrderNumber(null)}
             className="w-full rounded-xl bg-[var(--brand)] py-3 text-sm font-semibold text-white hover:bg-[var(--brand-dark)]"
@@ -139,9 +161,15 @@ export function OnlineOrderClient({
               {channel === "Dine in" && tableNumber && <div className="text-xs text-neutral-400">Table {tableNumber}</div>}
             </div>
           </div>
-          <div className="rounded-full bg-[var(--brand-light)] px-2.5 py-1 text-xs font-mono font-semibold text-[var(--brand-dark)]">
-            {loyaltyMember.code}
-          </div>
+          {tableQr ? (
+            <div className="rounded-full bg-[var(--brand)] px-3 py-1 text-sm font-bold text-white">Table {tableQr.tableNumber}</div>
+          ) : (
+            loyaltyMember && (
+              <div className="rounded-full bg-[var(--brand-light)] px-2.5 py-1 text-xs font-mono font-semibold text-[var(--brand-dark)]">
+                {loyaltyMember.code}
+              </div>
+            )
+          )}
         </div>
       </div>
 
@@ -272,6 +300,13 @@ export function OnlineOrderClient({
 
             {channel === "Dine in" && (
               <>
+                {tableQr ? (
+                  <div className="mb-3 flex items-center justify-between rounded-xl bg-[var(--brand-light)] px-3.5 py-2.5 text-sm font-semibold text-[var(--brand-dark)]">
+                    <span>Table {tableQr.tableNumber}</span>
+                    <span className="text-xs font-medium">from your table&apos;s QR code</span>
+                  </div>
+                ) : (
+                  <>
                 <label className="mb-1 block text-xs font-medium text-neutral-500">Table</label>
                 <select
                   value={tableNumber ?? ""}
@@ -285,6 +320,8 @@ export function OnlineOrderClient({
                     </option>
                   ))}
                 </select>
+                  </>
+                )}
 
                 <label className="mb-1 flex items-center gap-1.5 text-xs font-medium text-neutral-500">
                   <Users className="h-3.5 w-3.5" /> Guests
@@ -314,11 +351,11 @@ export function OnlineOrderClient({
               placeholder="e.g. Sarah"
               className="mb-3 w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-[var(--brand)]"
             />
-            <label className="mb-1 block text-xs font-medium text-neutral-500">Phone Number</label>
+            <label className="mb-1 block text-xs font-medium text-neutral-500">{tableQr ? "Email or Phone Number" : "Phone Number"}</label>
             <input
               value={customerPhone}
               onChange={(e) => setCustomerPhone(e.target.value)}
-              placeholder="+44 7000 000000"
+              placeholder={tableQr ? "you@example.com or +44 7000 000000" : "+44 7000 000000"}
               className="mb-4 w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-[var(--brand)]"
             />
 
