@@ -744,6 +744,17 @@ conversation says so.
 > whichever numbered section above actually describes the thing you changed. A change without
 > both halves is not done.
 
+### 2026-10-21 (late night) — Free a table, or all tables at once
+- New `freeTablesAction(tableIds?)` in `lib/actions/tables.ts`: sets the given tables (or, with no
+  ids, every table of the restaurant) to available / 0 seated / no seatedAt. Orders are never
+  touched — an open order on a freed table stays in Open Tickets until paid or voided.
+- Till → Tables: a "Free table" pill on every occupied or reserved tile (previously the ✕ only
+  appeared on an occupied table with no order), and "Free all tables (N)" beside the legend,
+  counting every area. Both confirm first when a table still has an open order. Tiles in a row
+  now share one height.
+- Manage Tables: "Free all tables" in the header (per-table "Mark as Available" was already in
+  each table's popover).
+
 ### 2026-10-21 (night) — Online orders need accepting on the Till; per-sound volume
 - New order status **"Pending"** for website / table-QR / kiosk orders, with Accept/Reject on the
   Till's new red **Online** tab — full design in §7.5. Kitchen Display ignores Pending; Open

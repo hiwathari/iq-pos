@@ -27,7 +27,7 @@ import {
 import { validateCouponAction } from "@/lib/actions/coupons";
 import { lookupLoyaltyMemberByCodeAction, lookupOrCreateLoyaltyMemberAction } from "@/lib/actions/loyalty";
 import type { LoyaltyContactType } from "@/lib/types";
-import { setTableStatusAction } from "@/lib/actions/tables";
+import { freeTablesAction } from "@/lib/actions/tables";
 import { setDishStockAction } from "@/lib/actions/menu";
 import { printTicket } from "@/lib/print-ticket";
 import { buildTicketEscPosAction } from "@/lib/actions/local-print";
@@ -652,9 +652,27 @@ export function OrderLineClient({
   // Frees a table straight from the Tables view — for a walk-in seated but who left before
   // ordering (or a table left occupied after its only order was voided), so staff don't have
   // to jump to Manage Table just to release it.
+  // Frees one table, or every occupied/reserved one. An open (unpaid) order isn't touched — it
+  // stays in Open Tickets — so staff are warned first when one is still sitting on the table.
   function handleClearTable(table: RestaurantTable) {
+    const open = activeOrderForTable(table);
+    if (open && !window.confirm(`Table ${table.number} still has open order #${open.orderNumber}. Free the table anyway? The order stays in Tickets.`)) return;
     startTransition(async () => {
-      await setTableStatusAction(table.id, "available", 0);
+      await freeTablesAction([table.id]);
+      router.refresh();
+    });
+  }
+
+  function handleFreeAllTables() {
+    const busy = tables.filter((t) => t.status !== "available");
+    if (busy.length === 0) return;
+    const withOrders = busy.filter((t) => activeOrderForTable(t));
+    const warning = withOrders.length
+      ? `\n\n${withOrders.length} of them still ${withOrders.length === 1 ? "has an open order" : "have open orders"} (Table ${withOrders.map((t) => t.number).join(", ")}) — those orders stay in Tickets.`
+      : "";
+    if (!window.confirm(`Free all ${busy.length} occupied/reserved table${busy.length === 1 ? "" : "s"} in every area?${warning}`)) return;
+    startTransition(async () => {
+      await freeTablesAction();
       router.refresh();
     });
   }
@@ -1205,6 +1223,7 @@ export function OrderLineClient({
             cartTableId={cart.tableId}
             onSelect={handleTableSelect}
             onClear={handleClearTable}
+            onClearAll={handleFreeAllTables}
           />
         )}
 
@@ -2533,6 +2552,7 @@ function TablesOverview({
   cartTableId,
   onSelect,
   onClear,
+  onClearAll,
 }: {
   tables: RestaurantTable[];
   orders: Order[];
@@ -2541,8 +2561,10 @@ function TablesOverview({
   cartTableId: string | null;
   onSelect: (table: RestaurantTable) => void;
   onClear: (table: RestaurantTable) => void;
+  onClearAll: () => void;
 }) {
   const areaTables = tables.filter((t) => t.area === area);
+  const busyCount = tables.filter((t) => t.status !== "available").length;
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -2576,6 +2598,14 @@ function TablesOverview({
         <span className="flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-full bg-teal-500" /> On Dine
         </span>
+        {busyCount > 0 && (
+          <button
+            onClick={onClearAll}
+            className="ml-auto flex min-h-11 items-center gap-1.5 rounded-xl border border-rose-200 bg-white px-3.5 text-sm font-semibold text-rose-600 hover:bg-rose-50 [&>svg]:size-4"
+          >
+            <X className="h-4 w-4" /> Free all tables ({busyCount})
+          </button>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto pb-24 pt-2 lg:pb-0">
@@ -2588,14 +2618,14 @@ function TablesOverview({
               !isOrderClosedOut(o)
           );
           const isMergedIn = order && order.tableId !== table.id;
-          // A table can be occupied with nothing to show for it — a walk-in seated then left,
-          // or its only order got voided — so staff can free it here instead of via Manage Table.
-          const canClear = table.status === "on-dine" && !order;
+          // Any occupied or reserved table can be freed from here (handleClearTable warns first if
+          // an open order is still on it).
+          const canClear = table.status !== "available";
           return (
-            <div key={table.id} className="relative">
+            <div key={table.id} className="relative h-full">
               <button
                 onClick={() => onSelect(table)}
-                className={`flex min-h-[112px] w-full flex-col items-center justify-center gap-1 rounded-2xl border-2 p-4 transition-transform hover:scale-[1.02] active:scale-[0.98] 2xl:p-5 ${
+                className={`flex h-full min-h-[112px] w-full flex-col items-center justify-center gap-1 rounded-2xl border-2 p-4 transition-transform hover:scale-[1.02] active:scale-[0.98] 2xl:p-5 ${canClear ? "pb-12 2xl:pb-12" : ""} ${
                   TABLE_STATUS_CARD[table.status]
                 } ${table.id === cartTableId ? "ring-2 ring-teal-500" : ""}`}
               >
@@ -2621,7 +2651,7 @@ function TablesOverview({
                     {isMergedIn ? `Merged → #${order.tableNumber}` : `#${order.orderNumber} · ${order.status}`}
                   </span>
                 )}
-                {canClear && <span className="mt-1 text-[10px] font-medium text-neutral-400">No order yet</span>}
+                {canClear && !order && <span className="mt-1 text-[10px] font-medium text-neutral-400">No order yet</span>}
               </button>
               {canClear && (
                 <button
@@ -2629,10 +2659,10 @@ function TablesOverview({
                     e.stopPropagation();
                     onClear(table);
                   }}
-                  title="Customer left — clear this table"
-                  className="absolute right-1.5 top-1.5 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-rose-500 [&>svg]:size-4 text-white shadow-sm hover:bg-rose-600"
+                  title="Customer left — free this table"
+                  className="absolute bottom-2 left-1/2 flex min-h-9 -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border border-rose-200 bg-white px-3 text-xs font-semibold text-rose-600 shadow-sm hover:bg-rose-50 [&>svg]:size-3.5"
                 >
-                  <X className="h-3.5 w-3.5" />
+                  <X className="h-3.5 w-3.5" /> Free table
                 </button>
               )}
             </div>

@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { reservations, tables } from "@/db/schema";
@@ -56,6 +56,25 @@ export async function setTableStatusAction(tableId: string, status: TableStatus,
     .update(tables)
     .set(patch)
     .where(and(eq(tables.id, tableId), eq(tables.restaurantId, restaurantId)));
+  revalidatePath("/manage-table");
+  revalidatePath("/order-line");
+  revalidatePath("/dashboard");
+}
+
+// Frees tables back to "available" in one go — the given ones, or every table in the restaurant
+// when no ids are passed ("Free all tables"). Orders aren't touched: an open order on a freed
+// table stays in Open Tickets until it's paid or voided.
+export async function freeTablesAction(tableIds?: string[]) {
+  const { restaurantId } = await requireRestaurantContext();
+  if (tableIds && tableIds.length === 0) return;
+  await db
+    .update(tables)
+    .set({ status: "available", seated: 0, seatedAt: null })
+    .where(
+      tableIds
+        ? and(eq(tables.restaurantId, restaurantId), inArray(tables.id, tableIds.map(String)))
+        : eq(tables.restaurantId, restaurantId)
+    );
   revalidatePath("/manage-table");
   revalidatePath("/order-line");
   revalidatePath("/dashboard");

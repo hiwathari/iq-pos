@@ -4,6 +4,7 @@ import { useActionState, useEffect, useMemo, useRef, useState, useTransition } f
 import { useRouter } from "next/navigation";
 import type { Reservation, ReservationSource, RestaurantTable, TableArea, TableStatus } from "@/lib/types";
 import {
+  freeTablesAction,
   setTableStatusAction,
   createReservationAction,
   createTableAction,
@@ -226,6 +227,21 @@ export function ManageTableClient({
                 </button>
               ))}
             </div>
+            {tables.some((t) => t.status !== "available") && (
+              <button
+                onClick={() => {
+                  const busy = tables.filter((t) => t.status !== "available").length;
+                  if (!window.confirm(`Free all ${busy} occupied/reserved table${busy === 1 ? "" : "s"} in every area? Open orders stay in the Till's Tickets.`)) return;
+                  startTransition(async () => {
+                    await freeTablesAction();
+                    router.refresh();
+                  });
+                }}
+                className="flex items-center gap-2 rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-sm font-semibold text-rose-600 hover:bg-rose-50"
+              >
+                <X className="h-4 w-4" /> Free all tables
+              </button>
+            )}
             <button
               onClick={() => setAllQrOpen(true)}
               className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
