@@ -714,6 +714,21 @@ conversation says so.
 > whichever numbered section above actually describes the thing you changed. A change without
 > both halves is not done.
 
+### 2026-10-21 (later) — Till: today's takings in the header; table & guests collapsed by default
+- **"Today" Cash / Card / total beside "Till · <restaurant>"** — new `components/today-sales.tsx`,
+  passed through a new `headerExtra` prop on `AppShell` → `Topbar` (`titleExtra`) and
+  `LockedShell` (shared Till-device logins). `order-line/page.tsx` computes it from orders placed
+  since `businessDayStart` (the restaurant's open time/timezone), so it resets each business day,
+  and updates with the Till's 20s `router.refresh`. Shown to everyone who can open the Till.
+- **One tender-counting helper**: `salesByTender()` in `lib/types.ts` (voided skipped, payment lines
+  first, legacy `paymentMethod` fallback, "Cash" vs every other method = card). End Day's
+  `summarizeShiftWindow` now uses it too, so the Till's figures and the day-end report can't drift.
+- **Cart setup**: the Order Type chips are always visible as one swipe row (no more Change link /
+  `channelPickerOpen`); below them, table & guests (or customer details / provider) is a closed
+  one-line row — "Choose table · 2 guests  Table & guests ▾" — that opens the fields + Done only
+  when tapped. It starts closed on load, New Order, the cart's trash button and after placing an
+  order (`tableEditorOpen` now defaults to false). Hidden for "Online", which has no fields.
+
 ### 2026-10-21 — Till: denser dish grid, one header row, setup box fits
 From photos of the Hello Chai Till (11", collapsed sidebar):
 - **Dish tiles are compact** — grid min 130px (168px at `2xl`), 48px emoji, 40px −/+ (44px at

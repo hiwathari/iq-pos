@@ -10,12 +10,14 @@ export function LockedShell({
   restaurantLogoUrl,
   label,
   brandColor,
+  headerExtra,
 }: {
   children: React.ReactNode;
   restaurantName?: string;
   restaurantLogoUrl?: string | null;
   label: string;
   brandColor?: string | null;
+  headerExtra?: React.ReactNode;
 }) {
   return (
     <div className="flex h-dvh w-full flex-col overflow-hidden bg-neutral-50" style={brandCssVars(brandColor)}>
@@ -23,6 +25,7 @@ export function LockedShell({
         <div className="flex items-center gap-2.5">
           {restaurantLogoUrl && <img src={restaurantLogoUrl} alt="" className="h-7 w-7 shrink-0 rounded-md object-contain" />}
           <div className="text-sm font-semibold text-neutral-900">{restaurantName ?? "IQ POS"}</div>
+          {headerExtra ? <div className="ml-2 hidden md:block">{headerExtra}</div> : null}
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs font-medium text-neutral-400">{label}</span>

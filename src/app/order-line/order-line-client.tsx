@@ -42,7 +42,6 @@ import { FullscreenButton } from "@/components/fullscreen-button";
 import {
   Minus,
   Plus,
-  Pencil,
   Trash2,
   Wallet,
   CreditCard,
@@ -294,7 +293,7 @@ export function OrderLineClient({
   const [customItemModalOpen, setCustomItemModalOpen] = useState(false);
   // Open by default for a brand-new order so Order Type/table selection is the first thing
   // staff see — collapsed when a table was already picked from Manage Table, or when editing.
-  const [tableEditorOpen, setTableEditorOpen] = useState(() => !searchParams.get("tableId"));
+  const [tableEditorOpen, setTableEditorOpen] = useState(false);
   const [tablePickerOpen, setTablePickerOpen] = useState(false);
   const [tableActionMode, setTableActionMode] = useState<"swap" | "merge" | null>(null);
   const [tableActionError, setTableActionError] = useState<string | null>(null);
@@ -677,7 +676,7 @@ export function OrderLineClient({
         setCart(emptyCart);
         setCouponError(null);
         setLoyaltyError(null);
-        setTableEditorOpen(true);
+        setTableEditorOpen(false);
         setMobileCartOpen(false);
         router.refresh();
 
@@ -900,7 +899,7 @@ export function OrderLineClient({
             <button
               onClick={() => {
                 setCart(emptyCart);
-                setTableEditorOpen(true);
+                setTableEditorOpen(false);
                 setMobileCartOpen(false);
               }}
               className="flex min-h-11 items-center gap-2 whitespace-nowrap rounded-xl bg-[var(--brand)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] 2xl:px-5 2xl:text-base [&>svg]:size-5"
@@ -1380,15 +1379,13 @@ function CartPanel({
   const [teyaCharging, setTeyaCharging] = useState<{ terminal: PaymentTerminal; amount: number } | null>(null);
   // The Order Type picker shows every option until one's been picked for this order, then just
   // that one (Change reopens the full list). Discounts & Loyalty start collapsed.
-  const [channelPickerOpen, setChannelPickerOpen] = useState(false);
-  const showAllChannels = !cart.channelChosen || channelPickerOpen;
   const [extrasOpen, setExtrasOpen] = useState(false);
   const discountTotal = couponDiscountAmount + extraDiscountAmount;
   const setupSummary =
     cart.channel === "Dine in" || cart.channel === "Wait List"
-      ? `${cart.tableNumber ? `Table ${String(cart.tableNumber).padStart(2, "0")}` : "No table"} · ${cart.guests} ${cart.guests === 1 ? "guest" : "guests"}`
+      ? `${cart.tableNumber ? `Table ${String(cart.tableNumber).padStart(2, "0")}` : "Choose table"} · ${cart.guests} ${cart.guests === 1 ? "guest" : "guests"}`
       : cart.channel === "Take Away" || cart.channel === "Delivery"
-        ? [cart.customerName || "No name", cart.customerPhone].filter(Boolean).join(" · ")
+        ? [cart.customerName || "Add customer", cart.customerPhone].filter(Boolean).join(" · ")
         : cart.channel === "Third Party"
           ? cart.thirdPartyProvider
           : "";
@@ -1505,7 +1502,7 @@ function CartPanel({
           <button
             onClick={() => {
               setCart(emptyCart);
-              setTableEditorOpen(true);
+              setTableEditorOpen(false);
             }}
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 2xl:h-11 2xl:w-11 [&>svg]:size-5 hover:bg-rose-50 hover:text-rose-600"
           >
@@ -1524,169 +1521,153 @@ function CartPanel({
 
       {/* Fixed layout: setup box (collapses to a summary once done), the order tray scrolls on its
           own, and discounts/totals/payment/the main button stay pinned at the bottom. */}
-      <div className={`mb-3 flex flex-col ${tableEditorOpen ? "min-h-0 shrink" : "shrink-0"}`}>
-      {tableEditorOpen ? (
-        <div className="max-h-80 min-h-0 space-y-2.5 overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 [scrollbar-width:none] 2xl:max-h-96">
-          <div>
-            <div className="mb-1 flex items-center justify-between">
-              <label className="block text-xs font-medium text-neutral-500">Order Type</label>
-              {!showAllChannels && (
-                <button onClick={() => setChannelPickerOpen(true)} className="rounded-lg px-2.5 py-1.5 text-sm font-semibold text-teal-600 hover:bg-teal-50">
-                  Change
-                </button>
-              )}
-            </div>
-            {showAllChannels ? (
-              <div className="flex gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [mask-image:linear-gradient(to_right,black_88%,transparent)]">
-                {CHANNELS.map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => {
-                      setCart((prev) => ({ ...prev, channel: c, channelChosen: true }));
-                      setChannelPickerOpen(false);
-                    }}
-                    className={`min-h-11 shrink-0 whitespace-nowrap rounded-lg border bg-white px-3 py-2 text-sm font-semibold ${
-                      cart.channel === c && cart.channelChosen
-                        ? "border-[var(--brand)] bg-[var(--brand)] text-white"
-                        : "border-neutral-200 text-neutral-500"
-                    }`}
-                  >
-                    {c}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="flex min-h-11 items-center justify-center rounded-lg border border-[var(--brand)] bg-[var(--brand)] px-2 py-2 text-sm font-semibold text-white">
-                {cart.channel}
-              </div>
-            )}
-          </div>
+      <div className={`mb-3 flex flex-col gap-2 ${tableEditorOpen ? "min-h-0 shrink" : "shrink-0"}`}>
+        {/* Order Type — always visible as one swipe row; picking one doesn't open anything. */}
+        <div className="flex shrink-0 gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [mask-image:linear-gradient(to_right,black_88%,transparent)]">
+          {CHANNELS.map((c) => (
+            <button
+              key={c}
+              onClick={() => setCart((prev) => ({ ...prev, channel: c, channelChosen: true }))}
+              className={`min-h-11 shrink-0 whitespace-nowrap rounded-lg border px-3 py-2 text-sm font-semibold ${
+                cart.channel === c ? "border-[var(--brand)] bg-[var(--brand)] text-white" : "border-neutral-200 bg-white text-neutral-500"
+              }`}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
 
-          {(cart.channel === "Dine in" || cart.channel === "Wait List") && (
-            <div className="flex items-end gap-2">
-              <div className="min-w-0 flex-1">
-                <label className="mb-1 block text-xs font-medium text-neutral-500">Table</label>
-                <button
-                  onClick={() => setTablePickerOpen(true)}
-                  className="flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-left text-base text-neutral-700 hover:border-teal-400 [&>svg]:size-5"
-                >
-                  {cart.tableNumber ? (
-                    <span className="font-medium">Table {String(cart.tableNumber).padStart(2, "0")}</span>
-                  ) : (
-                    <span className="truncate text-neutral-400">Pick table</span>
-                  )}
-                  <LayoutGrid className="h-4 w-4 text-neutral-400" />
-                </button>
-              </div>
-              <div className="shrink-0">
-                <label className="mb-1 block text-xs font-medium text-neutral-500">Guests</label>
-                <div className="flex items-center gap-2">
+        {/* Table & guests (or customer details) stay closed until tapped. */}
+        {cart.channel !== "Online" &&
+          (tableEditorOpen ? (
+            <div className="max-h-72 min-h-0 space-y-2.5 overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 [scrollbar-width:none] 2xl:max-h-96">
+            {(cart.channel === "Dine in" || cart.channel === "Wait List") && (
+              <div className="flex items-end gap-2">
+                <div className="min-w-0 flex-1">
+                  <label className="mb-1 block text-xs font-medium text-neutral-500">Table</label>
                   <button
-                    type="button"
-                    onClick={() => setCart((prev) => ({ ...prev, guests: Math.max(1, prev.guests - 1) }))}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 active:scale-95"
+                    onClick={() => setTablePickerOpen(true)}
+                    className="flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-left text-base text-neutral-700 hover:border-teal-400 [&>svg]:size-5"
                   >
-                    <Minus className="h-5 w-5" />
-                  </button>
-                  <div className="flex h-11 w-9 items-center justify-center text-xl font-semibold text-neutral-900">
-                    {cart.guests}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setCart((prev) => ({ ...prev, guests: prev.guests + 1 }))}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[var(--brand)] text-white hover:bg-[var(--brand-dark)] active:scale-95"
-                  >
-                    <Plus className="h-5 w-5" />
+                    {cart.tableNumber ? (
+                      <span className="font-medium">Table {String(cart.tableNumber).padStart(2, "0")}</span>
+                    ) : (
+                      <span className="truncate text-neutral-400">Pick table</span>
+                    )}
+                    <LayoutGrid className="h-4 w-4 text-neutral-400" />
                   </button>
                 </div>
+                <div className="shrink-0">
+                  <label className="mb-1 block text-xs font-medium text-neutral-500">Guests</label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCart((prev) => ({ ...prev, guests: Math.max(1, prev.guests - 1) }))}
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-500 hover:bg-neutral-50 active:scale-95"
+                    >
+                      <Minus className="h-5 w-5" />
+                    </button>
+                    <div className="flex h-11 w-9 items-center justify-center text-xl font-semibold text-neutral-900">
+                      {cart.guests}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCart((prev) => ({ ...prev, guests: prev.guests + 1 }))}
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[var(--brand)] text-white hover:bg-[var(--brand-dark)] active:scale-95"
+                    >
+                      <Plus className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {(cart.channel === "Take Away" || cart.channel === "Delivery") && (
-            <>
+            {(cart.channel === "Take Away" || cart.channel === "Delivery") && (
+              <>
+                <div>
+                  <label className="mb-1 flex items-center gap-1.5 text-xs font-medium text-neutral-500">
+                    <User className="h-3.5 w-3.5" /> Customer Name
+                  </label>
+                  <input
+                    value={cart.customerName}
+                    onChange={(e) => setCart((prev) => ({ ...prev, customerName: e.target.value }))}
+                    placeholder="e.g. Sarah"
+                    className="w-full rounded-lg border border-neutral-200 px-3.5 py-2.5 text-base outline-none focus:border-teal-500"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 flex items-center gap-1.5 text-xs font-medium text-neutral-500">
+                    <Phone className="h-3.5 w-3.5" /> Phone
+                  </label>
+                  <input
+                    value={cart.customerPhone}
+                    onChange={(e) => setCart((prev) => ({ ...prev, customerPhone: e.target.value }))}
+                    placeholder="+44 7000 000000"
+                    className="w-full rounded-lg border border-neutral-200 px-3.5 py-2.5 text-base outline-none focus:border-teal-500"
+                  />
+                </div>
+              </>
+            )}
+
+            {cart.channel === "Delivery" && (
               <div>
                 <label className="mb-1 flex items-center gap-1.5 text-xs font-medium text-neutral-500">
-                  <User className="h-3.5 w-3.5" /> Customer Name
+                  <MapPin className="h-3.5 w-3.5" /> Delivery Address
                 </label>
-                <input
-                  value={cart.customerName}
-                  onChange={(e) => setCart((prev) => ({ ...prev, customerName: e.target.value }))}
-                  placeholder="e.g. Sarah"
-                  className="w-full rounded-lg border border-neutral-200 px-3.5 py-2.5 text-base outline-none focus:border-teal-500"
+                <textarea
+                  value={cart.customerAddress}
+                  onChange={(e) => setCart((prev) => ({ ...prev, customerAddress: e.target.value }))}
+                  rows={2}
+                  placeholder="Flat, street, postcode…"
+                  className="w-full resize-none rounded-lg border border-neutral-200 px-3.5 py-2.5 text-base outline-none focus:border-teal-500"
                 />
               </div>
+            )}
+
+            {cart.channel === "Third Party" && (
               <div>
-                <label className="mb-1 flex items-center gap-1.5 text-xs font-medium text-neutral-500">
-                  <Phone className="h-3.5 w-3.5" /> Phone
-                </label>
-                <input
-                  value={cart.customerPhone}
-                  onChange={(e) => setCart((prev) => ({ ...prev, customerPhone: e.target.value }))}
-                  placeholder="+44 7000 000000"
+                <label className="mb-1 block text-xs font-medium text-neutral-500">Provider</label>
+                <select
+                  value={cart.thirdPartyProvider}
+                  onChange={(e) =>
+                    setCart((prev) => ({ ...prev, thirdPartyProvider: e.target.value as ThirdPartyProvider }))
+                  }
                   className="w-full rounded-lg border border-neutral-200 px-3.5 py-2.5 text-base outline-none focus:border-teal-500"
-                />
+                >
+                  {THIRD_PARTY_PROVIDERS.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
               </div>
-            </>
-          )}
-
-          {cart.channel === "Delivery" && (
-            <div>
-              <label className="mb-1 flex items-center gap-1.5 text-xs font-medium text-neutral-500">
-                <MapPin className="h-3.5 w-3.5" /> Delivery Address
-              </label>
-              <textarea
-                value={cart.customerAddress}
-                onChange={(e) => setCart((prev) => ({ ...prev, customerAddress: e.target.value }))}
-                rows={2}
-                placeholder="Flat, street, postcode…"
-                className="w-full resize-none rounded-lg border border-neutral-200 px-3.5 py-2.5 text-base outline-none focus:border-teal-500"
-              />
-            </div>
-          )}
-
-          {cart.channel === "Third Party" && (
-            <div>
-              <label className="mb-1 block text-xs font-medium text-neutral-500">Provider</label>
-              <select
-                value={cart.thirdPartyProvider}
-                onChange={(e) =>
-                  setCart((prev) => ({ ...prev, thirdPartyProvider: e.target.value as ThirdPartyProvider }))
-                }
-                className="w-full rounded-lg border border-neutral-200 px-3.5 py-2.5 text-base outline-none focus:border-teal-500"
+            )}
+              <button
+                onClick={() => setTableEditorOpen(false)}
+                className="min-h-11 w-full rounded-lg bg-[var(--brand)] py-2.5 text-base font-semibold text-white hover:bg-[var(--brand-dark)]"
               >
-                {THIRD_PARTY_PROVIDERS.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
+                Done
+              </button>
             </div>
-          )}
-          <button
-            onClick={() => {
-              setTableEditorOpen(false);
-              setChannelPickerOpen(false);
-            }}
-            className="min-h-11 w-full rounded-lg bg-[var(--brand)] py-2.5 text-base font-semibold text-white hover:bg-[var(--brand-dark)]"
-          >
-            Done
-          </button>
-        </div>
-      ) : (
-        <div className="flex items-center justify-between gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5">
-          <div className="flex min-w-0 items-center gap-2 text-[15px]">
-            <span className="shrink-0 rounded-md bg-[var(--brand)] px-2.5 py-1 text-sm font-semibold text-white">{cart.channel}</span>
-            <span className="truncate text-neutral-600">{setupSummary}</span>
-          </div>
-          <button
-            onClick={() => setTableEditorOpen(true)}
-            className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-4 text-sm font-semibold text-neutral-600 hover:text-teal-600 [&>svg]:size-4"
-          >
-            <Pencil className="h-3.5 w-3.5" /> Edit
-          </button>
-        </div>
-      )}
+          ) : (
+            <button
+              onClick={() => setTableEditorOpen(true)}
+              className="flex min-h-12 w-full items-center justify-between gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-left hover:border-[var(--brand)]"
+            >
+              <span className="flex min-w-0 items-center gap-2 text-[15px] text-neutral-700">
+                {cart.channel === "Dine in" || cart.channel === "Wait List" ? (
+                  <LayoutGrid className="h-4 w-4 shrink-0 text-neutral-400" />
+                ) : (
+                  <User className="h-4 w-4 shrink-0 text-neutral-400" />
+                )}
+                <span className="truncate">{setupSummary}</span>
+              </span>
+              <span className="flex shrink-0 items-center gap-1 text-sm font-semibold text-[var(--brand-dark)]">
+                {cart.channel === "Dine in" || cart.channel === "Wait List" ? "Table & guests" : "Details"}
+                <ChevronDown className="h-4 w-4" />
+              </span>
+            </button>
+          ))}
       </div>
 
       {tablePickerOpen && (

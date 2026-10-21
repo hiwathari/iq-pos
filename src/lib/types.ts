@@ -161,6 +161,34 @@ export function orderBreakdown(order: Pick<Order, "items" | "extraDiscount" | "c
   return { subtotal, discount, tax, total: subtotal - discount + tax };
 }
 
+// Money taken per tender across a set of orders: voided orders are skipped, an order's recorded
+// payment lines are the source of truth (falling back to its single paymentMethod for orders
+// from before split payments), and an order with neither counts as "other" (not yet paid).
+// Shared by End Day (summarizeShiftWindow) and the Till's "Today" figures so the two agree.
+export function salesByTender(
+  list: Pick<Order, "status" | "payments" | "paymentMethod" | "items" | "extraDiscount" | "couponDiscount">[]
+) {
+  let cash = 0;
+  let card = 0;
+  let other = 0;
+  const byMethod = new Map<string, number>();
+  for (const o of list) {
+    if (o.status === "Voided") continue;
+    const total = orderTotal(o);
+    const lines = o.payments?.length ? o.payments : o.paymentMethod ? [{ method: o.paymentMethod, amount: total }] : [];
+    if (lines.length === 0) {
+      other += total;
+      continue;
+    }
+    for (const line of lines) {
+      if (line.method === "Cash") cash += line.amount;
+      else card += line.amount;
+      byMethod.set(line.method, (byMethod.get(line.method) ?? 0) + line.amount);
+    }
+  }
+  return { cash, card, other, byMethod };
+}
+
 // Resolves a coupon's percent/fixed value into an actual currency amount against a given
 // subtotal — shared by the Till (live preview before an order is saved) and the server action
 // that places the order, so the two can never disagree on what a coupon is worth.

@@ -10,7 +10,16 @@ import { Topbar } from "./topbar";
 import { ImpersonationBanner } from "./impersonation-banner";
 import { LockedShell } from "./locked-shell";
 
-export async function AppShell({ children, title }: { children: React.ReactNode; title?: string }) {
+// headerExtra sits beside the page title / restaurant name — e.g. the Till's "Today" takings.
+export async function AppShell({
+  children,
+  title,
+  headerExtra,
+}: {
+  children: React.ReactNode;
+  title?: string;
+  headerExtra?: React.ReactNode;
+}) {
   const session = await getSession();
   if (!session) return null;
 
@@ -25,6 +34,7 @@ export async function AppShell({ children, title }: { children: React.ReactNode;
         restaurantLogoUrl={restaurant?.invoiceLogoUrl}
         label={label}
         brandColor={restaurant?.brandColor}
+        headerExtra={headerExtra}
       >
         {children}
       </LockedShell>
@@ -61,6 +71,7 @@ export async function AppShell({ children, title }: { children: React.ReactNode;
           name={session.name}
           role={session.role}
           notifications={notifications}
+          titleExtra={headerExtra}
         />
         <main className="flex-1 overflow-y-auto">{children}</main>
       </div>

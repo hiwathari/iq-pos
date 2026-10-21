@@ -7,7 +7,9 @@ import { listTables } from "@/lib/data/tables";
 import { listOrders } from "@/lib/data/orders";
 import { listPaymentTerminals, listPrinters } from "@/lib/data/printers";
 import { getRestaurant } from "@/lib/data/restaurants";
-import { hasKitchen } from "@/lib/types";
+import { hasKitchen, salesByTender } from "@/lib/types";
+import { businessDayStart } from "@/lib/business-day";
+import { TodaySales } from "@/components/today-sales";
 import { TillModeSwitcher } from "./till-mode-switcher";
 
 export const metadata: Metadata = {
@@ -18,6 +20,12 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = { themeColor: "#0d9488" };
+
+// Top-level wrapper around Date.now() so the page component itself stays free of impure calls
+// (react-hooks purity lint rule) — same pattern as dashboard/page.tsx.
+function currentBusinessDayStart(openTime: string | null, timezone: string) {
+  return businessDayStart(Date.now(), openTime, timezone);
+}
 
 export default async function OrderLinePage() {
   const { session, restaurantId } = await requirePermission("order-line");
@@ -49,8 +57,13 @@ export default async function OrderLinePage() {
     ? { ip: receiptPrinter.localPrinterIp as string, port: receiptPrinter.localPrinterPort }
     : null;
 
+  // Today's takings so far — orders placed since this business day began. The Till refreshes
+  // every 20s (router.refresh), which re-renders this, so the figures keep up during service.
+  const dayStart = currentBusinessDayStart(restaurant?.openTime ?? null, restaurant?.timezone ?? "UTC");
+  const today = salesByTender(orders.filter((o) => o.createdAt >= dayStart));
+
   return (
-    <AppShell title="Till">
+    <AppShell title="Till" headerExtra={<TodaySales cash={today.cash} card={today.card} currencySymbol={currencySymbol} />}>
       <TillModeSwitcher
         categories={categories}
         dishes={dishes}

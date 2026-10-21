@@ -42,8 +42,10 @@ export function Topbar({
   name,
   role,
   notifications = [],
+  titleExtra,
 }: {
   title?: string;
+  titleExtra?: React.ReactNode;
   name: string;
   role: Role;
   notifications?: NotificationRow[];
@@ -75,6 +77,7 @@ export function Topbar({
         />
       </div>
       {title ? <div className="hidden lg:block text-sm font-medium text-neutral-400">{title}</div> : null}
+      {titleExtra ? <div className="hidden md:block">{titleExtra}</div> : null}
       <div className="flex flex-1 items-center justify-end gap-4">
         <div className="relative">
           <button
