@@ -14,7 +14,7 @@ import { dishes, loyaltyMembers, orders, tables } from "@/db/schema";
 import { getRestaurant, getRestaurantBySlug } from "@/lib/data/restaurants";
 import { resolveTableQrToken } from "@/lib/table-qr-token";
 import { findLoyaltyMemberByContact, findLoyaltyMemberById } from "@/lib/data/loyalty";
-import { decrementInventoryForOrder, nextOrderNumber } from "@/lib/order-helpers";
+import { nextOrderNumber } from "@/lib/order-helpers";
 import { generateLoyaltyCode } from "@/lib/loyalty-code";
 import { LOYALTY_SESSION_COOKIE_NAME, verifyLoyaltySessionToken } from "@/lib/loyalty-session";
 import type { LoyaltyContactType, OrderItem } from "@/lib/types";
@@ -154,8 +154,10 @@ interface PublicOrderRow {
   loyaltyMemberId: string | null;
 }
 
-// Shared by every public ordering surface: dedupes a double-tap, inserts the order straight into
-// the kitchen queue, seats the table, and refreshes the staff screens. Returns the order number.
+// Shared by every public ordering surface: dedupes a double-tap, inserts the order as "Pending"
+// (it reaches the kitchen — and takes stock — only once staff accept it on the Till, see
+// acceptOnlineOrderAction), seats the table, and refreshes the staff screens. Returns the order
+// number.
 async function insertPublicOrder(row: PublicOrderRow) {
   // Guard against a customer double/triple-tapping "Place Order" on a slow connection and getting
   // charged or fed twice — if an identical order (same phone, channel/table, items) from this
@@ -184,7 +186,7 @@ async function insertPublicOrder(row: PublicOrderRow) {
     tableNumber: row.tableNumber,
     guests: row.guests,
     channel: row.channel,
-    status: "In Kitchen",
+    status: "Pending",
     items: row.items,
     paymentMethod: null,
     customerName: row.customerName,
@@ -199,8 +201,6 @@ async function insertPublicOrder(row: PublicOrderRow) {
   if (row.tableId) {
     await db.update(tables).set({ status: "on-dine", seated: row.guests, seatedAt: Date.now() }).where(eq(tables.id, row.tableId));
   }
-
-  await decrementInventoryForOrder(row.restaurantId, row.items);
 
   revalidatePath("/order-line");
   revalidatePath("/manage-table");

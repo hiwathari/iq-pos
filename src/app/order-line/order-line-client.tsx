@@ -16,8 +16,10 @@ import type {
 } from "@/lib/types";
 import { formatMoney, formatOccupiedTime, formatOrderTimestamp, orderSequence, orderTotal } from "@/lib/types";
 import {
+  acceptOnlineOrderAction,
   mergeTableIntoOrderAction,
   placeOrderAction,
+  rejectOnlineOrderAction,
   setOrderStatusAction,
   swapOrderTableAction,
   voidOrderAction,
@@ -31,7 +33,8 @@ import { printTicket } from "@/lib/print-ticket";
 import { buildTicketEscPosAction } from "@/lib/actions/local-print";
 import { printViaLocalBridge } from "@/lib/local-print-bridge";
 import { tableOrderQrDataUrl } from "@/lib/table-qr";
-import { unlockOrderAudio, playNewOrderChime, playOrderReadyChime } from "@/lib/order-sounds";
+import { unlockOrderAudio, playIncomingOrderAlert, playOrderReadyChime } from "@/lib/order-sounds";
+import { SoundSettingsButton } from "@/components/sound-settings";
 import { useVisibleInterval } from "@/lib/use-visible-interval";
 import { startSumupChargeAction, pollSumupChargeAction, cancelSumupChargeAction } from "@/lib/actions/sumup";
 import { startTeyaChargeAction, pollTeyaChargeAction, cancelTeyaChargeAction } from "@/lib/actions/teya";
@@ -56,6 +59,7 @@ import {
   User,
   MessageSquarePlus,
   Bell,
+  BellRing,
   CheckCircle2,
   ClipboardList,
   Armchair,
@@ -70,7 +74,6 @@ import {
   QrCode,
   ChevronLeft,
   ChevronRight,
-  FileClock,
   Globe,
   Loader2,
   ChevronDown,
@@ -81,7 +84,7 @@ import {
 const QUEUE_TABS = ["All", "Dine in", "Wait List", "Take Away", "Delivery", "Served"] as const;
 type QueueTab = (typeof QUEUE_TABS)[number];
 
-type TillView = "order" | "tickets" | "tables" | "history";
+type TillView = "order" | "incoming" | "tickets" | "tables" | "history";
 
 // A ticket is flagged "Updated" once it's been edited after being sent, so staff notice a
 // change — cleared once it's done (Served/Voided), since it no longer needs a second look.
@@ -149,6 +152,7 @@ function currentBusinessDateKey(openTime: string | null, timezone: string) {
 }
 
 const STATUS_STYLES: Record<Order["status"], string> = {
+  Pending: "bg-amber-100 text-amber-800",
   "In Kitchen": "bg-teal-100 text-teal-700",
   "Wait List": "bg-orange-100 text-orange-700",
   Ready: "bg-purple-100 text-purple-700",
@@ -157,6 +161,7 @@ const STATUS_STYLES: Record<Order["status"], string> = {
 };
 
 const CARD_TINTS: Record<Order["status"], string> = {
+  Pending: "bg-amber-50 border-amber-200",
   "In Kitchen": "bg-teal-50 border-teal-100",
   "Wait List": "bg-orange-50 border-orange-100",
   Ready: "bg-purple-50 border-purple-100",
@@ -307,7 +312,7 @@ export function OrderLineClient({
   // one, etc.) so status notifications below stay current without a manual refresh — paused
   // while this tab isn't visible, so a backgrounded tab doesn't keep hitting the server for no
   // one (see useVisibleInterval).
-  useVisibleInterval(() => router.refresh(), 20000);
+  useVisibleInterval(() => router.refresh(), 10000);
 
   // Most browsers block audio before the page has seen a user gesture — the first tap anywhere
   // on the Till (adding an item, picking a table, etc.) unlocks it for the rest of the session.
@@ -329,10 +334,10 @@ export function OrderLineClient({
       for (const order of orders) {
         const prevStatus = known.get(order.id);
         if (prevStatus === undefined) {
-          // A brand-new order — a customer placing it themselves is the case nobody at the
-          // till is already watching for, so that's what gets the chime (a staff-rung-up order
-          // is already visible to whoever just rang it up).
-          if (order.placedVia === "online") hasNewOnlineOrder = true;
+          // A brand-new order — a customer placing it themselves (website, table QR, kiosk) is the
+          // case nobody at the till is already watching for, so that's what gets the alert (a
+          // staff-rung-up order is already visible to whoever just rang it up).
+          if (order.placedVia !== "staff" && order.status === "Pending") hasNewOnlineOrder = true;
         } else if (prevStatus !== order.status) {
           const where = order.tableNumber ? `Table ${String(order.tableNumber).padStart(2, "0")}` : order.channel;
           newlyChanged.push({
@@ -350,7 +355,7 @@ export function OrderLineClient({
           setTimeout(() => setNotifications((prev) => prev.filter((x) => x.id !== n.id)), 7000);
         });
       }
-      if (hasNewOnlineOrder) playNewOrderChime();
+      if (hasNewOnlineOrder) playIncomingOrderAlert();
       if (hasNewlyReady) playOrderReadyChime();
     }
     knownStatusRef.current = new Map(orders.map((o) => [o.id, o.status]));
@@ -365,8 +370,33 @@ export function OrderLineClient({
     return () => clearInterval(id);
   }, []);
   const dayStart = useMemo(() => businessDayStart(clock, openTime, timezone), [clock, openTime, timezone]);
+  // Customer orders waiting to be accepted, oldest first — counted on the red "New Orders" tab and
+  // listed on its view, with the alert repeating every 15s until each is accepted or rejected.
+  // They only join Open Tickets once accepted.
+  const pendingOrders = useMemo(
+    () => orders.filter((o) => o.status === "Pending").sort((a, b) => a.createdAt - b.createdAt),
+    [orders]
+  );
+  const hasPending = pendingOrders.length > 0;
+  useEffect(() => {
+    if (!hasPending) return;
+    const id = setInterval(() => playIncomingOrderAlert(), 15000);
+    return () => clearInterval(id);
+  }, [hasPending]);
+  const [handlingId, setHandlingId] = useState<string | null>(null);
+  function handleIncoming(order: Order, accept: boolean) {
+    if (!accept && !window.confirm(`Reject order #${order.orderNumber}? It won't go to the kitchen.`)) return;
+    setHandlingId(order.id);
+    startTransition(async () => {
+      const result = accept ? await acceptOnlineOrderAction(order.id) : await rejectOnlineOrderAction(order.id);
+      setHandlingId(null);
+      if (result.error) window.alert(result.error);
+      router.refresh();
+    });
+  }
+
   const queueOrders = useMemo(
-    () => orders.filter((o) => !(o.status === "Voided" && o.createdAt < dayStart)),
+    () => orders.filter((o) => o.status !== "Pending" && !(o.status === "Voided" && o.createdAt < dayStart)),
     [orders, dayStart]
   );
 
@@ -562,6 +592,10 @@ export function OrderLineClient({
   }
 
   function loadOrderIntoCart(order: Order) {
+    if (order.status === "Pending") {
+      setView("incoming");
+      return;
+    }
     const orderTotalAmount = orderTotal(order);
     const payments: PaymentLine[] =
       order.payments?.length ? order.payments : order.paymentMethod ? [{ method: order.paymentMethod, amount: orderTotalAmount }] : [];
@@ -902,9 +936,12 @@ export function OrderLineClient({
                 setTableEditorOpen(false);
                 setMobileCartOpen(false);
               }}
-              className="flex min-h-11 items-center gap-2 whitespace-nowrap rounded-xl bg-[var(--brand)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] 2xl:px-5 2xl:text-base [&>svg]:size-5"
+              title="New order"
+              aria-label="New order"
+              className="flex min-h-11 min-w-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-[var(--brand)] px-3 py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] 2xl:gap-2 2xl:px-5 2xl:text-base [&>svg]:size-5"
             >
-              <Plus className="h-3.5 w-3.5" /> New Order
+              <Plus className="h-3.5 w-3.5" /> <span className="hidden xl:inline 2xl:hidden">New</span>
+              <span className="hidden 2xl:inline">New Order</span>
             </button>
           )}
           <div className="flex items-center gap-1 rounded-2xl border border-neutral-200 bg-white p-1">
@@ -914,10 +951,12 @@ export function OrderLineClient({
               label="Order"
               onClick={() => setView("order")}
             />
+            <NewOrdersTab active={view === "incoming"} count={pendingOrders.length} onClick={() => setView("incoming")} />
             <TopViewTab
               active={view === "tickets"}
               icon={ClipboardList}
               label="Open Tickets"
+              shortLabel="Tickets"
               count={queueCounts.All}
               onClick={() => setView("tickets")}
             />
@@ -934,19 +973,28 @@ export function OrderLineClient({
               onClick={() => setView("history")}
             />
           </div>
-          <ComingSoonButton icon={QrCode} label="QR Menu Orders" />
-          <ComingSoonButton icon={FileClock} label="Draft List" />
-          <div className="ml-auto flex items-center gap-2">
-            <FullscreenButton className="flex min-h-11 items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50 2xl:text-base [&>svg]:size-5" />
+          <div className="ml-auto flex items-center gap-1.5">
+            <SoundSettingsButton className="flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-2.5 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50 2xl:text-base [&>svg]:size-5" />
+            <FullscreenButton className="hidden min-h-11 min-w-11 items-center xl:flex justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-2.5 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50 2xl:text-base [&>svg]:size-5" />
             <button
               onClick={() => window.location.reload()}
               title="Refresh — reloads the page and clears any cached data"
-              className="flex min-h-11 items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50 2xl:text-base [&>svg]:size-5"
+              className="flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-2.5 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50 2xl:text-base [&>svg]:size-5"
             >
               <RefreshCw className="h-4 w-4" /> <span className="hidden 2xl:inline">Refresh</span>
             </button>
           </div>
         </div>
+
+        {view === "incoming" && (
+          <IncomingOrdersView
+            orders={pendingOrders}
+            currencySymbol={currencySymbol}
+            handlingId={handlingId}
+            onAccept={(o) => handleIncoming(o, true)}
+            onReject={(o) => handleIncoming(o, false)}
+          />
+        )}
 
         {view === "order" && (
           <>
@@ -2311,24 +2359,34 @@ function TopViewTab({
   active,
   icon: Icon,
   label,
+  shortLabel,
   count,
   onClick,
 }: {
   active: boolean;
   icon: typeof ShoppingBag;
   label: string;
+  // Shown instead of `label` below 2xl, so every tab fits one row on an 11" screen.
+  shortLabel?: string;
   count?: number;
   onClick: () => void;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`flex min-h-11 items-center whitespace-nowrap gap-2 rounded-xl px-3 py-2.5 2xl:px-4 text-sm font-medium transition-colors 2xl:text-base [&>svg]:size-5 ${
+      className={`flex min-h-11 items-center whitespace-nowrap gap-1.5 rounded-xl px-2 py-2.5 2xl:gap-2 2xl:px-4 text-sm font-medium transition-colors 2xl:text-base [&>svg]:size-5 ${
         active ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
       }`}
     >
       <Icon className="h-4 w-4" />
-      {label}
+      {shortLabel ? (
+        <>
+          <span className="2xl:hidden">{shortLabel}</span>
+          <span className="hidden 2xl:inline">{label}</span>
+        </>
+      ) : (
+        label
+      )}
       {typeof count === "number" && (
         <span
           className={`flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-xs font-semibold ${
@@ -2342,21 +2400,116 @@ function TopViewTab({
   );
 }
 
-// A visible placeholder for a feature that isn't built yet (kiosk/online ordering feed the QR
-// menu, and a save-and-recall draft queue) — shown rather than omitted, so the toolbar reads as
-// complete and staff know it's coming rather than wondering if it's broken.
-function ComingSoonButton({ icon: Icon, label }: { icon: typeof ShoppingBag; label: string }) {
+// "Online" tab next to Open Tickets: turns red and pulses, with the count, while customer orders
+// (website, table QR, kiosk) are waiting to be accepted.
+function NewOrdersTab({ active, count, onClick }: { active: boolean; count: number; onClick: () => void }) {
+  const waiting = count > 0;
   return (
     <button
-      disabled
-      title="Coming soon"
-      className="hidden min-h-11 cursor-not-allowed items-center gap-2 rounded-xl border border-dashed border-neutral-200 px-4 py-2.5 text-sm font-semibold text-neutral-400 2xl:flex [&>svg]:size-4"
+      onClick={onClick}
+      className={`flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-xl px-2 py-2.5 text-sm font-semibold transition-colors 2xl:gap-2 2xl:px-4 2xl:text-base [&>svg]:size-5 ${
+        waiting
+          ? `bg-rose-600 text-white hover:bg-rose-700 ${active ? "ring-2 ring-rose-300 ring-offset-1" : "animate-pulse"}`
+          : active
+            ? "bg-[var(--brand)] text-white"
+            : "font-medium text-neutral-500 hover:bg-neutral-50"
+      }`}
     >
-      <Icon className="h-3.5 w-3.5" /> {label}
-      <span className="rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-neutral-400">
-        Soon
+      <BellRing className="h-4 w-4" />
+      <span className="2xl:hidden">Online</span>
+      <span className="hidden 2xl:inline">Online Orders</span>
+      <span
+        className={`flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-xs font-bold ${
+          waiting ? "bg-white text-rose-600" : active ? "bg-white/20 text-white" : "bg-neutral-100 text-neutral-500"
+        }`}
+      >
+        {count}
       </span>
     </button>
+  );
+}
+
+// Customer orders (website, table QR, kiosk) waiting for staff. Accept sends one to the kitchen
+// (and into Open Tickets); Reject voids it and frees its table.
+function IncomingOrdersView({
+  orders,
+  currencySymbol,
+  handlingId,
+  onAccept,
+  onReject,
+}: {
+  orders: Order[];
+  currencySymbol: string;
+  handlingId: string | null;
+  onAccept: (order: Order) => void;
+  onReject: (order: Order) => void;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto pb-24 lg:pb-0">
+      <p className="mb-3 text-sm text-neutral-500">
+        Orders customers placed themselves — from the website, a table QR code or the kiosk. Accept to send one to the kitchen and
+        into Open Tickets.
+      </p>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
+        {orders.map((order) => {
+          const busy = handlingId === order.id;
+          const source = order.createdByName === "Table QR" ? "Table QR" : order.placedVia === "kiosk" ? "Kiosk" : "Website";
+          const mins = Math.max(0, Math.floor((now - order.createdAt) / 60_000));
+          return (
+            <div key={order.id} className="flex flex-col rounded-2xl border-2 border-rose-200 bg-white p-4 shadow-sm">
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <span className="text-lg font-bold text-neutral-900">{order.tableNumber ? `Table ${order.tableNumber}` : order.channel}</span>
+                <span className="shrink-0 rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-bold text-rose-700">{source}</span>
+              </div>
+              <div className="mb-2 text-xs text-neutral-400">
+                #{order.orderNumber} · {mins === 0 ? "just now" : `${mins} min ago`}
+                {order.guests > 1 ? ` · ${order.guests} guests` : ""}
+              </div>
+              <div className="mb-2 truncate text-sm font-medium text-neutral-700">
+                {order.customerName || "Guest"}
+                {order.customerPhone ? ` · ${order.customerPhone}` : ""}
+              </div>
+              <ul className="mb-3 space-y-0.5 text-[15px] text-neutral-800">
+                {order.items.map((i, idx) => (
+                  <li key={i.lineId ?? `${i.dishId}-${idx}`}>
+                    <span className="font-semibold text-[var(--brand-dark)]">{i.qty}×</span> {i.name}
+                    {i.note ? <span className="text-sm text-neutral-400"> — {i.note}</span> : null}
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-auto flex items-center justify-between gap-2 border-t border-neutral-100 pt-3">
+                <span className="text-lg font-bold text-neutral-900">{formatMoney(orderTotal(order), currencySymbol)}</span>
+                <div className="flex gap-2">
+                  <button
+                    disabled={busy}
+                    onClick={() => onReject(order)}
+                    className="min-h-12 rounded-xl border border-rose-200 px-4 text-sm font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                  >
+                    Reject
+                  </button>
+                  <button
+                    disabled={busy}
+                    onClick={() => onAccept(order)}
+                    className="min-h-12 rounded-xl bg-[var(--brand)] px-5 text-base font-bold text-white hover:bg-[var(--brand-dark)] disabled:opacity-50"
+                  >
+                    {busy ? "…" : "Accept"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {orders.length === 0 && (
+          <div className="col-span-full flex h-40 items-center justify-center text-sm text-neutral-400">No new customer orders waiting.</div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -2735,6 +2888,8 @@ function TeyaChargeOverlay({
 // Served. "Ready" only still appears here as a fallback for any order that reached that status
 // before this changed (nothing sets it anymore — see completeOrderAction/toggleOrderItemReadyAction).
 const STATUS_FLOW: Record<Order["status"], Order["status"] | null> = {
+  // Accepted/rejected from the Till's incoming-orders bar, never stepped from here.
+  Pending: null,
   "Wait List": "In Kitchen",
   "In Kitchen": "Served",
   Ready: "Served",
@@ -2743,6 +2898,7 @@ const STATUS_FLOW: Record<Order["status"], Order["status"] | null> = {
 };
 
 const STATUS_ACTION_LABEL: Record<Order["status"], string> = {
+  Pending: "Awaiting acceptance",
   "Wait List": "Send to Kitchen",
   "In Kitchen": "Mark Served",
   Ready: "Mark Served",

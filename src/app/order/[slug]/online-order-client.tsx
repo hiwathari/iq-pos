@@ -128,10 +128,10 @@ export function OnlineOrderClient({
       <div className="flex min-h-screen items-center justify-center bg-neutral-50 px-4">
         <div className="w-full max-w-sm rounded-2xl border border-neutral-200 bg-white p-7 text-center shadow-sm">
           <CheckCircle2 className="mx-auto mb-3 h-12 w-12 text-emerald-500" />
-          <h1 className="mb-1 text-lg font-semibold text-neutral-900">Order sent to the kitchen!</h1>
+          <h1 className="mb-1 text-lg font-semibold text-neutral-900">Order received!</h1>
           <p className="mb-4 text-sm text-neutral-500">
             Order #{orderNumber}
-            {tableQr ? ` · Table ${tableQr.tableNumber}` : ""} · Pay at the counter when ready.
+            {tableQr ? ` · Table ${tableQr.tableNumber}` : ""} · The team will confirm it shortly. Pay at the counter when ready.
           </p>
           <button
             onClick={() => setOrderNumber(null)}

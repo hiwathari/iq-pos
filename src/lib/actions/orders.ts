@@ -314,6 +314,42 @@ export async function voidOrderAction(orderId: string, reason: string) {
   revalidatePath("/reports");
 }
 
+// Customer-placed orders (website, table QR, kiosk) arrive as "Pending" and only reach the
+// kitchen once someone on the Till accepts them — stock is taken at that point, not before.
+// The status check is part of the update itself, so two tills tapping Accept at the same moment
+// can't both send it through (or both take the stock).
+export async function acceptOnlineOrderAction(orderId: string): Promise<{ error?: string }> {
+  const { restaurantId } = await requireRestaurantContext();
+  const accepted = await db
+    .update(orders)
+    .set({ status: "In Kitchen" })
+    .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId), eq(orders.status, "Pending")))
+    .returning({ items: orders.items });
+  if (accepted.length === 0) return { error: "Someone already handled this order." };
+  await decrementInventoryForOrder(restaurantId, accepted[0].items);
+  revalidatePath("/order-line");
+  revalidatePath("/manage-table");
+  revalidatePath("/dashboard");
+  revalidatePath("/kitchen");
+  return {};
+}
+
+export async function rejectOnlineOrderAction(orderId: string): Promise<{ error?: string }> {
+  const { restaurantId } = await requireRestaurantContext();
+  const rejected = await db
+    .update(orders)
+    .set({ status: "Voided", voidReason: "Online order not accepted", voidedAt: Date.now() })
+    .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId), eq(orders.status, "Pending")))
+    .returning({ tableId: orders.tableId });
+  if (rejected.length === 0) return { error: "Someone already handled this order." };
+  if (rejected[0].tableId) await freeTableIfNoLiveOrders(restaurantId, rejected[0].tableId, orderId);
+  revalidatePath("/order-line");
+  revalidatePath("/manage-table");
+  revalidatePath("/dashboard");
+  revalidatePath("/reports");
+  return {};
+}
+
 export interface TableActionState {
   error?: string;
   order?: Order;

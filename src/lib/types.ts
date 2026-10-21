@@ -91,7 +91,9 @@ export type ReservationStatus = "upcoming" | "on-dine" | "paid" | "unpaid" | "av
 export type ReservationSource = "walk-in" | "phone" | "online";
 export type OrderChannel = "Dine in" | "Wait List" | "Take Away" | "Delivery" | "Online" | "Third Party";
 export type ThirdPartyProvider = "Uber Eats" | "Deliveroo" | "Just Eat" | "Other";
-export type OrderStatus = "In Kitchen" | "Wait List" | "Ready" | "Served" | "Voided";
+// "Pending" = placed by a customer (website, table QR, kiosk) and waiting for staff to accept it on
+// the Till — it only reaches the kitchen once accepted (see acceptOnlineOrderAction).
+export type OrderStatus = "Pending" | "In Kitchen" | "Wait List" | "Ready" | "Served" | "Voided";
 export type PrinterStation = "Kitchen" | "Bar" | "Receipt" | "Expo";
 // A category's Kitchen Display override: null = automatic (derive from its printer's station,
 // the old behavior), "None" = hide from every Kitchen Display station, or pin to one specific

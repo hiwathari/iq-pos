@@ -250,7 +250,7 @@ export const orders = sqliteTable("orders", {
     enum: ["Dine in", "Wait List", "Take Away", "Delivery", "Online", "Third Party"],
   }).notNull(),
   thirdPartyProvider: text("third_party_provider", { enum: ["Uber Eats", "Deliveroo", "Just Eat", "Other"] }),
-  status: text("status", { enum: ["In Kitchen", "Wait List", "Ready", "Served", "Voided"] }).notNull(),
+  status: text("status", { enum: ["Pending", "In Kitchen", "Wait List", "Ready", "Served", "Voided"] }).notNull(),
   items: text("items", { mode: "json" }).notNull().$type<
     {
       dishId: string;

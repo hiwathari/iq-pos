@@ -306,6 +306,17 @@ way go through `placePublicOrderAction` (`lib/actions/public-order.ts`) — a se
 the staff-facing `placeOrderAction`, with its own server-side trust checks, and are tagged
 `placedVia: "online" | "kiosk"` so Kitchen/Till can flag them distinctly.
 
+**Staff acceptance.** Every customer-placed order (website, table QR, kiosk) is inserted with
+`status: "Pending"` and does *not* reach the Kitchen Display (it only shows Wait List / In
+Kitchen) or Open Tickets until someone on the Till accepts it: the red **Online** tab (count,
+pulsing) next to Tickets opens the list with Accept / Reject. `acceptOnlineOrderAction` moves it
+to "In Kitchen" and takes inventory then (not at placement); `rejectOnlineOrderAction` voids it
+("Online order not accepted") and frees the table. Both are conditional on the order still being
+Pending, so two tills can't double-handle one. The Till plays `playIncomingOrderAlert` on arrival
+and every 15s while any are waiting (it polls every 10s). Unaccepted orders are swept by the
+day-rollover auto-void like other open ones. "Pending" is a TS-level enum value only — SQLite has
+no CHECK constraint on `orders.status`, so no migration was needed.
+
 **Table QR codes (no sign-in).** Each table's QR encodes `/order/<slug>/table/<tableId>.<sig>`,
 where `sig` is an HMAC-SHA256 over `table-qr:v1:<restaurantId>:<tableId>` keyed by `JWT_SECRET`
 (`lib/table-qr-token.ts`, server-only; 22 base64url chars). The table is fixed by the code:
@@ -732,6 +743,24 @@ conversation says so.
 > **Instruction for every future change:** add a dated entry here (newest on top), *and* update
 > whichever numbered section above actually describes the thing you changed. A change without
 > both halves is not done.
+
+### 2026-10-21 (night) — Online orders need accepting on the Till; per-sound volume
+- New order status **"Pending"** for website / table-QR / kiosk orders, with Accept/Reject on the
+  Till's new red **Online** tab — full design in §7.5. Kitchen Display ignores Pending; Open
+  Tickets only counts accepted orders; dashboard "active" includes Pending; auto-void sweeps it.
+  Opening a pending order (e.g. from its table) jumps to the Online tab instead; the mobile Till
+  refuses to edit one. Customer confirmation now says "Order received — the team will confirm it
+  shortly" instead of "sent to the kitchen".
+- **Sounds**: `lib/order-sounds.ts` gains per-kind volumes (`incoming`, `kitchenNew`, `ready`, 0–1)
+  in localStorage (`iq-pos-sound-volumes`, per device) and a new, distinct `playIncomingOrderAlert`
+  (kiosk orders used to make no sound on the Till at all). New `components/sound-settings.tsx`
+  (🔊 button: a slider + Test per sound, Mute all) on the Till and Kitchen Display headers.
+- Till header fits one row from 11" up: "QR Menu Orders" / "Draft List" "SOON" placeholders
+  removed (QR ordering now exists), short labels below `2xl` ("New", "Tickets", "Online"),
+  New Order is a "+" and fullscreen hides below `xl`.
+- Verified locally end to end (phone places table-QR order → Till's Online tab shows 1 within
+  10s while Tickets doesn't count it → Accept → In Kitchen, Tickets +1; a second order → Reject →
+  Voided "Online order not accepted").
 
 ### 2026-10-21 (evening) — Restaurant logo as icon + social-share image on public ordering pages
 - New `app/order/[slug]/layout.tsx` (`generateMetadata`) covers the online order page, kiosk and

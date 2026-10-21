@@ -141,6 +141,11 @@ export function MobileTillClient({
     const activeOrder = orders.find(
       (o) => o.tableId === table.id && o.status !== "Voided" && !isOrderClosedOut(o)
     );
+    if (activeOrder?.status === "Pending") {
+      // A customer's order waiting for acceptance — editing it here would skip that step.
+      window.alert(`Table ${table.number} has a new customer order waiting. Accept it on the full Till first.`);
+      return;
+    }
     if (activeOrder) {
       setCart({
         editingOrderId: activeOrder.id,

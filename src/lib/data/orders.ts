@@ -25,7 +25,7 @@ async function autoVoidStaleOrders(restaurantId: string) {
     .where(
       and(
         eq(orders.restaurantId, restaurantId),
-        inArray(orders.status, ["Wait List", "In Kitchen"]),
+        inArray(orders.status, ["Pending", "Wait List", "In Kitchen"]),
         lt(orders.createdAt, dayStart)
       )
     );

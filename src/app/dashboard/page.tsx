@@ -108,7 +108,7 @@ export default async function DashboardPage() {
   const liveOrders = orders.filter((o) => o.status !== "Voided");
   // "Active"/"Finished" is about kitchen progress (still cooking vs served); "Pending"/"Billed"
   // just below is about payment instead — a finished, served order can still be unpaid.
-  const activeOrders = liveOrders.filter((o) => o.status === "Wait List" || o.status === "In Kitchen");
+  const activeOrders = liveOrders.filter((o) => o.status === "Pending" || o.status === "Wait List" || o.status === "In Kitchen");
   const finishedOrders = liveOrders.filter((o) => o.status === "Served");
   const pendingOrders = liveOrders.filter((o) => !isOrderClosedOut(o));
   const billedOrders = liveOrders.filter(isOrderClosedOut);

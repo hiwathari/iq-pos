@@ -19,6 +19,7 @@ import { unlockOrderAudio, playNewOrderChime, playOrderReadyChime } from "@/lib/
 import { businessDateKey, businessDayRange, shiftDateKey } from "@/lib/business-day";
 import { useVisibleInterval } from "@/lib/use-visible-interval";
 import { FullscreenButton } from "@/components/fullscreen-button";
+import { SoundSettingsButton } from "@/components/sound-settings";
 import {
   Check,
   CheckCheck,
@@ -294,6 +295,7 @@ export function KitchenClient({
           )}
         </h1>
         <div className="flex items-center gap-3">
+          <SoundSettingsButton className="flex items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3.5 py-2 text-sm font-semibold text-neutral-500 hover:bg-neutral-50" />
           <FullscreenButton className="flex items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3.5 py-2 text-sm font-semibold text-neutral-500 hover:bg-neutral-50" />
           <button
             onClick={() => window.location.reload()}
