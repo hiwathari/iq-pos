@@ -733,6 +733,22 @@ conversation says so.
 > whichever numbered section above actually describes the thing you changed. A change without
 > both halves is not done.
 
+### 2026-10-21 (evening) — Restaurant logo as icon + social-share image on public ordering pages
+- New `app/order/[slug]/layout.tsx` (`generateMetadata`) covers the online order page, kiosk and
+  table-QR pages: title "<Restaurant> · Order online", favicon/apple icon and Open Graph/Twitter
+  image all from the restaurant's logo. `metadataBase` is built from the request's
+  `x-forwarded-host`, so share previews are correct on a custom domain (order.hellochai.co.uk),
+  pos.luvder.com and iq-pos.vercel.app alike.
+- New route `app/order/[slug]/brand-image` (`?w=&h=&v=`): fetches `invoiceLogoUrl` (5s timeout,
+  8MB cap), letterboxes it on white with sharp — square icon, or a 1200×630 card with margins —
+  falling back to `public/brand/iq-pos-logo.png`. Under `/order/<slug>/` on purpose: `proxy.ts`
+  leaves that prefix alone on custom domains. `v` = hash of the logo URL, to bust caches.
+- `app/favicon.ico` moved to `public/favicon.ico`: as an app-folder file it was auto-linked on
+  every page ahead of the restaurant's icon. Staff pages still get their icon from the root
+  layout's `generateMetadata` (`/api/pwa-icon/...`), and `/favicon.ico` is still served.
+- order.hellochai.co.uk added to the iq-pos Vercel project (it had DNS but wasn't attached, so
+  TLS failed). Every custom ordering domain must be added there as well as in Super Admin.
+
 ### 2026-10-21 (latest) — Signed table QR codes: order with no sign-in, download/print per table
 - New `lib/table-qr-token.ts` (HMAC-signed `<tableId>.<sig>` tokens), page
   `app/order/[slug]/table/[token]`, and `placeTableQrOrderAction` in `lib/actions/public-order.ts`
