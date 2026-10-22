@@ -716,3 +716,36 @@ export const terminalExpenses = sqliteTable("terminal_expenses", {
   createdByName: text("created_by_name"),
   createdAt: timestamp("created_at"),
 });
+
+// A website brief sent from the IQ site's /build page (iq.luvder.com) — not tied to any
+// restaurant yet, since most senders aren't customers. Super Admin works through them on
+// /super-admin/website-requests. The form's full answers live in `details` (JSON), so new
+// questions on the form don't need a migration; the columns are only what the list shows.
+export const websiteRequests = sqliteTable("website_requests", {
+  id: id(),
+  status: text("status", { enum: ["new", "in_progress", "done", "archived"] }).notNull().default("new"),
+  restaurantName: text("restaurant_name").notNull(),
+  contactName: text("contact_name").notNull(),
+  contactEmail: text("contact_email").notNull(),
+  contactPhone: text("contact_phone"),
+  // What the sender typed into the first box, exactly as written.
+  description: text("description").notNull(),
+  details: text("details", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
+  // Uploaded logo/menu/photos — Vercel Blob URLs, or just the file names when Blob isn't set up.
+  files: text("files", { mode: "json" }).$type<{ kind: string; name: string; url: string | null; size: number }[]>().notNull(),
+  // How the form was pre-filled: "basic" (pattern matching) or "ai" (Claude).
+  extractedWith: text("extracted_with", { enum: ["basic", "ai"] }).notNull().default("basic"),
+  // SHA-256 of the sender's IP, only for the submit rate limit — never the raw address.
+  ipHash: text("ip_hash"),
+  adminNotes: text("admin_notes"),
+  createdAt: timestamp("created_at"),
+  updatedAt: int("updated_at"),
+});
+
+// Platform-wide settings owned by Super Admin, one row per key. Secret values (the Anthropic
+// API key) are stored encrypted — see lib/platform-settings.ts.
+export const platformSettings = sqliteTable("platform_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: int("updated_at").notNull(),
+});

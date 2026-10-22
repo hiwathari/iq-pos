@@ -141,6 +141,9 @@ one passed from the client.**
 Request flow, in order:
 
 1. **`src/proxy.ts`** runs on every request (except static assets). It:
+   - Serves the **IQ marketing site** on `iq.luvder.com` (and `iq.localhost`): rewrites `/x` to
+     `/site/x`, except `/api`, `/faq` and `/site` itself. That check runs before the custom-domain
+     lookup, so the IQ host never needs a `restaurants.customDomain` row.
    - Rewrites requests on a restaurant's **custom domain** to `/order/<slug>/...` transparently
      (so `order.alzayt.com/` silently serves `/order/al-zayt/`).
    - Lets customer-facing prefixes (`/my-card`, `/order`, `/invoice`) through untouched — they
@@ -605,6 +608,7 @@ actually used in code):
 | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | Database connection (`src/db/client.ts`) |
 | `JWT_SECRET` | Signing staff/admin session JWTs (`src/lib/session.ts`) |
 | `NEXT_PUBLIC_APP_URL` | Lets `proxy.ts` recognize the platform's own domain vs a tenant's custom domain. Currently `https://pos.luvder.com` (set in Vercel project env vars, production target) — a custom domain added directly in the Vercel project, not `restaurants.customDomain` (that field is per-restaurant and layered *on top* of this one, see §7.5). Also the last-resort fallback for building loyalty magic-link email URLs (`lib/actions/loyalty-auth.ts`'s `resolveOrigin`) — in practice those are built from the live request's `Host` header instead, so this only matters if `headers()` can't be read |
+| `BLOB_READ_WRITE_TOKEN` | Optional. Added by connecting a **public** Vercel Blob store to the project; lets the IQ site's `/build` page keep uploaded logos/menus/photos (`app/api/site/upload`). Without it only file names are kept. The Anthropic key for AI pre-fill is *not* an env var — Super Admin saves it (encrypted) in `platform_settings` |
 | `RESEND_API_KEY`, `RESEND_SENDING_DOMAIN` | Sending loyalty OTP/magic-link emails (`src/lib/email.ts`) |
 | `SUMUP_AFFILIATE_APP_ID`, `SUMUP_AFFILIATE_KEY` | Platform-level SumUp affiliate credentials (separate from each restaurant's own `sumupApiKey`) |
 | `SUNMI_CLOUD_PRINT_APP_ID`, `SUNMI_CLOUD_PRINT_APP_KEY` | Platform-level Sunmi Cloud Print partner credentials (§7.7) — shared across every restaurant, issued once by Sunmi |
@@ -743,6 +747,64 @@ conversation says so.
 > **Instruction for every future change:** add a dated entry here (newest on top), *and* update
 > whichever numbered section above actually describes the thing you changed. A change without
 > both halves is not done.
+
+### 2026-10-22 (night) — IQ website on iq.luvder.com, AI website brief, public FAQ
+- **Marketing site** under `app/site`, served at the root of **iq.luvder.com**: `proxy.ts`
+  rewrites that host (and `iq.localhost` for local testing) to `/site/...`, leaving `/api`,
+  `/faq` and static files alone. On any other host the pages are at `/site/...`, so links go
+  through `getSiteBase()` (`app/site/_components/site-base.ts`). Pages: home, `/products/<slug>`
+  for each of the 10 products, `/build`. Product data (names, taglines, Live / Early access /
+  Coming soon, copy, screenshots) lives in one list, `lib/site/products.ts`. Screenshots are
+  the clean Demo Café captures in `public/site/shots`. Sign in links go to pos.luvder.com/login.
+- **Website brief (`/build`)**: describe → logo/menu/photo uploads → "Read my details" →
+  review the pre-filled fields → a few questions (products wanted, style, pages, domain,
+  timing, contact) → saved to `website_requests`.
+  - `POST /api/site/analyse` does the pre-fill. With an Anthropic key saved it calls Claude
+    (`lib/site/extract-ai.ts`: Opus 5.5, structured output, server-side refusal fallback on),
+    sending the menu PDFs/images and logo directly. Otherwise, or if that call fails, it runs
+    pattern matching (`lib/site/extract-basic.ts`: name, phone, email, site, Instagram, UK
+    address/postcode, hours, cuisine, colour names/hex, wanted products, and price lines from
+    the menu PDF text via `unpdf`). Logo colours are always worked out in the browser.
+  - Uploads go browser → Vercel Blob via `POST /api/site/upload` (`handleUpload`: images and PDFs
+    only, 15MB, `website-requests/` prefix) when `BLOB_READ_WRITE_TOKEN` is set. Without it,
+    the files ride inside the analyse request instead (≤4MB total), and only their names are kept.
+  - Rate limits: uploads and analyse are limited per IP in memory (best-effort); submit allows
+    5 per hour per IP-hash, checked in the database.
+- **Super Admin → Website Requests** (`/super-admin/website-requests`, super_admin only; sidebar
+  link and a button with the "new" count on Super Admin): status filter, a detail drawer
+  (contact, original text, extracted fields, files, menu, answers, internal notes), and the
+  **AI reading** card that saves/tests/removes the Anthropic key. The key is stored AES-256-GCM
+  encrypted with a key derived from JWT_SECRET (`lib/platform-settings.ts`) — rotating
+  JWT_SECRET makes it read as "not set". Only the last 4 characters are shown.
+- **Public FAQ** at `/faq` (both hosts, no sign-in): the Help Center's content and screenshots
+  with a public header. `HelpCenterClient` takes an optional `title`.
+- New packages: `@vercel/blob`, `unpdf`, `@anthropic-ai/sdk`, `zod`.
+- **New tables — run once on Turso** (until then the requests page shows a notice and the
+  Super Admin count is hidden; nothing else touches them):
+  ```sql
+  CREATE TABLE `platform_settings` (
+  	`key` text PRIMARY KEY NOT NULL,
+  	`value` text NOT NULL,
+  	`updated_at` integer NOT NULL
+  );
+  
+  CREATE TABLE `website_requests` (
+  	`id` text PRIMARY KEY NOT NULL,
+  	`status` text DEFAULT 'new' NOT NULL,
+  	`restaurant_name` text NOT NULL,
+  	`contact_name` text NOT NULL,
+  	`contact_email` text NOT NULL,
+  	`contact_phone` text,
+  	`description` text NOT NULL,
+  	`details` text NOT NULL,
+  	`files` text NOT NULL,
+  	`extracted_with` text DEFAULT 'basic' NOT NULL,
+  	`ip_hash` text,
+  	`admin_notes` text,
+  	`created_at` integer NOT NULL,
+  	`updated_at` integer
+  );
+  ```
 
 ### 2026-10-22 — Help Center FAQ with marked screenshots; fixes it surfaced
 - **Help Center** (`app/help-center`) replaces the "coming soon" placeholder: 42 Q&As in 9 sections

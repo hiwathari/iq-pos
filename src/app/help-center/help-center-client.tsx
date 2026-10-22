@@ -7,7 +7,7 @@ import type { FaqItem, FaqSection } from "./faq";
 
 // Searchable, sectioned FAQ. Each answer's numbered steps use the same red numbers as the markers
 // on its screenshot, so "2" in the text is the box marked 2 in the picture.
-export function HelpCenterClient({ sections }: { sections: FaqSection[] }) {
+export function HelpCenterClient({ sections, title = "Help Center" }: { sections: FaqSection[]; title?: string }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<Set<string>>(() => new Set(["till-overview"]));
   const [zoom, setZoom] = useState<FaqItem | null>(null);
@@ -51,7 +51,7 @@ export function HelpCenterClient({ sections }: { sections: FaqSection[] }) {
 
       <div className="min-w-0 flex-1">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-neutral-900">Help Center</h1>
+          <h1 className="text-2xl font-semibold text-neutral-900">{title}</h1>
           <p className="mt-1 text-sm text-neutral-500">
             Step-by-step answers with marked screenshots. The red numbers in each picture match the numbered steps.
           </p>

@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import {
   Building2,
   ChefHat,
   Check,
   Copy,
   Globe,
+  Inbox,
   Palette,
   Plus,
   ShieldCheck,
@@ -63,11 +65,14 @@ export function SuperAdminClient({
   totals,
   isSuperAdmin,
   regionalAdmins,
+  newWebsiteRequests = null,
 }: {
   restaurants: RestaurantRow[];
   totals: { restaurantCount: number; userCount: number; orderCount: number };
   isSuperAdmin: boolean;
   regionalAdmins: RegionalAdminRow[];
+  // Null for regional admins, or when the website_requests table hasn't been created yet.
+  newWebsiteRequests?: number | null;
 }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [brandingTarget, setBrandingTarget] = useState<RestaurantRow | null>(null);
@@ -80,7 +85,16 @@ export function SuperAdminClient({
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-neutral-900">{isSuperAdmin ? "Super Admin" : "Regional Admin"}</h1>
         {isSuperAdmin && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/super-admin/website-requests"
+              className="flex items-center gap-2 rounded-xl border border-neutral-200 px-4 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
+            >
+              <Inbox className="h-4 w-4" /> Website Requests
+              {!!newWebsiteRequests && (
+                <span className="rounded-full bg-rose-600 px-1.5 py-0.5 text-[11px] font-bold leading-none text-white">{newWebsiteRequests}</span>
+              )}
+            </Link>
             <button
               onClick={() => setRegionalAdminModalOpen(true)}
               className="flex items-center gap-2 rounded-xl border border-neutral-200 px-4 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"

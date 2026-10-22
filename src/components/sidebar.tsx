@@ -21,6 +21,7 @@ import {
   Package,
   PanelLeftClose,
   PanelLeftOpen,
+  Globe,
 } from "lucide-react";
 import { BrandLogo } from "./brand-logo";
 import clsx from "clsx";
@@ -143,6 +144,17 @@ export function Sidebar({
           >
             <ShieldCheck className="h-[18px] w-[18px] shrink-0" strokeWidth={2} />
             {!collapsed && "Super Admin"}
+          </Link>
+        )}
+        {role === "super_admin" && !isImpersonating && (
+          <Link
+            href="/super-admin/website-requests"
+            prefetch={false}
+            title={collapsed ? "Website Requests" : undefined}
+            className={linkClass(pathname === "/super-admin/website-requests")}
+          >
+            <Globe className="h-[18px] w-[18px] shrink-0" strokeWidth={2} />
+            {!collapsed && "Website Requests"}
           </Link>
         )}
         {items.map((item) => {

@@ -10,7 +10,24 @@ const PUBLIC_PATHS = ["/login", "/till-login", "/kitchen-login", "/staff-login"]
 // are the public Till-APK download page and the static .apk file it links to — reachable from a
 // bare Sunmi device browser with no session at all, same reasoning. Also reachable from a
 // restaurant's custom ordering domain, rewritten in here — see resolveCustomDomain.
-const CUSTOMER_FACING_PREFIXES = ["/my-card", "/order", "/invoice", "/get", "/downloads"];
+const CUSTOMER_FACING_PREFIXES = ["/my-card", "/order", "/invoice", "/get", "/downloads", "/site", "/faq", "/api/site"];
+
+// The IQ marketing site (iq.luvder.com — and iq.localhost for local testing) is the same app,
+// served from /site: "/" → /site, "/build" → /site/build, and so on. /faq, /api and static files
+// are shared with the POS host and pass through untouched.
+function isSiteHost(hostname: string) {
+  return hostname === "iq.luvder.com" || hostname === "iq.localhost";
+}
+
+function rewriteSiteHost(request: NextRequest) {
+  const hostname = (request.headers.get("host") ?? "").split(":")[0].toLowerCase();
+  if (!isSiteHost(hostname)) return null;
+  const { pathname } = request.nextUrl;
+  if (pathname.startsWith("/site") || pathname.startsWith("/api") || pathname.startsWith("/faq")) return NextResponse.next();
+  const url = request.nextUrl.clone();
+  url.pathname = `/site${pathname === "/" ? "" : pathname}`;
+  return NextResponse.rewrite(url);
+}
 
 // Proxy defaults to the Node.js runtime in Next.js 16 (not Edge), so a real DB lookup here is
 // fine — this only ever runs for a Host header that isn't the platform's own domain, i.e. almost
@@ -83,6 +100,9 @@ export async function proxy(request: NextRequest) {
   ) {
     return NextResponse.next();
   }
+
+  const siteRewrite = rewriteSiteHost(request);
+  if (siteRewrite) return siteRewrite;
 
   const customDomainRewrite = await resolveCustomDomain(request);
   if (customDomainRewrite) return customDomainRewrite;
