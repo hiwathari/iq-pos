@@ -750,8 +750,11 @@ conversation says so.
 ## 14. Changelog
 
 > **Instruction for every future change:** add a dated entry here (newest on top), *and* update
-> whichever numbered section above actually describes the thing you changed. A change without
-> both halves is not done.
+> whichever numbered section above actually describes the thing you changed, *and* add or update
+> its how-to in the FAQ (`src/app/help-center/faq.ts` — the in-app Help Center and the public
+> `/faq` page), re-capturing the marked screenshot in `public/help/` when the screen changed. A
+> change without all three is not done. This guide plus that FAQ are the source for the final
+> project documentation, so both must always match the live system. (Also in `CLAUDE.md`.)
 
 ### 2026-10-22 (late) — Till cart: 7+ tray lines, Offers and Split popups
 - The cart panel gives the order tray the height: the title block is gone (the order type row now
