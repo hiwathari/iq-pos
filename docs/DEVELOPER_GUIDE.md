@@ -555,7 +555,12 @@ reconciliation tool regardless of provider.
 
 - **`order-line-client.tsx`** ("Full") — the complete Till: tables, splitting payments across
   multiple methods, discounts/coupons, loyalty lookup, SumUp/Teya live card charging, editing a
-  sent order, the payment-lock/redo flow (see §14 changelog).
+  sent order, the payment-lock/redo flow (see §14 changelog). The cart panel is one header row
+  (order type + action icons), the table/customer summary, the order tray (the only part that
+  grows), then Total with small **Offers** (`DiscountsModal`) and **Split** (`SplitBillModal`)
+  buttons, the payment buttons and the main button. Split pays each guest's share inside the
+  popup via `paySplitShare` — payment lines stay one per method (`addPayment` merges), and once
+  the bill is fully paid the popup closes and calls `handlePlaceOrder`.
 - **`mobile-till-client.tsx`** ("Simple") — a deliberately minimal quick-order flow for a
   handheld/phone screen: channel → table → menu → cart → send. It has **no** live card-charging
   overlay. As of the most recent change (§14) it can record a **Cash** payment at order time (a
@@ -747,6 +752,22 @@ conversation says so.
 > **Instruction for every future change:** add a dated entry here (newest on top), *and* update
 > whichever numbered section above actually describes the thing you changed. A change without
 > both halves is not done.
+
+### 2026-10-22 (late) — Till cart: 7+ tray lines, Offers and Split popups
+- The cart panel gives the order tray the height: the title block is gone (the order type row now
+  shares the top line with the print/delete icons; the order number heads the tray), tray rows
+  are compact 40px lines, and Discounts & Loyalty moved from an accordion above the total into an
+  **Offers** button beside it that opens a popup. 7+ lines are visible at 1024×768, 1280×720 and
+  1366×768, and all 9 test lines at 1280×800 and up (measured with 9 items).
+- **Split** (beside the total) opens a popup: *Split equally* between N guests (default: the
+  table's guest count) or *By items* (pick what each guest had; discounts/tax shared out in
+  proportion, the last guest pays exactly what's left). Each share is paid there by Cash (with
+  cash-given → change) or a card machine; SumUp/Teya readers are charged for just that share.
+  Close (X) any time — payments taken stay on the order. When fully paid the popup closes itself
+  and completes the order, same as Take Payment. No schema change: same-method shares merge into
+  one payment line, and cash received accumulates across cash shares.
+- Help Center: new "split the bill between guests" how-to; screenshots re-captured for the new
+  cart layout.
 
 ### 2026-10-22 (night) — IQ website on iq.luvder.com, AI website brief, public FAQ
 - **Marketing site** under `app/site`, served at the root of **iq.luvder.com**: `proxy.ts`
