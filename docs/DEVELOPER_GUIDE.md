@@ -445,7 +445,9 @@ static, served from `pos.luvder.com/downloads/` (`/downloads` is a public prefix
 - `install-print-bridge.ps1` — Windows: `irm https://pos.luvder.com/downloads/install-print-bridge.ps1
   | iex`. Installs Node LTS via winget if missing, downloads to `%USERPROFILE%\iq-print-bridge`,
   adds a hidden-window VBScript launcher to the Startup folder, starts it and checks it.
-Re-running any installer updates/repairs (it stops the running copy first).
+Re-running any installer updates/repairs (it stops the running copy first). `next.config.ts`
+serves these three files as `text/plain; charset=utf-8` with `Cache-Control: no-cache` — `irm | iex`
+needs text (Vercel's default for `.ps1` is `application/octet-stream`).
 
 **Super Admin → Printers** (`app/super-admin/printers`): super admins and regional admins pick a
 restaurant (regional admins see only their assigned ones) and manage its printers with the same
@@ -800,6 +802,8 @@ conversation says so.
   (moved from `scripts/local-print-bridge.js`; v2 adds `find`, `test`, `--version`, binds to
   127.0.0.1, rejects non-hex bodies), `install-print-bridge.sh` (Termux/macOS/Linux, with
   autostart) and `install-print-bridge.ps1` (Windows, with autostart).
+- `next.config.ts` now serves `/downloads/*.sh|.ps1|.js` as `text/plain` with `no-cache`, so the
+  one-line installers always get the current script as text.
 - Adding a Network/WiFi printer with an IP now saves it for local printing straight away; the
   field is labelled "IP address" for those connections.
 - Tested: Linux installer end to end; bridge `find`/`test`/`POST /print` against a stand-in
