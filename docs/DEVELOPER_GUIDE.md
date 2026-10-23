@@ -122,6 +122,8 @@ src/
   proxy.ts                   # Request-level auth gate + custom-domain rewrite (see §4)
 scripts/
   seed.ts                    # npm run db:seed — wipes DB, creates one super admin + one restaurant
+public/downloads/            # Served as-is at pos.luvder.com/downloads/: the Till APK, the print
+                             # bridge (iq-print-bridge.js) and its installers (.sh / .ps1) — §7.8
 drizzle.config.ts             # drizzle-kit config (local dev only — see §11 on how migrations
                                # actually get applied in this project)
 ```
@@ -394,12 +396,12 @@ ESC/POS connection on **TCP port 9100** — the decades-old "JetDirect" standard
 the same local network, completely independent of any cloud service.
 
 The catch: a **browser cannot open a raw TCP socket**, so the Till's own page can't talk to
-`printer-ip:9100` directly. The fix is `scripts/local-print-bridge.js` — a tiny, dependency-free
+`printer-ip:9100` directly. The fix is `public/downloads/iq-print-bridge.js` — a tiny, dependency-free
 standalone Node program (built from `src/lib/escpos-ticket.ts`'s same ESC/POS output) that:
 
 1. Runs on **any device on the same local network as the printer** — the simplest and recommended
    setup is directly on the Till itself via **Termux** (a terminal/Node runtime app for Android;
-   `pkg install nodejs` then `node local-print-bridge.js`), since the Till is usually already a
+   `pkg install nodejs` then `node iq-print-bridge.js`), since the Till is usually already a
    Sunmi Android device sitting on that same WiFi.
 2. Listens on `http://127.0.0.1:9200` for a plain HTTP POST from the Till's own browser (a
    same-device/loopback call, not a vendor API call).
@@ -421,7 +423,38 @@ already saved. Once it's on for one printer, that popup is replaced entirely for
 there's no "alongside" fallback if the bridge turns out to be unreachable at print time.
 
 Settings → Printers has a "Connect Local Network Print" control per (non-display) printer — IP +
-optional port (defaults to 9100), plus a **Test Print** button that exercises the whole chain.
+optional port (defaults to 9100), plus a **Test Print** button that exercises the whole chain. A
+Network/WiFi printer added with an IP (or `ip:port`) in the Add dialog gets it saved as
+`localPrinterIp` straight away (`createPrinterAction`).
+
+**Setup kit and scripts** (`components/printer-setup-guide.tsx`, shown on Super Admin → Printers
+and in a collapsible under Settings → Printers): the steps, copyable one-line installers, the
+finder/test commands, a "Check this device" button (detects the Till app's
+`window.AndroidPrintBridge`, else GETs `http://127.0.0.1:9200/`) and the downloads. The files are
+static, served from `pos.luvder.com/downloads/` (`/downloads` is a public prefix in `proxy.ts`):
+- `iq-print-bridge.js` (v2) — `node iq-print-bridge.js [port]` runs the bridge, now bound to
+  `127.0.0.1` only; `find [192.168.1]` scans the /24 network(s) for anything with port 9100 open;
+  `test <ip> [port]` prints a test page directly (no app involved); `--version`. `GET /` returns
+  `{ ok, service, version }`.
+- `install-print-bridge.sh` — Termux / macOS / Linux: `curl -fsSL
+  https://pos.luvder.com/downloads/install-print-bridge.sh | sh`. Installs Node on Termux
+  (`pkg`), downloads the bridge to `~/iq-print-bridge`, sets up autostart (Termux:Boot script in
+  `~/.termux/boot`, a launchd agent `com.iqpos.printbridge` on macOS, a systemd user service
+  `iq-print-bridge` on Linux, else `nohup`), starts it and checks `http://127.0.0.1:9200`.
+  `IQ_BRIDGE_PORT` / `IQ_BRIDGE_BASE` override the port / download origin (the latter for testing).
+- `install-print-bridge.ps1` — Windows: `irm https://pos.luvder.com/downloads/install-print-bridge.ps1
+  | iex`. Installs Node LTS via winget if missing, downloads to `%USERPROFILE%\iq-print-bridge`,
+  adds a hidden-window VBScript launcher to the Startup folder, starts it and checks it.
+Re-running any installer updates/repairs (it stops the running copy first).
+
+**Super Admin → Printers** (`app/super-admin/printers`): super admins and regional admins pick a
+restaurant (regional admins see only their assigned ones) and manage its printers with the same
+`PrintersClient`, passed `restaurantId`. Every printer action in `lib/actions/printers.ts` takes
+an optional `targetRestaurantId`; `printerScope()` accepts it only from a super_admin, or a
+regional_admin for whom `assertRestaurantAccess` passes — otherwise actions use the signed-in
+restaurant and the "settings" permission as before. `buildTicketEscPosAction` (test print) also
+accepts a super/regional session with no restaurant. The Sunmi Cloud Print row is hidden there
+(unused, and its actions need the restaurant's own session).
 
 ⚠️ **Private Network Access**: Chrome requires the bridge's preflight OPTIONS response to include
 `Access-Control-Allow-Private-Network: true` before it'll let an HTTPS page (the Till, served from
@@ -434,7 +467,7 @@ else is broken.
 
 ⚠️ **Test Print only ever works from the Till device itself** — the bridge call targets
 `127.0.0.1` (loopback) by design, so it only succeeds on whatever device is actually running
-`local-print-bridge.js`. Testing from a different computer (e.g. opening Settings on a laptop)
+`iq-print-bridge.js`. Testing from a different computer (e.g. opening Settings on a laptop)
 will always fail with no bridge listening on *that* machine's `127.0.0.1` — that's expected, not a
 bug, and isn't evidence the bridge or printer setup is wrong.
 
@@ -494,7 +527,7 @@ built ad hoc); recreate it from this description if it needs to change:
   the app (unlike the Termux bridge) — same-process native call instead, which also sidesteps
   Chrome's Private Network Access restrictions entirely.
 - `lib/local-print-bridge.ts` on the web side checks `window.AndroidPrintBridge` first and calls it
-  directly when present; it only falls back to the HTTP bridge (`scripts/local-print-bridge.js`,
+  directly when present; it only falls back to the HTTP bridge (`public/downloads/iq-print-bridge.js`,
   Termux) when that global doesn't exist — so the exact same web code path serves both a plain
   browser+Termux setup and the APK, with no restaurant-specific branching needed.
 - Distributed as a debug-signed APK (fine for sideloading; not a Play Store release) hosted at
@@ -589,7 +622,7 @@ don't assume a change to one automatically applies to the other.
 | Inventory | `app/inventory/` | `lib/actions/inventory.ts` | `lib/data/inventory.ts` |
 | Staff & permissions | `app/settings/staff-client.tsx` | `lib/actions/staff.ts` | `lib/data/staff.ts` |
 | Printers / Kitchen Displays | `app/settings/printers-client.tsx` | `lib/actions/printers.ts` | `lib/data/printers.ts` |
-| Local network print (§7.8 — the one actually in use) | `app/settings/printers-client.tsx` (`LocalNetworkPrintRow`), `scripts/local-print-bridge.js` | `lib/actions/printers.ts` (`saveLocalPrinterAction`), `lib/actions/local-print.ts` | `lib/local-print-bridge.ts`, `lib/escpos-ticket.ts` |
+| Local network print (§7.8 — the one actually in use) | `app/settings/printers-client.tsx` (`LocalNetworkPrintRow`), `app/super-admin/printers`, `components/printer-setup-guide.tsx`, `public/downloads/iq-print-bridge.js` + `install-print-bridge.{sh,ps1}` | `lib/actions/printers.ts` (`saveLocalPrinterAction`), `lib/actions/local-print.ts` | `lib/local-print-bridge.ts`, `lib/escpos-ticket.ts` |
 | Sunmi Cloud Print (§7.7 — built, not in use) | `app/settings/printers-client.tsx` (`SunmiCloudPrintRow`) | `lib/actions/sunmi-print.ts` | `lib/data/sunmi-print.ts`, `lib/sunmi-print.ts`, `app/api/sunmi/printTicket/*` |
 | Payment terminals (incl. SumUp/Teya) | `app/settings/payment-terminals-client.tsx` | `lib/actions/sumup.ts`, `teya.ts` | `lib/data/sumup.ts`, `teya.ts` |
 | Restaurant settings | `app/settings/restaurant-client.tsx` | `lib/actions/restaurants.ts` | — |
@@ -738,7 +771,7 @@ conversation says so.
   it isn't wired into Kitchen Display ticket printing or the mobile/Simple Till (which has no print button at
   all). It's also only ever a *second*, best-effort print alongside the existing browser-print
   popup, never a replacement for it — if the local bridge isn't running, nothing about today's
-  printing behavior changes. The bridge program itself (`scripts/local-print-bridge.js`) has to be
+  printing behavior changes. The bridge program itself (`public/downloads/iq-print-bridge.js`) has to be
   kept running by the restaurant (e.g. a persistent Termux session on the Till) — there's no
   supervision/auto-restart built in if it crashes or the device reboots.
 
@@ -755,6 +788,26 @@ conversation says so.
 > `/faq` page), re-capturing the marked screenshot in `public/help/` when the screen changed. A
 > change without all three is not done. This guide plus that FAQ are the source for the final
 > project documentation, so both must always match the live system. (Also in `CLAUDE.md`.)
+
+### 2026-10-23 — Printer setup for Super Admin / regional admins, setup kit and scripts
+- **Super Admin → Printers** (sidebar, super and regional admins): pick a restaurant and add,
+  connect, test and switch Till auto-print for its printers and Kitchen Displays without signing
+  in to it. Regional admins only see — and the actions only accept — their assigned restaurants
+  (`printerScope` in `lib/actions/printers.ts`; see §7.8).
+- **Setup kit** (same page, and a collapsible under Settings → Printers): steps, one-line
+  installers, find/test commands, "Check this device", downloads and troubleshooting.
+- **Scripts** in `public/downloads/` (served at pos.luvder.com/downloads/): `iq-print-bridge.js`
+  (moved from `scripts/local-print-bridge.js`; v2 adds `find`, `test`, `--version`, binds to
+  127.0.0.1, rejects non-hex bodies), `install-print-bridge.sh` (Termux/macOS/Linux, with
+  autostart) and `install-print-bridge.ps1` (Windows, with autostart).
+- Adding a Network/WiFi printer with an IP now saves it for local printing straight away; the
+  field is labelled "IP address" for those connections.
+- Tested: Linux installer end to end; bridge `find`/`test`/`POST /print` against a stand-in
+  printer on :9100; a Super Admin adding a printer to another restaurant, turning on auto-print
+  and Test Print reaching the printer through the bridge; a regional admin seeing only their
+  restaurant. Not tested here: the Termux, macOS and Windows installers on real devices.
+- FAQ: new "How do I get receipts printing from the Till?" (with screenshot) and "Can IQ set up
+  our printers for us?"; the printers answer mentions entering the IP.
 
 ### 2026-10-22 (late) — Till cart: 7+ tray lines, Offers and Split popups
 - The cart panel gives the order tray the height: the title block is gone (the order type row now

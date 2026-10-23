@@ -5,6 +5,7 @@ import { getRestaurant } from "@/lib/data/restaurants";
 import { listIntegrations, listPaymentTerminals, listPrinters } from "@/lib/data/printers";
 import { StaffClient } from "./staff-client";
 import { PrintersClient } from "./printers-client";
+import { PrinterSetupGuide } from "@/components/printer-setup-guide";
 import { PaymentTerminalsClient } from "./payment-terminals-client";
 import { IntegrationsClient } from "./integrations-client";
 import { RestaurantClient } from "./restaurant-client";
@@ -61,6 +62,12 @@ export default async function SettingsPage() {
         </div>
         <div className="border-t border-neutral-100 pt-8">
           <PrintersClient printers={printers} />
+          <details className="mt-5 rounded-2xl border border-neutral-200 bg-white p-4 [&_summary::-webkit-details-marker]:hidden">
+            <summary className="cursor-pointer list-none text-sm font-semibold text-neutral-900">Printer setup kit — steps, scripts and downloads</summary>
+            <div className="mt-4">
+              <PrinterSetupGuide />
+            </div>
+          </details>
         </div>
         <div className="border-t border-neutral-100 pt-8">
           <PaymentTerminalsClient

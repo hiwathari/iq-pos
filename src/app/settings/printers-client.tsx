@@ -27,28 +27,30 @@ const CONNECTION_ICON: Record<PrinterConnection, typeof Bluetooth> = {
   USB: Cable,
 };
 
-export function PrintersClient({ printers }: { printers: Printer[] }) {
+// `restaurantId` is set when Super Admin → Printers renders this for a chosen restaurant (a super
+// or regional admin isn't signed in to that restaurant); every action then targets it explicitly.
+export function PrintersClient({ printers, restaurantId }: { printers: Printer[]; restaurantId?: string }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [modalOpen, setModalOpen] = useState(false);
 
   function toggle(id: string, active: boolean) {
     startTransition(async () => {
-      await togglePrinterActiveAction(id, active);
+      await togglePrinterActiveAction(id, active, restaurantId);
       router.refresh();
     });
   }
 
   function remove(id: string) {
     startTransition(async () => {
-      await deletePrinterAction(id);
+      await deletePrinterAction(id, restaurantId);
       router.refresh();
     });
   }
 
   function makeDefault(id: string) {
     startTransition(async () => {
-      await setDefaultPrinterAction(id);
+      await setDefaultPrinterAction(id, restaurantId);
       router.refresh();
     });
   }
@@ -104,8 +106,9 @@ export function PrintersClient({ printers }: { printers: Printer[] }) {
                 </div>
                 {p.kind !== "display" && (
                   <>
-                    <LocalNetworkPrintRow printer={p} />
-                    <SunmiCloudPrintRow printer={p} />
+                    <LocalNetworkPrintRow printer={p} restaurantId={restaurantId} />
+                    {/* Sunmi Cloud Print isn't in use (§7.7) and its actions need the restaurant's own session. */}
+                    {!restaurantId && <SunmiCloudPrintRow printer={p} />}
                   </>
                 )}
               </div>
@@ -141,16 +144,16 @@ export function PrintersClient({ printers }: { printers: Printer[] }) {
         )}
       </div>
 
-      {modalOpen && <AddPrinterModal onClose={() => setModalOpen(false)} />}
+      {modalOpen && <AddPrinterModal restaurantId={restaurantId} onClose={() => setModalOpen(false)} />}
     </div>
   );
 }
 
 // Inline per-printer local-network print control — raw ESC/POS over TCP:9100, the path that
 // actually works without any vendor cloud account (see docs/DEVELOPER_GUIDE.md §7.7). Needs a
-// small local bridge program running on the same network as the printer (scripts/local-print-bridge.js)
+// small local bridge program running on the same network as the printer (public/downloads/iq-print-bridge.js)
 // since the browser itself can't open the raw socket — Test Print exercises that whole chain.
-function LocalNetworkPrintRow({ printer }: { printer: Printer }) {
+function LocalNetworkPrintRow({ printer, restaurantId }: { printer: Printer; restaurantId?: string }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [editing, setEditing] = useState(!printer.localPrinterIp);
@@ -164,7 +167,7 @@ function LocalNetworkPrintRow({ printer }: { printer: Printer }) {
     setError(null);
     setPending(true);
     startTransition(async () => {
-      const result = await setTillReceiptPrinterAction(printer.id, enabled);
+      const result = await setTillReceiptPrinterAction(printer.id, enabled, restaurantId);
       setPending(false);
       if (result?.error) {
         setError(result.error);
@@ -178,7 +181,7 @@ function LocalNetworkPrintRow({ printer }: { printer: Printer }) {
     setError(null);
     setPending(true);
     startTransition(async () => {
-      const result = await saveLocalPrinterAction(printer.id, ip, port);
+      const result = await saveLocalPrinterAction(printer.id, ip, port, restaurantId);
       setPending(false);
       if (result?.error) {
         setError(result.error);
@@ -303,7 +306,7 @@ function LocalNetworkPrintRow({ printer }: { printer: Printer }) {
       )}
       {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
       {testResult === "sent" && <p className="mt-1 text-xs text-emerald-600">Test ticket sent — check the printer.</p>}
-      <p className="mt-1 text-[10px] text-neutral-400">Requires the local print bridge running (see docs/DEVELOPER_GUIDE.md §7.8).</p>
+      <p className="mt-1 text-[10px] text-neutral-400">Prints from the Till through the IQ POS Till app or the print bridge — see the printer setup kit.</p>
     </div>
   );
 }
@@ -409,7 +412,7 @@ function SunmiCloudPrintRow({ printer }: { printer: Printer }) {
   );
 }
 
-function AddPrinterModal({ onClose }: { onClose: () => void }) {
+function AddPrinterModal({ onClose, restaurantId }: { onClose: () => void; restaurantId?: string }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [name, setName] = useState("");
@@ -436,7 +439,7 @@ function AddPrinterModal({ onClose }: { onClose: () => void }) {
         connection: needsConnection ? connection : undefined,
         address: needsConnection ? address : undefined,
         pin: needsPin ? pin : undefined,
-      });
+      }, restaurantId);
       setPending(false);
       if (result?.error) {
         setError(result.error);
@@ -513,7 +516,9 @@ function AddPrinterModal({ onClose }: { onClose: () => void }) {
                 </select>
               </div>
               <div>
-                <label className="mb-1.5 block text-xs font-medium text-neutral-500">Address / MAC (optional)</label>
+                <label className="mb-1.5 block text-xs font-medium text-neutral-500">
+                  {connection === "Network" || connection === "WiFi" ? "IP address (optional)" : "Address / MAC (optional)"}
+                </label>
                 <input
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}

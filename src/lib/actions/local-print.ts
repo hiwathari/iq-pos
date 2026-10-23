@@ -1,6 +1,6 @@
 "use server";
 
-import { requireRestaurantContext } from "@/lib/scope";
+import { requireRestaurantContext, requireSession } from "@/lib/scope";
 import { buildEscPosTicket, type SunmiTicketData } from "@/lib/escpos-ticket";
 
 // Turns the same ticket shape the Till already builds for browser printing (see
@@ -10,6 +10,8 @@ import { buildEscPosTicket, type SunmiTicketData } from "@/lib/escpos-ticket";
 // level as the existing browser-print path, which has no extra validation either); nothing here
 // re-derives or re-prices the order.
 export async function buildTicketEscPosAction(ticket: SunmiTicketData): Promise<{ hex: string }> {
-  await requireRestaurantContext();
+  // Super/regional admins test-print from Super Admin → Printers without being "in" a restaurant.
+  const session = await requireSession();
+  if (session.role !== "super_admin" && session.role !== "regional_admin") await requireRestaurantContext();
   return buildEscPosTicket(ticket);
 }

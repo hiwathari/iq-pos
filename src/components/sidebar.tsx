@@ -22,6 +22,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Globe,
+  Printer,
 } from "lucide-react";
 import { BrandLogo } from "./brand-logo";
 import clsx from "clsx";
@@ -155,6 +156,17 @@ export function Sidebar({
           >
             <Globe className="h-[18px] w-[18px] shrink-0" strokeWidth={2} />
             {!collapsed && "Website Requests"}
+          </Link>
+        )}
+        {isSuperOrRegional && !isImpersonating && (
+          <Link
+            href="/super-admin/printers"
+            prefetch={false}
+            title={collapsed ? "Printers" : undefined}
+            className={linkClass(pathname === "/super-admin/printers")}
+          >
+            <Printer className="h-[18px] w-[18px] shrink-0" strokeWidth={2} />
+            {!collapsed && "Printers"}
           </Link>
         )}
         {items.map((item) => {

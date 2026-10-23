@@ -12,7 +12,7 @@ export interface FaqItem {
   portrait?: boolean;
   tip?: string;
   // Who usually does this — shown as a small badge.
-  who?: "Everyone" | "Admin" | "Manager";
+  who?: "Everyone" | "Admin" | "Manager" | "Super Admin";
 }
 
 export interface FaqSection {
@@ -362,9 +362,32 @@ export const FAQ: FaqSection[] = [
         id: "printers",
         q: "How do I add a printer or a kitchen screen?",
         a: "Add each kitchen printer, receipt printer and Kitchen Display screen here. Kitchen buttons and tickets only appear once one of these is added.",
-        steps: ["Printers & Displays.", "Add Printer / Display — choose the station (Kitchen, Bar, Receipt…) and how it connects."],
+        steps: [
+          "Printers & Displays.",
+          "Add Printer / Display — choose the station (Kitchen, Bar, Receipt…) and how it connects. For a Network or WiFi printer, type its IP address and it's ready for the Till straight away.",
+        ],
         image: "printers",
         who: "Admin",
+      },
+      {
+        id: "printer-setup",
+        q: "How do I get receipts printing from the Till?",
+        a: "The Till prints straight to a network or WiFi receipt printer. On a Sunmi or Android Till, install the IQ POS Till app from pos.luvder.com/get — printing is built in. If the Till runs in a web browser instead, install the small IQ print bridge on it with one command. Everything you need is under Settings → Printers → Printer setup kit.",
+        steps: [
+          "Choose the Till's system: Android (Termux), Windows, or Mac / Linux.",
+          "Copy the install command and run it on the Till. Android: pkg install -y curl && curl -fsSL https://pos.luvder.com/downloads/install-print-bridge.sh | sh — Windows PowerShell: irm https://pos.luvder.com/downloads/install-print-bridge.ps1 | iex.",
+          "Don't know the printer's IP? Run the find command — it lists every printer on the network. The test command prints a test page straight to one.",
+          "Open the setup kit on the Till and tap Check this device. Then turn on Use for Till auto-print for the receipt printer and tap Test Print.",
+        ],
+        image: "printer-setup",
+        tip: "Test Print only works on the Till itself — from a laptop it will always say it can't reach the bridge. If the printer's IP keeps changing, reserve a fixed IP for it in your router.",
+        who: "Admin",
+      },
+      {
+        id: "printer-setup-admins",
+        q: "Can IQ set up our printers for us?",
+        a: "Yes. Super Admins and regional admins can add and connect any of their restaurants' printers from Super Admin → Printers, without signing in to the restaurant: pick the restaurant, add the printer with its IP, turn on Till auto-print, and use the same setup kit. Regional admins only see the restaurants assigned to them.",
+        who: "Super Admin",
       },
       {
         id: "card-machines",

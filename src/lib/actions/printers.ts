@@ -3,9 +3,9 @@
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
-import { integrations, paymentTerminals, printers } from "@/db/schema";
+import { integrations, paymentTerminals, printers, restaurants } from "@/db/schema";
 import type { IntegrationProvider, PrinterConnection, PrinterKind, PrinterStation } from "@/lib/types";
-import { assertPermission, requireRestaurantContext } from "@/lib/scope";
+import { assertPermission, assertRestaurantAccess, requireRestaurantContext, requireSession } from "@/lib/scope";
 
 export interface CreatePrinterInput {
   name: string;
@@ -20,9 +20,31 @@ export interface PrinterActionState {
   error?: string;
 }
 
-export async function createPrinterAction(input: CreatePrinterInput): Promise<PrinterActionState> {
+
+// Which restaurant a printer action applies to. Normally the signed-in restaurant (Settings →
+// Printers, needs the "settings" permission). Super Admin → Printers passes `targetRestaurantId`
+// instead — only a super_admin, or a regional_admin assigned to that restaurant, may do that.
+async function printerScope(targetRestaurantId?: string): Promise<{ restaurantId: string }> {
+  if (targetRestaurantId) {
+    const session = await requireSession();
+    if (session.role !== "super_admin" && session.role !== "regional_admin") throw new Error("Forbidden");
+    await assertRestaurantAccess(session, targetRestaurantId);
+    const [exists] = await db.select({ id: restaurants.id }).from(restaurants).where(eq(restaurants.id, targetRestaurantId)).limit(1);
+    if (!exists) throw new Error("Restaurant not found");
+    return { restaurantId: targetRestaurantId };
+  }
   const { session, restaurantId } = await requireRestaurantContext();
   await assertPermission(session, "settings");
+  return { restaurantId };
+}
+
+function revalidatePrinters() {
+  revalidatePath("/settings");
+  revalidatePath("/super-admin/printers");
+}
+
+export async function createPrinterAction(input: CreatePrinterInput, targetRestaurantId?: string): Promise<PrinterActionState> {
+  const { restaurantId } = await printerScope(targetRestaurantId);
   if (!input.name.trim()) return { error: "Enter a name." };
 
   const needsPin = input.kind !== "printer";
@@ -36,6 +58,13 @@ export async function createPrinterAction(input: CreatePrinterInput): Promise<Pr
   }
   if (needsConnection && !input.connection) return { error: "Choose a connection type." };
 
+  // A Network/WiFi printer added with an IP (optionally ip:port) is ready for local network
+  // printing straight away — no separate "Connect Local Network Print" step needed.
+  const ipMatch =
+    needsConnection && (input.connection === "Network" || input.connection === "WiFi")
+      ? input.address?.trim().match(/^(\d{1,3}(?:\.\d{1,3}){3})(?::(\d{1,5}))?$/)
+      : null;
+
   await db.insert(printers).values({
     id: crypto.randomUUID(),
     restaurantId,
@@ -45,35 +74,34 @@ export async function createPrinterAction(input: CreatePrinterInput): Promise<Pr
     connection: needsConnection ? (input.connection ?? null) : null,
     address: needsConnection ? input.address?.trim() || null : null,
     pin: needsPin ? pin : null,
+    localPrinterIp: ipMatch ? ipMatch[1] : null,
+    localPrinterPort: ipMatch?.[2] ? Number(ipMatch[2]) : null,
   });
-  revalidatePath("/settings");
+  revalidatePrinters();
   return {};
 }
 
-export async function togglePrinterActiveAction(printerId: string, active: boolean) {
-  const { session, restaurantId } = await requireRestaurantContext();
-  await assertPermission(session, "settings");
+export async function togglePrinterActiveAction(printerId: string, active: boolean, targetRestaurantId?: string) {
+  const { restaurantId } = await printerScope(targetRestaurantId);
   await db
     .update(printers)
     .set({ active })
     .where(and(eq(printers.id, printerId), eq(printers.restaurantId, restaurantId)));
-  revalidatePath("/settings");
+  revalidatePrinters();
 }
 
-export async function deletePrinterAction(printerId: string) {
-  const { session, restaurantId } = await requireRestaurantContext();
-  await assertPermission(session, "settings");
+export async function deletePrinterAction(printerId: string, targetRestaurantId?: string) {
+  const { restaurantId } = await printerScope(targetRestaurantId);
   await db.delete(printers).where(and(eq(printers.id, printerId), eq(printers.restaurantId, restaurantId)));
-  revalidatePath("/settings");
+  revalidatePrinters();
 }
 
 // Saving a non-empty IP doesn't call anything external (unlike Sunmi's printerAdd) — raw network
 // printing has no account/binding step, so this just records where to send bytes. Validate at
 // save time with a quick connection check isn't done here since the printer may be briefly
 // offline without that being this field's problem; use "Test Print" to actually confirm.
-export async function saveLocalPrinterAction(printerId: string, ip: string, port: string): Promise<PrinterActionState> {
-  const { session, restaurantId } = await requireRestaurantContext();
-  await assertPermission(session, "settings");
+export async function saveLocalPrinterAction(printerId: string, ip: string, port: string, targetRestaurantId?: string): Promise<PrinterActionState> {
+  const { restaurantId } = await printerScope(targetRestaurantId);
   const trimmedIp = ip.trim();
   const parsedPort = port.trim() ? Number(port.trim()) : null;
   if (parsedPort !== null && (!Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65535)) {
@@ -83,7 +111,7 @@ export async function saveLocalPrinterAction(printerId: string, ip: string, port
     .update(printers)
     .set({ localPrinterIp: trimmedIp || null, localPrinterPort: trimmedIp ? parsedPort : null })
     .where(and(eq(printers.id, printerId), eq(printers.restaurantId, restaurantId)));
-  revalidatePath("/settings");
+  revalidatePrinters();
   revalidatePath("/order-line");
   return {};
 }
@@ -92,9 +120,8 @@ export async function saveLocalPrinterAction(printerId: string, ip: string, port
 // — see printers.tillReceiptPrinter in schema.ts for why this is separate from isDefault. Turning
 // one printer on clears every other printer's flag first, same single-selection pattern as
 // setDefaultPrinterAction, since only one printer can be the Till's receipt target at a time.
-export async function setTillReceiptPrinterAction(printerId: string, enabled: boolean): Promise<PrinterActionState> {
-  const { session, restaurantId } = await requireRestaurantContext();
-  await assertPermission(session, "settings");
+export async function setTillReceiptPrinterAction(printerId: string, enabled: boolean, targetRestaurantId?: string): Promise<PrinterActionState> {
+  const { restaurantId } = await printerScope(targetRestaurantId);
   if (enabled) {
     const [printer] = await db
       .select({ localPrinterIp: printers.localPrinterIp })
@@ -108,20 +135,19 @@ export async function setTillReceiptPrinterAction(printerId: string, enabled: bo
     .update(printers)
     .set({ tillReceiptPrinter: enabled })
     .where(and(eq(printers.id, printerId), eq(printers.restaurantId, restaurantId)));
-  revalidatePath("/settings");
+  revalidatePrinters();
   revalidatePath("/order-line");
   return {};
 }
 
-export async function setDefaultPrinterAction(printerId: string) {
-  const { session, restaurantId } = await requireRestaurantContext();
-  await assertPermission(session, "settings");
+export async function setDefaultPrinterAction(printerId: string, targetRestaurantId?: string) {
+  const { restaurantId } = await printerScope(targetRestaurantId);
   await db.update(printers).set({ isDefault: false }).where(eq(printers.restaurantId, restaurantId));
   await db
     .update(printers)
     .set({ isDefault: true })
     .where(and(eq(printers.id, printerId), eq(printers.restaurantId, restaurantId)));
-  revalidatePath("/settings");
+  revalidatePrinters();
   revalidatePath("/manage-dishes");
 }
 

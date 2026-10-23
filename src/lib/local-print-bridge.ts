@@ -6,7 +6,7 @@
 //    present, this calls it directly — no HTTP hop, no port, no Private Network Access
 //    preflight, since it's a same-process native call, not a network request.
 // 2. Everywhere else (a plain browser, no APK), this falls back to the standalone
-//    scripts/local-print-bridge.js program over HTTP, which must be running on the same device
+//    public/downloads/iq-print-bridge.js program over HTTP, which must be running on the same device
 //    (loopback) — see docs/DEVELOPER_GUIDE.md §7.8.
 //
 // ⚠️ Browsers' Private Network Access rules can restrict an HTTPS page calling an HTTP localhost
