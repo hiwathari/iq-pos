@@ -595,7 +595,9 @@ reconciliation tool regardless of provider.
   grows), then Total with small **Offers** (`DiscountsModal`) and **Split** (`SplitBillModal`)
   buttons, the payment buttons and the main button. Split pays each guest's share inside the
   popup via `paySplitShare` — payment lines stay one per method (`addPayment` merges), and once
-  the bill is fully paid the popup closes and calls `handlePlaceOrder`.
+  the bill is fully paid the popup closes and calls `handlePlaceOrder`. Order cards in Tickets and
+  History (`OrderCard`) show each order's price (`orderTotal`, struck through when voided), and
+  History shows the chosen day's order count and total of its non-voided orders.
 - **`mobile-till-client.tsx`** ("Simple") — a deliberately minimal quick-order flow for a
   handheld/phone screen: channel → table → menu → cart → send. It has **no** live card-charging
   overlay. As of the most recent change (§14) it can record a **Cash** payment at order time (a
@@ -790,6 +792,14 @@ conversation says so.
 > `/faq` page), re-capturing the marked screenshot in `public/help/` when the screen changed. A
 > change without all three is not done. This guide plus that FAQ are the source for the final
 > project documentation, so both must always match the live system. (Also in `CLAUDE.md`.)
+
+### 2026-10-28 — Prices on Till order cards; day total in History
+- Every order card in the Till's Tickets and History views shows the order's price
+  (`orderTotal` — discounts and tax included), struck through for voided orders.
+- History shows the chosen day's order count and total under its heading, e.g. "6 orders ·
+  £154.14 · 1 voided" (voided orders are counted, not added). This is the sum of order totals,
+  so it can differ from the header's TODAY figure, which adds up payments actually taken.
+- FAQ: History and Tickets answers mention the prices; both screenshots re-captured.
 
 ### 2026-10-23 — Printer setup for Super Admin / regional admins, setup kit and scripts
 - **Super Admin → Printers** (sidebar, super and regional admins): pick a restaurant and add,

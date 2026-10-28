@@ -444,6 +444,7 @@ export function OrderLineClient({
       .filter((o) => (isOrderClosedOut(o) || o.status === "Voided") && o.createdAt >= from && o.createdAt < to)
       .sort((a, b) => b.createdAt - a.createdAt);
   }, [orders, historyDateStr, openTime, timezone]);
+  const historyCompleted = historyOrders.filter((o) => o.status !== "Voided");
 
   const priceFor = (dish: Dish) => {
     const key = cart.channel === "Third Party" ? cart.thirdPartyProvider : cart.channel;
@@ -1202,6 +1203,7 @@ export function OrderLineClient({
                   order={order}
                   selected={cart.editingOrderId === order.id}
                   onClick={() => loadOrderIntoCart(order)}
+                  currencySymbol={currencySymbol}
                 />
               ))}
               {filteredOrders.length === 0 && (
@@ -1230,9 +1232,20 @@ export function OrderLineClient({
         {view === "history" && (
           <>
             <div className="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-3">
-              <p className="text-sm text-neutral-500">
-                Completed and voided orders, most recent first — tap one to review or reprint it.
-              </p>
+              <div>
+                <p className="text-sm text-neutral-500">
+                  Completed and voided orders, most recent first — tap one to review or reprint it.
+                </p>
+                {historyOrders.length > 0 && (
+                  <p className="mt-1 text-sm font-semibold text-neutral-800">
+                    {historyCompleted.length} {historyCompleted.length === 1 ? "order" : "orders"} ·{" "}
+                    {formatMoney(historyCompleted.reduce((sum, o) => sum + orderTotal(o), 0), currencySymbol)}
+                    {historyOrders.length > historyCompleted.length && (
+                      <span className="font-normal text-neutral-400"> · {historyOrders.length - historyCompleted.length} voided</span>
+                    )}
+                  </p>
+                )}
+              </div>
               <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => setHistoryDateStr((d) => shiftDateKey(d, -1))}
@@ -1272,6 +1285,7 @@ export function OrderLineClient({
                   order={order}
                   selected={cart.editingOrderId === order.id}
                   onClick={() => loadOrderIntoCart(order)}
+                  currencySymbol={currencySymbol}
                 />
               ))}
               {historyOrders.length === 0 && (
@@ -2712,10 +2726,12 @@ function OrderCard({
   order,
   selected,
   onClick,
+  currencySymbol,
 }: {
   order: Order;
   selected: boolean;
   onClick: () => void;
+  currencySymbol: string;
 }) {
   const isVoided = order.status === "Voided";
   const updated = wasOrderUpdated(order);
@@ -2743,7 +2759,12 @@ function OrderCard({
             : order.channel}
         </span>
       </div>
-      <div className="text-sm text-neutral-500">Item: {order.items.reduce((s, i) => s + i.qty, 0)}X</div>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-sm text-neutral-500">Item: {order.items.reduce((s, i) => s + i.qty, 0)}X</span>
+        <span className={`text-base font-bold text-neutral-900 2xl:text-lg ${isVoided ? "text-neutral-400 line-through" : ""}`}>
+          {formatMoney(orderTotal(order), currencySymbol)}
+        </span>
+      </div>
       {updated && (
         <span className="flex w-fit items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
           <RefreshCw className="h-3 w-3" /> Updated

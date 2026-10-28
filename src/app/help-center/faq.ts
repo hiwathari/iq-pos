@@ -186,7 +186,7 @@ export const FAQ: FaqSection[] = [
       {
         id: "tickets",
         q: "Where do I find open orders and update them?",
-        a: "Tickets lists every order that's still open. Filter by type, then tap an order to load it back into the right-hand side to add items, take payment or mark it served.",
+        a: "Tickets lists every order that's still open, each with its price. Filter by type, then tap an order to load it back into the right-hand side to add items, take payment or mark it served.",
         steps: ["Tap Tickets.", "Filter: All, Dine in, Wait List, Take Away, Delivery or Served.", "Tap an order to open and edit it."],
         image: "tickets",
         who: "Everyone",
@@ -207,8 +207,8 @@ export const FAQ: FaqSection[] = [
       {
         id: "history",
         q: "Where can I see past orders?",
-        a: "History shows completed and cancelled orders, newest first. Pick any day to look back, then tap an order to review or reprint it.",
-        steps: ["Tap History.", "Use the arrows or the date box to pick a day."],
+        a: "History shows completed and cancelled orders, newest first, each with its price. Under the heading you'll see that day's number of orders and their total (voided orders are counted separately and not added in). Pick any day to look back, then tap an order to review or reprint it.",
+        steps: ["Tap History.", "Use the arrows or the date box to pick a day — the day's order count and total update.", "Tap an order to review or reprint it."],
         image: "history",
         who: "Everyone",
       },
