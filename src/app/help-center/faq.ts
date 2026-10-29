@@ -429,6 +429,20 @@ export const FAQ: FaqSection[] = [
         who: "Manager",
       },
       {
+        id: "sales-records",
+        q: "How do I correct or delete an End Day report or a finished order?",
+        a: "Sales Records lists every End Day report and every order in a table. Edit fixes a mistake — for a report: the cash counted, each card machine's total, float, expenses, envelope and notes; for an order: payment, items and prices, discount, order type, table, customer, staff and the date and time. Delete removes an entry for good.",
+        steps: [
+          "Open Sales Records and choose End Day reports or Orders (pick the day for orders).",
+          "Tap the pencil to edit, change what's wrong, and save.",
+          "After changing orders in a day that's already closed, tap Recalculate on that day's End Day report so its POS figures match.",
+          "Tap the bin to delete — this can't be undone.",
+        ],
+        image: "sales-records",
+        tip: "Deleting an End Day report keeps its orders. If it was the latest report, the next End Day includes those orders again — handy for redoing a close. Staff only see Sales Records if an admin gives them that permission.",
+        who: "Admin",
+      },
+      {
         id: "reports",
         q: "How do I read the reports?",
         a: "Reports break sales down by day, week, channel, payment method, category and staff member.",

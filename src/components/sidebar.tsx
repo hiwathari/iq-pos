@@ -42,6 +42,7 @@ const NAV: { href: string; label: string; icon: typeof LayoutDashboard; key: Per
   { href: "/inventory", label: "Inventory", icon: Package, key: "inventory" },
   { href: "/customers", label: "Customers", icon: Users, key: "customers" },
   { href: "/reports", label: "Reports", icon: BarChart3, key: "reports" },
+  { href: "/sales-records", label: "Sales Records", icon: Table2, key: "sales-records" },
   { href: "/settings", label: "Settings", icon: Settings, key: "settings" },
   { href: "/help-center", label: "Help Center", icon: LifeBuoy, key: "help-center" },
 ];

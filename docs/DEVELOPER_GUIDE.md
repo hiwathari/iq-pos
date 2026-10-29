@@ -618,6 +618,7 @@ don't assume a change to one automatically applies to the other.
 | Kitchen Display | `app/kitchen/` | (status updates via `orders.ts` actions) | — |
 | Tables / floor plan | `app/manage-table/` | `lib/actions/tables.ts` | `lib/data/tables.ts` |
 | Menu | `app/manage-dishes/` | `lib/actions/menu.ts` | `lib/data/menu.ts` |
+| Sales Records (edit/delete orders & End Day reports) | `app/sales-records/` | `lib/actions/sales-records.ts` | `lib/data/shifts.ts`, orders queried in the page |
 | Channel pricing | `app/pricing/` | `lib/actions/menu.ts` | — |
 | Coupons | `app/coupons/` | `lib/actions/coupons.ts` | `lib/data/coupons.ts` |
 | Loyalty (admin) | `app/loyalty/` | `lib/actions/loyalty.ts` | `lib/data/loyalty.ts` |
@@ -641,6 +642,16 @@ don't assume a change to one automatically applies to the other.
 | Notifications | Topbar bell (`components/topbar.tsx`) | `lib/actions/notifications.ts` | `lib/data/notifications.ts` |
 
 ## 11. Environments, Config & Deployment
+
+**Key URLs (production).** POS: `https://pos.luvder.com` — `/login` (admin/staff email login),
+`/till-login` and `/staff-login` (PIN), `/order-line` (Till), `/kitchen-login` + `/kitchen`
+(Kitchen Display), `/dashboard`, `/sales-records`, `/settings` (Printers + setup kit),
+`/help-center` (in-app FAQ), `/super-admin`, `/super-admin/printers`,
+`/super-admin/website-requests`. Public: `/faq` (also on iq.luvder.com), `/get` (Till Android
+app), `/downloads/iq-print-bridge.js`, `/downloads/install-print-bridge.sh`,
+`/downloads/install-print-bridge.ps1`, `/order/<slug>` (online ordering; `/kiosk` and
+`/table/<token>` under it), `/my-card`. Website: `https://iq.luvder.com` (`/build`,
+`/products/<slug>`). FAQ answers are linkable by id, e.g. `/faq#printer-setup`.
 
 **Environment variables** (all read via `process.env`, grep-verified — this is the complete set
 actually used in code):
@@ -742,47 +753,67 @@ Follow the SumUp/Teya shape exactly (§8.1/8.2) — it's now an established patt
    (start → poll every ~2s → cancel), **on the Full Till only** (`order-line-client.tsx`) — the
    Mobile Till has no room for a live wait-for-card flow (§9).
 
-## 13. Known Gaps / Things That Look Built But Aren't
+## 13. Known Gaps & Pending Features
 
 Keep this section honest and current — it exists specifically so nobody re-discovers these the
 hard way, and so nobody assumes something is wired up just because a comment or an old
-conversation says so.
+conversation says so. It is also the pending-work list the final handover document is built from:
+when something here gets built, move it to §14 and the section that describes it.
 
-- **No "cafe vs restaurant" business-type setting, and no serve-on-payment shortcut.** Every new
-  order is inserted as `"In Kitchen"` (or `"Wait List"`) regardless of payment status — see
-  `placeOrderAction` in `lib/actions/orders.ts`. There is no `businessType` field on `restaurants`,
-  no "Direct Serve" toggle in Settings, and no code path anywhere that skips an order straight to
-  `"Served"` based on it being pre-paid. If a restaurant genuinely needs "pay-at-counter, skip the
-  kitchen queue entirely" behavior, that's a real feature request to design and build, not a
-  config flag to flip — there is nothing to flip.
-- **`integrations` table (Uber Eats/Deliveroo/Just Eat) is schema-only.** The table exists with
-  `enabled`/`storeId`/`apiKey` columns and a Settings tab to edit them, but there is no code
-  anywhere that actually calls any of these providers' APIs. `orders.channel` does support
-  `"Third Party"` with a `thirdPartyProvider` enum for manually logging such an order, but that's
-  independent of the `integrations` table and involves no live API integration.
-- **Apple Wallet / Google Wallet loyalty passes** — not built (tracked as a future item, not
-  started).
-- **Admin-managed loyalty offers** (e.g. "spend £50, get a free item") — not built; loyalty today
-  is enrollment + lookup only, no rewards logic.
-- **Sunmi Cloud Print (§7.7) is built but not in use and likely never will be for this account.**
-  Sunmi's Cloud Print partner channel needed an enablement step beyond self-serve partner
-  registration, and that was never obtained. The code is left in place (harmless, inert without
-  `SUNMI_CLOUD_PRINT_APP_ID`/`KEY`) in case a future restaurant's Sunmi partner account does get it
-  enabled, but **local network printing (§7.8) is the real, working path** — don't assume the
-  Sunmi cloud route is what's printing tickets for any restaurant.
-- **Local network print (§7.8) only auto-fires from the full desktop Till's Print button today**,
-  guarded by a printer having both `localPrinterIp` set **and** `tillReceiptPrinter` turned on —
-  it isn't wired into Kitchen Display ticket printing or the mobile/Simple Till (which has no print button at
-  all). It's also only ever a *second*, best-effort print alongside the existing browser-print
-  popup, never a replacement for it — if the local bridge isn't running, nothing about today's
-  printing behavior changes. The bridge program itself (`public/downloads/iq-print-bridge.js`) has to be
-  kept running by the restaurant (e.g. a persistent Termux session on the Till) — there's no
-  supervision/auto-restart built in if it crashes or the device reboots.
+### 13.1 Built-looking, but not live
 
-- **No kitchen ticket (KOT) printing exists.** Adding a printer with a Kitchen/Bar/Expo station
-  makes the Till say "Send to Kitchen" (see `hasKitchen` in `lib/types.ts`), but nothing is ever
-  printed to it — only customer receipts print today (§7.8). Category → printer routing
-  (`categories.printerId`, `dishes.printerId`) is stored but unused for printing.
+- **Delivery-app integrations (Uber Eats / Deliveroo / Just Eat) are schema-only.** The
+  `integrations` table and its Settings tab exist, but nothing calls those providers' APIs. A
+  "Third Party" order can be logged by hand on the Till; that's all.
+- **No kitchen ticket (KOT) printing.** Adding a Kitchen/Bar/Expo printer makes the Till say
+  "Send to Kitchen" (`hasKitchen`), but only customer receipts print (§7.8). Category → printer
+  routing (`categories.printerId`, `dishes.printerId`) is stored but unused.
+- **Sunmi Cloud Print (§7.7) is built but inert** — Sunmi never enabled the partner channel. Local
+  network printing (§7.8) is the real path.
+- **Local network print only runs from the full Till** (Print button + auto-print on payment, for
+  the printer with `tillReceiptPrinter` on). Not from the Kitchen Display, not from the
+  mobile/Simple Till (which has no print button and no card payments).
+- **The Till Android app's source isn't in this repo** (§7.9) and the APK is debug-signed for
+  sideloading, not a Play Store release.
+- **AI website briefs:** Claude reading only runs once an Anthropic key is saved in Super Admin;
+  without it, pattern matching fills the form. The website itself is still built by hand from
+  the brief — nothing generates or hosts a site automatically yet.
+
+### 13.2 Pending features — product (marked "Coming soon" on iq.luvder.com)
+
+- **AR Menu** — 3D dishes and photo cards opened from the table QR menu.
+- **Gift Cards** — branded digital cards bought online, sent by email, redeemed/balance on the Till.
+- **Social Hub** — Instagram/TikTok bio-link page with menu, ordering, booking and specials.
+- **Agentic SEO** — agent that keeps the Google profile, hours, photos and menu pages current, with a monthly report.
+- **GEO** — structured restaurant data for AI assistants, and tracking when they recommend you.
+- **Pay at the table** (Customer App) — guests settle the bill from the QR menu (ordering works today; payment is at the counter).
+- **Online table booking from the website** (Table Booking) — reservations today are staff-entered only.
+- **Loyalty stamps, points and rewards** — today loyalty is cards, lookup, visit count and coupons; no rewards rules, no Apple/Google Wallet passes.
+- **AI Website generation & hosting** — turn a `/build` brief into a hosted site automatically, on the restaurant's own domain.
+
+### 13.3 Pending features — POS / platform
+
+- KOT printing to kitchen/bar printers with category routing (above).
+- Real Uber Eats / Deliveroo / Just Eat order sync (above).
+- Printing from the Kitchen Display and the Simple Till; card payments on the Simple Till.
+- Per-guest receipts when a bill is split (Split pays each share, but one receipt prints).
+- A "packing charge" line — not a concept anywhere yet.
+- **Audit trail for Sales Records** — edits/deletes are only written to the server log; there's no
+  history table or "who changed what" screen. Editing/deleting orders doesn't put stock back.
+- Automatic custom-domain setup (adding a restaurant's ordering domain to Vercel via its API) —
+  today it's added by hand in Vercel, then set in Super Admin.
+- Email/push alerts for new website briefs (Super Admin list only today, by choice).
+- The invoice link's "valid for 1 week" note isn't enforced.
+
+### 13.4 Pending — design, content and testing
+
+- Website: no pricing, contact, privacy-policy or terms pages yet. `/build` collects names, emails
+  and phone numbers, so a privacy policy is needed before promoting it.
+- The printed brochure still has placeholders (phone, email, website, price).
+- Not yet verified on real hardware: the receipt logo raster and QR code on a thermal printer;
+  the print-bridge installers on Termux, Windows and macOS (Linux was tested).
+- No automated tests — everything has been verified by hand and with Playwright scripts in a
+  local scratch harness, not checked into the repo.
 
 ## 14. Changelog
 
@@ -792,6 +823,26 @@ conversation says so.
 > `/faq` page), re-capturing the marked screenshot in `public/help/` when the screen changed. A
 > change without all three is not done. This guide plus that FAQ are the source for the final
 > project documentation, so both must always match the live system. (Also in `CLAUDE.md`.)
+
+### 2026-10-29 — Sales Records: edit or delete End Day reports and orders
+- New admin page **Sales Records** (`app/sales-records`, sidebar, permission `sales-records` —
+  admins always, staff only if granted in Settings → Staff). Two tables:
+  - **End Day reports** (every shift): closed time/period, closed by, orders, POS cash/card,
+    counted total, difference, notes. **Edit** changes what was counted (cash, each card machine,
+    float, cash/card expenses, envelope, notes, closed by) — expected cash is re-derived and the
+    restaurant's envelope balance moves by the change. **Recalculate** re-reads the report's own
+    window from the orders as they are now. **Delete** removes it for good (its envelope cash
+    comes off the balance; its orders stay, and if it was the latest report the next End Day
+    covers them again).
+  - **Orders** for a chosen business day, with the day's count/total/cash/card. **Edit** changes
+    date & time, order type, table, guests, customer, staff, items (name/qty/price, add/remove),
+    extra discount, payment lines and cash received. **Delete** removes it for good.
+- Deletes are permanent by the owner's choice; the UI confirms first. Nothing is kept except a
+  server log line (`[sales-records] …`). No schema change.
+- §13 rewritten as "Known Gaps & Pending Features" (it had stale entries: the cafe business type
+  and Till auto-print had since been built).
+- FAQ: new "How do I correct or delete an End Day report or a finished order?" with screenshot;
+  every help screenshot re-captured (the sidebar has a new item).
 
 ### 2026-10-28 — Prices on Till order cards; day total in History
 - Every order card in the Till's Tickets and History views shows the order's price

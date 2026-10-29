@@ -19,6 +19,7 @@ export const PERMISSION_KEYS = [
   "help-center",
   "end-day",
   "till-discount",
+  "sales-records",
 ] as const;
 
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];
@@ -39,6 +40,7 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
   "help-center": "Help Center",
   "end-day": "End Day Closing",
   "till-discount": "Give Discounts on Till",
+  "sales-records": "Sales Records (edit/delete orders & End Day reports)",
 };
 
 // What a brand-new staff member can see/use before an admin customizes it — matches this app's
