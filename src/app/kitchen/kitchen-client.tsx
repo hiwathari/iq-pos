@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   formatOrderTimestamp,
@@ -68,8 +68,30 @@ const DEFAULT_FONT_SCALE_INDEX = 1;
 const PENDING_STATUSES: OrderStatus[] = ["Wait List", "In Kitchen"];
 const COMPLETED_STATUSES: OrderStatus[] = ["Ready", "Served", "Voided"];
 
+// A tap on this screen shows its result straight away (useOptimistic below) instead of waiting
+// for the server round trip — the tick, Served and Complete each mirror what their server action
+// writes. Once the action and refresh land, the real orders take over again.
+type OptimisticChange =
+  | { type: "item"; orderId: string; itemKey: string; ready: boolean }
+  | { type: "status"; orderId: string; status: OrderStatus }
+  | { type: "complete"; orderId: string };
+
+function applyOptimisticChange(orders: Order[], change: OptimisticChange): Order[] {
+  return orders.map((o) => {
+    if (o.id !== change.orderId) return o;
+    if (change.type === "item") {
+      // Same match as toggleOrderItemReadyAction: lineId, falling back to dishId.
+      return { ...o, items: o.items.map((i) => ((i.lineId ?? i.dishId) === change.itemKey ? { ...i, ready: change.ready } : i)) };
+    }
+    if (change.type === "status") {
+      return { ...o, status: change.status, servedAt: change.status === "Served" ? Date.now() : o.servedAt };
+    }
+    return { ...o, items: o.items.map((i) => ({ ...i, ready: true })), status: "Served", servedAt: Date.now() };
+  });
+}
+
 export function KitchenClient({
-  orders,
+  orders: serverOrders,
   categories,
   dishes,
   printers,
@@ -92,6 +114,7 @@ export function KitchenClient({
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
+  const [orders, applyOptimistic] = useOptimistic(serverOrders, applyOptimisticChange);
   const [now, setNow] = useState(() => Date.now());
   const [fontScaleIndex, setFontScaleIndex] = useState(DEFAULT_FONT_SCALE_INDEX);
   const [stockModalOpen, setStockModalOpen] = useState(false);
@@ -224,7 +247,7 @@ export function KitchenClient({
   const prevStatusesRef = useRef<Map<string, OrderStatus> | null>(null);
   useEffect(() => {
     const previous = prevStatusesRef.current;
-    const next = new Map(orders.map((o) => [o.id, o.status] as const));
+    const next = new Map(serverOrders.map((o) => [o.id, o.status] as const));
     if (previous) {
       let hasNewOrder = false;
       let hasNewlyReady = false;
@@ -240,10 +263,11 @@ export function KitchenClient({
       if (hasNewlyReady) playOrderReadyChime();
     }
     prevStatusesRef.current = next;
-  }, [orders]);
+  }, [serverOrders]);
 
   function advance(orderId: string, status: OrderStatus) {
     startTransition(async () => {
+      applyOptimistic({ type: "status", orderId, status });
       await setOrderStatusAction(orderId, status);
       router.refresh();
     });
@@ -251,6 +275,7 @@ export function KitchenClient({
 
   function completeOrder(orderId: string) {
     startTransition(async () => {
+      applyOptimistic({ type: "complete", orderId });
       await completeOrderAction(orderId);
       router.refresh();
     });
@@ -258,6 +283,7 @@ export function KitchenClient({
 
   function toggleItem(orderId: string, itemKey: string, ready: boolean) {
     startTransition(async () => {
+      applyOptimistic({ type: "item", orderId, itemKey, ready });
       await toggleOrderItemReadyAction(orderId, itemKey, ready);
       router.refresh();
     });
@@ -656,6 +682,11 @@ function OrderTicket({
   const visibleItems = order.items.filter(itemMatchesStation);
   const sortedItems = [...visibleItems].sort((a, b) => itemSortIndex(a) - itemSortIndex(b));
   const hiddenItemCount = order.items.length - visibleItems.length;
+  // What the Till's last edit(s) changed (see diffEditedItems in lib/actions/orders.ts) — added or
+  // changed lines are highlighted orange, removed ones listed crossed out in red, only while the
+  // ticket is still being made.
+  const showChanges = !isDone && !isVoided;
+  const removedItems = showChanges ? (order.removedItems ?? []).filter(itemMatchesStation) : [];
   const showTicketActions = station === "All";
 
   // Low-chrome by design: a KDS screen gets re-read dozens of times an hour under time pressure,
@@ -744,15 +775,20 @@ function OrderTicket({
           // A voided order's items are crossed out unconditionally (not just when ready) — the
           // whole ticket didn't happen, so every line on it should read that way at a glance.
           const crossedOut = isVoided || item.ready;
+          const changed = showChanges ? item.changed : undefined;
+          const changeTag = changed && <ItemChangeTag item={item} />;
           return itemsCheckable ? (
             <li key={itemKey}>
               <button
                 onClick={() => onToggleItem(item.lineId ?? item.dishId, !item.ready)}
-                className="flex w-full items-center justify-between gap-2 rounded-md py-0.5 text-left text-lg leading-tight hover:bg-neutral-50"
+                className={`flex w-full touch-manipulation select-none items-center justify-between gap-2 rounded-md py-0.5 text-left text-lg leading-tight ${
+                  changed ? "-mx-1 w-[calc(100%+0.5rem)] bg-orange-100 px-1 ring-1 ring-orange-300 active:bg-orange-200" : "hover:bg-neutral-50 active:bg-neutral-100"
+                }`}
               >
                 <span className="min-w-0">
                   <span className={`font-extrabold ${item.ready ? "text-neutral-300" : "text-teal-600"}`}>{item.qty}× </span>
                   <span className={item.ready ? "text-neutral-400 line-through" : "font-semibold text-neutral-800"}>{item.name}</span>
+                  {changeTag}
                   {item.note && <div className="text-sm font-bold italic leading-tight text-amber-600">↳ {item.note}</div>}
                 </span>
                 <span
@@ -765,7 +801,10 @@ function OrderTicket({
               </button>
             </li>
           ) : (
-            <li key={itemKey} className="text-lg leading-tight">
+            <li
+              key={itemKey}
+              className={`text-lg leading-tight ${changed ? "-mx-1 rounded-md bg-orange-100 px-1 py-0.5 ring-1 ring-orange-300" : ""}`}
+            >
               <span className={`font-extrabold ${isVoided ? "text-rose-400" : "text-teal-600"}`}>{item.qty}× </span>
               <span
                 className={
@@ -778,10 +817,22 @@ function OrderTicket({
               >
                 {item.name}
               </span>
+              {changeTag}
               {item.note && <div className="ml-4 text-sm font-bold italic leading-tight text-amber-600">↳ {item.note}</div>}
             </li>
           );
         })}
+        {removedItems.map((item, idx) => (
+          <li
+            key={`removed-${item.lineId ?? item.dishId}-${idx}`}
+            className="-mx-1 rounded-md bg-rose-50 px-1 py-0.5 text-lg leading-tight text-rose-600 ring-1 ring-rose-200"
+          >
+            <span className="font-extrabold line-through decoration-rose-500 decoration-2">{item.qty}× </span>
+            <span className="font-semibold line-through decoration-rose-500 decoration-2">{item.name}</span>
+            <span className="ml-1.5 rounded bg-rose-600 px-1 py-0.5 align-middle text-[11px] font-bold text-white">REMOVED</span>
+            {item.note && <div className="ml-4 text-sm italic leading-tight text-rose-400 line-through">↳ {item.note}</div>}
+          </li>
+        ))}
       </ul>
       {hiddenItemCount > 0 && (
         <div className="mb-1.5 text-xs italic text-neutral-400">
@@ -821,3 +872,9 @@ function OrderTicket({
   );
 }
 
+// The small label beside a line the Till's last edit added or changed: NEW, "was 2×" for a qty
+// change, or CHANGED when only the note changed.
+function ItemChangeTag({ item }: { item: OrderItem }) {
+  const label = item.changed === "added" ? "NEW" : item.prevQty !== undefined ? `was ${item.prevQty}×` : "CHANGED";
+  return <span className="ml-1.5 rounded bg-orange-500 px-1 py-0.5 align-middle text-[11px] font-bold text-white">{label}</span>;
+}

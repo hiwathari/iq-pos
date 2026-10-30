@@ -186,7 +186,7 @@ export const FAQ: FaqSection[] = [
       {
         id: "tickets",
         q: "Where do I find open orders and update them?",
-        a: "Tickets lists every order that's still open, each with its price. Filter by type, then tap an order to load it back into the right-hand side to add items, take payment or mark it served.",
+        a: "Tickets lists every order that's still open, each with its price. Filter by type, then tap an order to load it back into the right-hand side to add items, take payment or mark it served. When you tap Update Order, the Kitchen Display shows what changed: new or changed items in orange, removed items crossed out in red. Adding an item to an order the kitchen already finished sends it back to the kitchen.",
         steps: ["Tap Tickets.", "Filter: All, Dine in, Wait List, Take Away, Delivery or Served.", "Tap an order to open and edit it."],
         image: "tickets",
         who: "Everyone",
@@ -298,7 +298,7 @@ export const FAQ: FaqSection[] = [
       {
         id: "kitchen",
         q: "How does the Kitchen Display work?",
-        a: "New orders appear as tickets, oldest first, with a timer that turns amber then red. Tick items off as they're ready; Served unlocks once everything is ticked.",
+        a: "New orders appear as tickets, oldest first, with a timer that turns amber then red. Tick items off as they're ready — the tick shows the moment you tap, even on slow Wi-Fi. Served unlocks once everything is ticked.",
         steps: [
           "Tick each item as it's ready.",
           "Complete marks everything ready and finishes the ticket in one tap.",
@@ -307,6 +307,14 @@ export const FAQ: FaqSection[] = [
         ],
         image: "kitchen",
         tip: "Use − and + in the corner to make the text bigger or smaller on large screens.",
+        who: "Everyone",
+      },
+      {
+        id: "kitchen-changes",
+        q: "What do the orange and red items on a ticket mean?",
+        a: "The order was changed on the Till after it was sent, and the ticket says RUNNING — recheck items. Orange lines are new (NEW) or changed (“was 2×” shows the old quantity, CHANGED means the note changed). Red crossed-out lines were removed — stop making them. The colours stay until the ticket is done.",
+        steps: ["Orange: make the new or extra items.", "Red, crossed out: removed from the order — don't make these."],
+        image: "kitchen-changes",
         who: "Everyone",
       },
     ],

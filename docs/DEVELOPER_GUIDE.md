@@ -211,7 +211,7 @@ commented definition of every column. Summary by table:
 | `dishes` | Menu items — price, per-channel price overrides (`channelPrices`), optional inventory link, out-of-stock flag. |
 | `tables` | Floor plan — area, capacity, live status, `seatedAt` (occupied-time timer). |
 | `reservations` | Booking records, independent of `orders`/`tables` live status. |
-| `orders` | **The central table.** One row per ticket — items (JSON), payment lines, discounts/coupon, channel, status lifecycle, loyalty link, `placedVia` (staff/online/kiosk). See §7.1. |
+| `orders` | **The central table.** One row per ticket — items (JSON, with per-line `changed`/`prevQty` edit flags), `removedItems` (JSON, lines removed by a Till edit), payment lines, discounts/coupon, channel, status lifecycle, loyalty link, `placedVia` (staff/online/kiosk). See §7.1. |
 | `loyalty_members` | A customer's loyalty card, keyed by phone or email + a 7-char `code`. |
 | `loyalty_magic_links` | One-time sign-in tokens for loyalty members (hash-only storage). |
 | `coupons` | Percent/fixed discount codes, scoped per restaurant. |
@@ -249,8 +249,17 @@ schema and everywhere in TypeScript — Drizzle handles the mapping. `id()` and 
   - **Never trusts a client-supplied discount.** Discount eligibility (`canDiscount`, from the
     `till-discount` permission) and the coupon amount are both recomputed server-side from the
     live coupon row and this order's own subtotal.
-  - Editing an order that was already `"Ready"` and adding an unprepped item **reopens** it to
-    `"In Kitchen"` so it reappears on the Kitchen Display.
+  - Editing an order the kitchen already finished (`"Served"`, or legacy `"Ready"`) and adding an
+    unprepped item **reopens** it to `"In Kitchen"` (clearing `servedAt`/`closedOutAt`) so it
+    reappears on the Kitchen Display.
+  - **Edit tracking for the kitchen.** On every edit, `diffEditedItems()` compares the saved items
+    with the Till's new ones: new lines get `changed: "added"`, a qty/note change
+    `changed: "updated"` (+ `prevQty`; a qty increase also un-ticks the line), unchanged lines
+    keep an earlier edit's flag, and lines that are gone are appended to `orders.removedItems`.
+    Lines match by `lineId`, or by dish for old lines saved without one. Client-sent flags are
+    stripped. Once the ticket is Served/Ready, the next edit starts clean. The Kitchen Display
+    shows `changed` lines in orange (NEW / "was 2×" / CHANGED) and `removedItems` crossed out in
+    red until the ticket is done.
 - **"Closed out"** = `status === "Served" && paymentMethod != null` — this exact predicate is
   duplicated in three places that must agree: `isClosedOut()` (`lib/actions/orders.ts`),
   `isOrderLive()` (`lib/order-helpers.ts`, the inverse), and `isOrderClosedOut()` (duplicated in
@@ -650,7 +659,7 @@ don't assume a change to one automatically applies to the other.
 | Feature | Page(s) | Action(s) | Data |
 |---|---|---|---|
 | Till / orders | `app/order-line/` | `lib/actions/orders.ts` | `lib/data/orders.ts` |
-| Kitchen Display | `app/kitchen/` | (status updates via `orders.ts` actions) | — |
+| Kitchen Display | `app/kitchen/` (taps are optimistic — `useOptimistic` + `applyOptimisticChange`) | (status updates via `orders.ts` actions) | — |
 | Tables / floor plan | `app/manage-table/` | `lib/actions/tables.ts` | `lib/data/tables.ts` |
 | Menu | `app/manage-dishes/` | `lib/actions/menu.ts` | `lib/data/menu.ts` |
 | Sales Records (edit/delete orders & End Day reports) | `app/sales-records/` | `lib/actions/sales-records.ts` | `lib/data/shifts.ts`, orders queried in the page |
@@ -875,6 +884,23 @@ when something here gets built, move it to §14 and the section that describes i
   `RevenueCompareChart` in `components/charts.tsx`; default tab changed to `dashboard` in
   `app/reports/page.tsx`. See §7.10. No schema change. FAQ "How do I read the reports?" and
   `public/help/reports.webp` updated.
+
+### 2026-10-30 — Kitchen Display: instant ticks; edited orders show what changed
+- **Schema** — run on Turso **before** this code is deployed (old code ignores the column):
+  ```sql
+  ALTER TABLE orders ADD COLUMN removed_items text;
+  ```
+- Ticking an item, Served and Complete now show on the ticket the moment they're tapped
+  (`useOptimistic` in `kitchen-client.tsx`, mirroring what each server action writes), instead of
+  waiting for the server round trip and refresh. Item rows also get a pressed state.
+- Editing a placed order on the Till now records what changed (`diffEditedItems` in
+  `lib/actions/orders.ts`, §7.1): the Kitchen Display highlights new/changed lines in orange
+  (NEW, "was 2×", CHANGED) and lists removed lines crossed out in red (`orders.removed_items`).
+- Fix: adding an item to an order the kitchen had already finished (`Served`) now reopens it to
+  `In Kitchen`; before, only the legacy `Ready` status did, so the new item never reached the
+  kitchen.
+- FAQ: "How does the Kitchen Display work?", "Where do I find open orders and update them?", new
+  "What do the orange and red items on a ticket mean?" with `public/help/kitchen-changes.webp`.
 
 ### 2026-10-30 — Payvizo demo menu (data)
 - Payvizo was given a demo menu as SQL run on Turso by the owner, no code change: 8 categories

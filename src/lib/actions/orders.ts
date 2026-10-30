@@ -19,6 +19,59 @@ function isClosedOut(status: OrderStatus, paymentMethod: string | null) {
   return status === "Served" && !!paymentMethod;
 }
 
+type RemovedItem = NonNullable<Order["removedItems"]>[number];
+
+// Drops the edit-tracking fields a client might send — only diffEditedItems sets them.
+function stripChangeFlags(item: OrderItem): OrderItem {
+  const clean = { ...item };
+  delete clean.changed;
+  delete clean.prevQty;
+  return clean;
+}
+
+// Works out what a Till edit changed on an already-placed order, for the Kitchen Display: new
+// lines come back flagged "added", lines whose qty or note changed "updated" (with the qty before
+// the change; a qty increase also un-ticks the line so the kitchen makes the extra), unchanged
+// lines keep whatever flag an earlier edit gave them, and lines that are gone are added to
+// removedItems. Once the kitchen has finished the ticket (Served/Ready) those earlier flags are
+// spent, so an edit after that starts clean. Lines match by lineId; an older line saved without
+// one (the Till backfills a fresh lineId when it loads it) matches by dish instead.
+function diffEditedItems(
+  existing: Order,
+  nextItems: OrderItem[],
+): { items: OrderItem[]; removedItems: RemovedItem[] | null } {
+  const kitchenDone = existing.status === "Served" || existing.status === "Ready";
+  const prevRemoved = kitchenDone ? null : existing.removedItems;
+  const unmatched = existing.items.map((i) => (kitchenDone ? stripChangeFlags(i) : i));
+  const takeMatch = (n: OrderItem) => {
+    let idx = unmatched.findIndex((p) => !!p.lineId && p.lineId === n.lineId);
+    if (idx < 0) idx = unmatched.findIndex((p) => !p.lineId && p.dishId === n.dishId && (p.note ?? "") === (n.note ?? ""));
+    if (idx < 0) idx = unmatched.findIndex((p) => !p.lineId && p.dishId === n.dishId);
+    return idx < 0 ? undefined : unmatched.splice(idx, 1)[0];
+  };
+
+  const items = nextItems.map((raw): OrderItem => {
+    const n = stripChangeFlags(raw);
+    const p = takeMatch(n);
+    if (!p) return { ...n, changed: "added" };
+    const sameQty = n.qty === p.qty;
+    const sameNote = (n.note ?? "") === (p.note ?? "");
+    if (sameQty && sameNote) return { ...n, changed: p.changed, prevQty: p.prevQty };
+    if (p.changed === "added") return { ...n, changed: "added", ready: n.qty > p.qty ? false : n.ready };
+    // Put back to the qty it had before an earlier edit, with the note untouched: nothing to flag.
+    if (sameNote && p.prevQty !== undefined && n.qty === p.prevQty) return n;
+    const prevQty = p.prevQty ?? p.qty;
+    return { ...n, changed: "updated", prevQty: n.qty === prevQty ? undefined : prevQty, ready: n.qty > p.qty ? false : n.ready };
+  });
+
+  const addedBack = (r: RemovedItem) => items.some((i) => i.changed === "added" && i.dishId === r.dishId && (i.note ?? "") === (r.note ?? ""));
+  const removed = [
+    ...(prevRemoved ?? []),
+    ...unmatched.map(({ dishId, name, price, qty, note, lineId }) => ({ dishId, name, price, qty, note, lineId })),
+  ].filter((r) => !addedBack(r));
+  return { items, removedItems: removed.length ? removed : null };
+}
+
 export interface PlaceOrderInput {
   editingOrderId: string | null;
   tableId: string | null;
@@ -99,15 +152,17 @@ export async function placeOrderAction(input: PlaceOrderInput): Promise<{ id: st
   let newOrderNumber: string | undefined;
 
   if (input.editingOrderId) {
-    const closedOutAt = existing
-      ? isClosedOut(existing.status, paymentMethod)
-        ? (existing.closedOutAt ?? Date.now())
-        : null
-      : null;
-    // The kitchen already finished this ticket, but the edit just put an unprepped item back on
-    // it (e.g. another dish added at the table) — reopen it so it reappears on the Kitchen
-    // Display as a running order instead of staying "Ready" with food nobody's cooking.
-    const reopensKitchen = existing?.status === "Ready" && input.items.some((item) => !item.ready);
+    const { items: editedItems, removedItems } = existing
+      ? diffEditedItems(existing, input.items)
+      : { items: input.items.map(stripChangeFlags), removedItems: null };
+    // The kitchen already finished this ticket (Served, or the legacy "Ready"), but the edit just
+    // put an unprepped item back on it (e.g. another dish added at the table) — reopen it so it
+    // reappears on the Kitchen Display as a running order instead of staying done with food
+    // nobody's cooking.
+    const reopensKitchen =
+      (existing?.status === "Ready" || existing?.status === "Served") && editedItems.some((item) => !item.ready);
+    const closedOutAt =
+      existing && !reopensKitchen && isClosedOut(existing.status, paymentMethod) ? (existing.closedOutAt ?? Date.now()) : null;
 
     await db
       .update(orders)
@@ -117,7 +172,8 @@ export async function placeOrderAction(input: PlaceOrderInput): Promise<{ id: st
         guests: input.guests,
         channel: input.channel,
         thirdPartyProvider: input.channel === "Third Party" ? input.thirdPartyProvider : null,
-        items: input.items,
+        items: editedItems,
+        removedItems,
         paymentMethod,
         payments,
         cashReceived: input.cashReceived ?? null,
@@ -130,7 +186,7 @@ export async function placeOrderAction(input: PlaceOrderInput): Promise<{ id: st
         customerAddress: input.channel === "Delivery" ? input.customerAddress || null : null,
         updatedAt: Date.now(),
         closedOutAt,
-        ...(reopensKitchen ? { status: "In Kitchen" as OrderStatus } : {}),
+        ...(reopensKitchen ? { status: "In Kitchen" as OrderStatus, servedAt: null } : {}),
       })
       .where(and(eq(orders.id, input.editingOrderId), eq(orders.restaurantId, restaurantId)));
   } else {
@@ -190,7 +246,7 @@ export async function placeOrderAction(input: PlaceOrderInput): Promise<{ id: st
       status,
       servedAt,
       closedOutAt,
-      items: input.items,
+      items: input.items.map(stripChangeFlags),
       paymentMethod,
       payments,
       cashReceived: input.cashReceived ?? null,

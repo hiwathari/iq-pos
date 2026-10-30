@@ -78,6 +78,12 @@ export interface OrderItem {
   // reproducible even if the category's rate changes, or tax gets turned on/off, later. Absent
   // (or 0) means no tax, which is every order placed while the restaurant has tax disabled.
   taxRate?: number;
+  // Set by the Till when it edits an order that was already placed (see diffEditedItems in
+  // lib/actions/orders.ts): "added" for a new line, "updated" for a changed qty or note (prevQty
+  // is the qty before the change). The Kitchen Display highlights these in orange until the
+  // ticket is done. Never trusted from the client — the server recomputes it on every edit.
+  changed?: "added" | "updated";
+  prevQty?: number;
 }
 
 export interface PaymentLine {

@@ -261,6 +261,8 @@ export const orders = sqliteTable("orders", {
       note?: string;
       lineId?: string;
       taxRate?: number;
+      changed?: "added" | "updated";
+      prevQty?: number;
     }[]
   >(),
   // "Cash", the name of a payment terminal, or "Split" when paid across multiple methods
@@ -292,6 +294,12 @@ export const orders = sqliteTable("orders", {
   // Extra table numbers folded into this order via a table merge (e.g. a party spanning two
   // physical tables billed as one ticket) — shown as "Table 03 + 04". Null for the normal case.
   mergedTableNumbers: text("merged_table_numbers", { mode: "json" }).$type<number[]>(),
+  // Lines taken off the order by a Till edit after it was placed — shown crossed out in red on
+  // the Kitchen Display so the kitchen knows to stop making them. Accumulates across edits until
+  // the order is done; a line added back is dropped from here. Null when nothing was removed.
+  removedItems: text("removed_items", { mode: "json" }).$type<
+    { dishId: string; name: string; price: number; qty: number; note?: string; lineId?: string }[]
+  >(),
   // When the order first became fully closed out (Served + paid) — set the moment both
   // conditions are true, cleared if either stops being true. A minute after this, the Till
   // auto-frees the order's table so staff don't have to remember to clear it by hand.
