@@ -876,6 +876,12 @@ when something here gets built, move it to §14 and the section that describes i
   `app/reports/page.tsx`. See §7.10. No schema change. FAQ "How do I read the reports?" and
   `public/help/reports.webp` updated.
 
+### 2026-10-30 — Payvizo demo menu (data)
+- Payvizo was given a demo menu as SQL run on Turso by the owner, no code change: 8 categories
+  (Starters, Mains, Burgers & Wraps, Pizza, Sides, Desserts, Hot Drinks, Cold Drinks) and 35
+  dishes, each with an emoji, colour and short description. The SQL only adds what's missing (by
+  name) and uses the restaurant's usual tax rate (20% if none). Edit or delete in Manage Dishes.
+
 ### 2026-10-30 — Shift4 card-machine logo; Hello Chai menu/staff/terminal additions (data)
 - `public/terminal-logos/shift4.png` (the round S4 mark, 256px) — served at
   `https://pos.luvder.com/terminal-logos/shift4.png` for a payment terminal's `logo_url`. Put
