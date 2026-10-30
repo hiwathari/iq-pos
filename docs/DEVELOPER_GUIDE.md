@@ -824,6 +824,15 @@ when something here gets built, move it to §14 and the section that describes i
 > change without all three is not done. This guide plus that FAQ are the source for the final
 > project documentation, so both must always match the live system. (Also in `CLAUDE.md`.)
 
+### 2026-10-30 — Shift4 card-machine logo; Hello Chai menu/staff/terminal additions (data)
+- `public/terminal-logos/shift4.png` (the round S4 mark, 256px) — served at
+  `https://pos.luvder.com/terminal-logos/shift4.png` for a payment terminal's `logo_url`. Put
+  other card-machine logos in the same folder.
+- Hello Chai data (run as SQL on Turso by the owner, no code change): Cake (Snacks, £1.50), Gems
+  (Sweets, £0.50), Watermelon Milk Sarbath (Cold Drinks, £3.99), Maggie Combo (Hot Food, £4.29),
+  Tea + Parle-G → £2.00, staff member Nithya (PIN login only), Shift4 card machine. Missing
+  categories were created with the restaurant's usual tax rate.
+
 ### 2026-10-29 — Sales Records: edit or delete End Day reports and orders
 - New admin page **Sales Records** (`app/sales-records`, sidebar, permission `sales-records` —
   admins always, staff only if granted in Settings → Staff). Two tables:
