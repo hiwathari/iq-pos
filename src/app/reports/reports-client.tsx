@@ -16,6 +16,22 @@ import {
 } from "@/lib/actions/terminal-settlements";
 import { RevenueBarChart, RevenueLineChart, RevenuePieChart } from "@/components/charts";
 import { SortableTable, type Column } from "./sortable-table";
+import { TAB_GROUPS } from "./report-tabs";
+import type { ReportInsights } from "@/lib/data/report-insights";
+import {
+  CustomersTab,
+  DashboardTab,
+  DiscountsTab,
+  downloadOrdersCsv,
+  EndDayTab,
+  ItemsTab,
+  SpeedTab,
+  StaffPerformance,
+  StockTab,
+  TablesTab,
+  TaxTab,
+  VoidsTab,
+} from "./insight-tabs";
 import {
   Users,
   Package,
@@ -44,6 +60,7 @@ import {
   Landmark,
   ReceiptText,
   AlertTriangle,
+  Download,
 } from "lucide-react";
 
 export interface ReportsSearchParams {
@@ -62,21 +79,6 @@ function currentBusinessDateKey(openTime: string | null, timezone: string) {
   return businessDateKey(Date.now(), openTime, timezone);
 }
 
-const TABS: { slug: string; label: string }[] = [
-  { slug: "overview", label: "Overview" },
-  { slug: "trends", label: "Trends" },
-  { slug: "channel", label: "By Channel" },
-  { slug: "payment", label: "By Payment Method" },
-  { slug: "category", label: "By Category" },
-  { slug: "waiter", label: "Waiter Report" },
-  { slug: "daily", label: "Daily Summary" },
-  { slug: "weekly", label: "Weekly Summary" },
-  { slug: "online", label: "Online Orders" },
-  { slug: "offline", label: "Offline Orders" },
-  { slug: "bookings", label: "Bookings" },
-  { slug: "pettycash", label: "Petty Cash" },
-  { slug: "cardsettlements", label: "Card Settlements" },
-];
 
 export function ReportsClient({
   tab,
@@ -98,6 +100,8 @@ export function ReportsClient({
   settlementReport,
   terminalPayouts,
   terminalExpenses,
+  insights,
+  restaurantName,
 }: {
   tab: string;
   fromStr: string;
@@ -118,7 +122,10 @@ export function ReportsClient({
   settlementReport: TerminalSettlementReport | null;
   terminalPayouts: TerminalPayout[];
   terminalExpenses: TerminalExpense[];
+  insights: ReportInsights | null;
+  restaurantName: string;
 }) {
+  const tabHref = (t: string) => `/reports?tab=${t}&from=${fromStr}&to=${toStr}`;
   return (
     <div>
       <ReportFilterBar
@@ -131,15 +138,31 @@ export function ReportsClient({
         timezone={timezone}
         paymentTerminals={paymentTerminals}
         selectedTerminalId={selectedTerminalId}
+        onExportCsv={() => downloadOrdersCsv(ordersInRange, restaurantName, fromStr, toStr)}
       />
 
       <div id="report-print-area">
+        {tab === "dashboard" && insights && <DashboardTab insights={insights} currencySymbol={currencySymbol} tabHref={tabHref} />}
+        {tab === "items" && insights && <ItemsTab insights={insights} currencySymbol={currencySymbol} />}
+        {tab === "discounts" && insights && <DiscountsTab insights={insights} currencySymbol={currencySymbol} />}
+        {tab === "tax" && insights && <TaxTab insights={insights} currencySymbol={currencySymbol} />}
+        {tab === "tables" && insights && <TablesTab insights={insights} currencySymbol={currencySymbol} />}
+        {tab === "speed" && insights && <SpeedTab insights={insights} />}
+        {tab === "voids" && insights && <VoidsTab insights={insights} currencySymbol={currencySymbol} />}
+        {tab === "stock" && insights && <StockTab insights={insights} />}
+        {tab === "endday" && insights && <EndDayTab insights={insights} currencySymbol={currencySymbol} />}
+        {tab === "customers" && insights && <CustomersTab insights={insights} currencySymbol={currencySymbol} />}
         {tab === "overview" && <OverviewTab report={report} currencySymbol={currencySymbol} />}
         {tab === "trends" && <TrendsTab report={report} currencySymbol={currencySymbol} />}
         {tab === "channel" && <ChannelTab report={report} currencySymbol={currencySymbol} />}
         {tab === "payment" && <PaymentMethodTab report={report} currencySymbol={currencySymbol} />}
         {tab === "category" && <CategoryTab report={report} currencySymbol={currencySymbol} />}
-        {tab === "waiter" && <WaiterReportTab report={report} currencySymbol={currencySymbol} />}
+        {tab === "waiter" && (
+          <div className="space-y-4">
+            {insights && <StaffPerformance insights={insights} currencySymbol={currencySymbol} />}
+            <WaiterReportTab report={report} currencySymbol={currencySymbol} />
+          </div>
+        )}
         {tab === "daily" && dailySummary && <DailySummaryTab summary={dailySummary} currencySymbol={currencySymbol} />}
         {tab === "weekly" && weeklySummary && <WeeklySummaryTab days={weeklySummary} currencySymbol={currencySymbol} />}
         {tab === "online" && <OnlineOfflineTab orders={ordersInRange} currencySymbol={currencySymbol} online />}
@@ -179,6 +202,7 @@ function ReportFilterBar({
   timezone,
   paymentTerminals,
   selectedTerminalId,
+  onExportCsv,
 }: {
   tab: string;
   fromStr: string;
@@ -189,6 +213,7 @@ function ReportFilterBar({
   timezone: string;
   paymentTerminals: PaymentTerminal[];
   selectedTerminalId: string;
+  onExportCsv: () => void;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -219,17 +244,24 @@ function ReportFilterBar({
 
   return (
     <div className="mb-6 print:hidden">
-      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200 bg-white p-1">
-        {TABS.map((t) => (
-          <button
-            key={t.slug}
-            onClick={() => navigate({ tab: t.slug })}
-            className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-              tab === t.slug ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
-            }`}
-          >
-            {t.label}
-          </button>
+      <div className="mb-3 grid gap-x-4 gap-y-2 rounded-xl border border-neutral-200 bg-white p-2 sm:grid-cols-[auto_1fr]">
+        {TAB_GROUPS.map((g) => (
+          <div key={g.label} className="contents">
+            <div className="hidden pt-2.5 text-[11px] font-bold uppercase tracking-wide text-neutral-400 sm:block">{g.label}</div>
+            <div className="flex flex-wrap gap-1">
+              {g.tabs.map((t) => (
+                <button
+                  key={t.slug}
+                  onClick={() => navigate({ tab: t.slug })}
+                  className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                    tab === t.slug ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
         ))}
       </div>
 
@@ -328,12 +360,21 @@ function ReportFilterBar({
             ))}
           </select>
         )}
-        <button
-          onClick={() => window.print()}
-          className="ml-auto flex items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3.5 py-2 text-sm font-semibold text-neutral-600 hover:bg-neutral-50"
-        >
-          <Printer className="h-4 w-4" /> Print
-        </button>
+        <div className="ml-auto flex gap-2">
+          <button
+            onClick={onExportCsv}
+            title="Download every order in the chosen dates as a spreadsheet (CSV)"
+            className="flex items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3.5 py-2 text-sm font-semibold text-neutral-600 hover:bg-neutral-50"
+          >
+            <Download className="h-4 w-4" /> Export CSV
+          </button>
+          <button
+            onClick={() => window.print()}
+            className="flex items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3.5 py-2 text-sm font-semibold text-neutral-600 hover:bg-neutral-50"
+          >
+            <Printer className="h-4 w-4" /> Print
+          </button>
+        </div>
       </div>
     </div>
   );

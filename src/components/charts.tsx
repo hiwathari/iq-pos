@@ -140,3 +140,30 @@ function EmptyChart({ height }: { height: number }) {
     </div>
   );
 }
+
+// Two series on one axis — this period against the one before it. Same money scale, so a
+// single y-axis; the previous period is the muted color and dashed so it reads as context.
+export function RevenueCompareChart({
+  data,
+  currencySymbol,
+  height = 260,
+}: {
+  data: { label: string; current: number; previous: number }[];
+  currencySymbol: string;
+  height?: number;
+}) {
+  if (data.length === 0) return <EmptyChart height={height} />;
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <LineChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+        <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#a3a3a3" }} axisLine={{ stroke: "#e5e5e5" }} tickLine={false} minTickGap={16} />
+        <YAxis tick={{ fontSize: 11, fill: "#a3a3a3" }} axisLine={false} tickLine={false} tickFormatter={(v) => formatMoney(v, currencySymbol)} width={56} />
+        <Tooltip content={<ChartTooltip currencySymbol={currencySymbol} />} />
+        <Legend iconType="plainline" iconSize={14} wrapperStyle={{ fontSize: 12, color: "#525252" }} />
+        <Line type="monotone" dataKey="current" name="This period" stroke={CHART_COLORS[0]} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+        <Line type="monotone" dataKey="previous" name="Previous period" stroke="#a3a3a3" strokeWidth={2} strokeDasharray="4 4" dot={false} activeDot={{ r: 4 }} />
+      </LineChart>
+    </ResponsiveContainer>
+  );
+}

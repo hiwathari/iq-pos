@@ -445,8 +445,12 @@ export const FAQ: FaqSection[] = [
       {
         id: "reports",
         q: "How do I read the reports?",
-        a: "Reports break sales down by day, week, channel, payment method, category and staff member.",
-        steps: ["Pick a report.", "Choose the dates — Today, last 7/30/90 days or your own range.", "Print or save as PDF."],
+        a: "Reports opens on the Dashboard: net sales, money taken, orders, average order, guests, items sold and discounts, each compared with the period before; a sales trend against the previous period; a busy-times heatmap by day and hour; top items, categories, channels, payment methods, staff and tables; and alerts for unbalanced End Days, unpaid orders, low stock and voids. Every other report sits in the grouped tabs above it — Overview (Dashboard, Summary, Trends), Sales (Items, Categories, Channels, Payment Methods, Discounts & Coupons, Tax), Operations (Staff, Tables, Kitchen Speed, Voids, Online Orders, Offline Orders, Bookings, Stock), Money (Daily Summary, Weekly Summary, End Day, Petty Cash, Card Settlements) and Customers (Customers & Loyalty).",
+        steps: [
+          "Pick a report from the grouped tabs — Dashboard is the default.",
+          "Choose the dates — Today, last 7/30/90 days or your own range. The Dashboard compares them with the same number of days before.",
+          "Tap Export CSV to download every order in the range (items, discount, tax, total, payment, status) for Excel or your accountant, or Print / save as PDF.",
+        ],
         image: "reports",
         who: "Manager",
       },

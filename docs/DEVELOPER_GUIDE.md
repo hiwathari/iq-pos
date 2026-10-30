@@ -94,7 +94,7 @@ src/
     loyalty/                # Loyalty card admin view
     inventory/              # Stock tracking
     customers/               # (placeholder/basic customer view)
-    reports/                # Sales/shift reports, Card Settlements tab
+    reports/                # Reports dashboard + every report tab, CSV export, Card Settlements
     shift-report/[id]/      # One closed shift's detail report
     settings/               # Restaurant config — see settings/*-client.tsx per section
     super-admin/            # Platform-level: create restaurants, branding, online-ordering flags
@@ -539,6 +539,41 @@ built ad hoc); recreate it from this description if it needs to change:
   Android SDK (`compileSdk 34`, AGP 8.7.2, Kotlin 1.9.24) — not installed in every environment this
   project gets worked on from; if that tooling isn't available, this is out of reach without it.
 
+### 7.10 Reports (`/reports`)
+
+Gated by the `reports` permission; the accounts role sees only its default terminal's card
+takings (same `accountsFilter` as everywhere else). Dates are inclusive business-day keys
+(`from`/`to` in the URL, default last 30 days) resolved through §7.4.
+
+- **Tabs** are defined once in `app/reports/report-tabs.ts` (`TAB_GROUPS`) and shown as a grouped
+  bar: **Overview** — Dashboard (default), Summary, Trends · **Sales** — Items, Categories,
+  Channels, Payment Methods, Discounts & Coupons, Tax · **Operations** — Staff, Tables, Kitchen
+  Speed, Voids, Online Orders, Offline Orders, Bookings, Stock · **Money** — Daily Summary,
+  Weekly Summary, End Day, Petty Cash, Card Settlements · **Customers** — Customers & Loyalty.
+  The slug is `?tab=`. Keep shared constants in that plain `.ts` file: a constant exported from a
+  `"use client"` module becomes a client reference and can't be read by the server page.
+- **Two data sources.** `lib/data/reports.ts` (`getReportData`, `getDailySummary`,
+  `getWeeklySummary`) feeds the original tabs. `lib/data/report-insights.ts`
+  (`getReportInsights`) is loaded only for the tabs in `INSIGHT_TABS`. It reads the orders from
+  the range *and the same number of days before it* (for "vs previous"), plus dishes, categories,
+  loyalty members, inventory and closed shifts, and works out: KPIs (net sales, money taken,
+  orders, average order, guests, per guest, items sold, discounts, tax, voids, unpaid, online/QR/
+  kiosk) for both periods; a daily trend against the previous period; a 7×24 day/hour heatmap;
+  items (qty, revenue, share, slow movers); coupons/discounts by staff; voids by staff and
+  reason; tax by rate; customers (identified, repeat, top, loyalty share, new members); tables
+  (orders, covers, spend per cover, time open from `createdAt` to `closedOutAt`, capped at 6h);
+  kitchen speed (`createdAt` → `servedAt`: average, median, 90th percentile, by channel); staff;
+  End Day variances (via `shiftTotals`); and stock (low and all). Voided orders are excluded from
+  sales and counted separately.
+- **UI**: `insight-tabs.tsx` (client) — `DashboardTab` (alerts, 8 KPI cards with % change —
+  "inverse" metrics like discounts/voids go green when they fall — sales trend chart, busy-times
+  heatmap, top lists) and one component per new tab. Charts come from `components/charts.tsx`
+  (`RevenueCompareChart`: this period vs the previous period, dashed grey, one axis, legend).
+- **Export CSV** (`downloadOrdersCsv`) downloads every order in the range from the browser (UTF-8
+  BOM so Excel shows £ correctly): date, time, order, seq, type, table, guests, staff, customer,
+  items, subtotal, discount, tax, total, payment, status, void reason. **Print** uses the print
+  stylesheet (`print:hidden` on the filter bar).
+
 ## 8. Payment / Card-Machine Integrations
 
 A `payment_terminals` row with `provider: null` is "manual" — staff run the physical machine
@@ -634,7 +669,7 @@ don't assume a change to one automatically applies to the other.
 | Integrations (delivery platforms) | `app/settings/integrations-client.tsx` | — | — *(see §13 — not wired to a real API)* |
 | Shifts / End Day | `app/dashboard/` | `lib/actions/shifts.ts` | `lib/data/shifts.ts` |
 | Petty cash | — | `lib/actions/petty-cash.ts` | `lib/data/petty-cash.ts` |
-| Reports (incl. Card Settlements) | `app/reports/` | `lib/actions/terminal-settlements.ts` | `lib/data/reports.ts`, `terminal-settlements.ts` |
+| Reports (Dashboard, all report tabs, CSV, Card Settlements) | `app/reports/` (`reports-client.tsx`, `insight-tabs.tsx`, `report-tabs.ts`) | `lib/actions/terminal-settlements.ts` | `lib/data/reports.ts`, `report-insights.ts`, `terminal-settlements.ts` |
 | Super Admin (create/brand restaurants) | `app/super-admin/` | `lib/actions/restaurants.ts` | — |
 | Regional admins | `app/super-admin/` | `lib/actions/regional-admins.ts` | — |
 | Auth (staff/admin) | `app/login/`, `till-login/`, `kitchen-login/`, `staff-login/` | `lib/actions/auth.ts`, `pin-auth.ts` | — |
@@ -823,6 +858,23 @@ when something here gets built, move it to §14 and the section that describes i
 > `/faq` page), re-capturing the marked screenshot in `public/help/` when the screen changed. A
 > change without all three is not done. This guide plus that FAQ are the source for the final
 > project documentation, so both must always match the live system. (Also in `CLAUDE.md`.)
+
+### 2026-10-30 — Reports dashboard and every report type
+- `/reports` now opens on a **Dashboard**: alerts (unbalanced End Days, unpaid orders, low stock,
+  voids), 8 KPI cards each with % change against the previous period of the same length, a sales
+  trend vs previous period, a day × hour busy-times heatmap, and top items, categories, channels,
+  payment methods, staff and tables.
+- New report tabs: **Items** (qty, revenue, share, average price, slow movers), **Discounts &
+  Coupons**, **Tax** (net and tax by rate), **Staff** performance (added to the existing waiter
+  tab), **Tables** (covers, spend per cover, time open), **Kitchen Speed** (order → served:
+  average, median, 90th percentile, by channel), **Voids** (by staff, by reason, list), **Stock**,
+  **End Day** (each closed shift's expected vs counted), **Customers & Loyalty**. "Overview" is
+  now labelled **Summary**; tabs are grouped Overview / Sales / Operations / Money / Customers.
+- **Export CSV** button next to Print: every order in the range, one row each.
+- Code: `lib/data/report-insights.ts`, `app/reports/insight-tabs.tsx`, `app/reports/report-tabs.ts`,
+  `RevenueCompareChart` in `components/charts.tsx`; default tab changed to `dashboard` in
+  `app/reports/page.tsx`. See §7.10. No schema change. FAQ "How do I read the reports?" and
+  `public/help/reports.webp` updated.
 
 ### 2026-10-30 — Shift4 card-machine logo; Hello Chai menu/staff/terminal additions (data)
 - `public/terminal-logos/shift4.png` (the round S4 mark, 256px) — served at

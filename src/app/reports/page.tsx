@@ -1,6 +1,7 @@
 import { AppShell } from "@/components/app-shell";
 import { requirePermission } from "@/lib/scope";
 import { getReportData, getDailySummary, getWeeklySummary } from "@/lib/data/reports";
+import { getReportInsights } from "@/lib/data/report-insights";
 import { getRestaurant } from "@/lib/data/restaurants";
 import { listOrders } from "@/lib/data/orders";
 import { listReservations } from "@/lib/data/tables";
@@ -10,6 +11,7 @@ import { getTerminalSettlementReport, listTerminalExpenses, listTerminalPayouts 
 import { filterOrdersForAccountsRole } from "@/lib/accounts-filter";
 import { businessDateKey, businessDayRange, shiftDateKey } from "@/lib/business-day";
 import { ReportsClient, type ReportsSearchParams } from "./reports-client";
+import { INSIGHT_TABS } from "./report-tabs";
 
 // Today's business-day key, as of whenever this is called — a tiny top-level wrapper around
 // Date.now() (rather than calling it directly in the page component below) keeps the page
@@ -37,7 +39,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const businessDay = { openTime: restaurant?.openTime ?? null, timezone: restaurant?.timezone ?? "UTC" };
   const todayKey = currentBusinessDateKey(businessDay.openTime, businessDay.timezone);
 
-  const tab = params.tab ?? "overview";
+  const tab = params.tab ?? "dashboard";
   const { fromStr, toStr, from, to } = resolveRange(params, businessDay.openTime, businessDay.timezone);
   const dateStr = params.date || todayKey;
   // Default week view is the 7 business days ending today.
@@ -52,7 +54,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
 
   const selectedTerminalId = params.terminal || defaultTerminal?.id || paymentTerminals[0]?.id || "";
 
-  const [report, rawOrders, allReservations, pettyCash, dailySummary, weeklySummary, settlementReport, terminalPayouts, terminalExpenses] =
+  const [report, rawOrders, allReservations, pettyCash, dailySummary, weeklySummary, settlementReport, terminalPayouts, terminalExpenses, insights] =
     await Promise.all([
       getReportData(restaurantId, { from, to }, accountsFilter, businessDay),
       listOrders(restaurantId),
@@ -69,6 +71,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
       tab === "cardsettlements" && selectedTerminalId
         ? listTerminalExpenses(restaurantId, selectedTerminalId, fromStr, toStr, accountsTerminalFilter)
         : Promise.resolve([]),
+      INSIGHT_TABS.includes(tab) ? getReportInsights(restaurantId, { from, to }, accountsFilter, businessDay) : Promise.resolve(null),
     ]);
   const currencySymbol = restaurant?.currencySymbol ?? "£";
 
@@ -100,6 +103,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           settlementReport={settlementReport}
           terminalPayouts={terminalPayouts}
           terminalExpenses={terminalExpenses}
+          insights={insights}
+          restaurantName={restaurant?.name ?? "IQ POS"}
         />
       </div>
     </AppShell>
