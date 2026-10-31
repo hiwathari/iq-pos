@@ -52,6 +52,18 @@ export const FAQ: FaqSection[] = [
         image: "till-overview",
         who: "Everyone",
       },
+      {
+        id: "pricing-plans",
+        q: "How much does IQ POS cost?",
+        a: "There are three plans, paid monthly or once a year. All prices exclude VAT; card machines, printers and screens are quoted separately. See them on the Pricing page at iq.luvder.com/pricing.",
+        steps: [
+          "Basic — £35.99 a month or £399 a year: 1 till, card & contactless payments, menu management, daily sales reports, email support.",
+          "Standard (most popular) — £45.99 a month or £550 a year: up to 3 tills, everything in Basic, Kitchen Display or live stock control, staff logins & permissions, phone support 7 days.",
+          "Premium — £60.99 a month or £699 a year: unlimited tills, everything in Standard, multi-site reporting & central menus, supplier ordering & integrations, priority support & an account manager.",
+          "Pick Monthly or Annually at the top of the Pricing page, then tap a plan's button — it opens a short form with that plan already chosen, and we'll be in touch to set you up.",
+        ],
+        who: "Admin",
+      },
     ],
   },
   {

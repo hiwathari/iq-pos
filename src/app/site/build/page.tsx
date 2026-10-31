@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { PRODUCTS } from "@/lib/site/products";
+import { getPlan, parseBilling } from "@/lib/site/pricing";
 import { GridBackdrop } from "../_components/sections";
 import { getSiteBase } from "../_components/site-base";
 import { BuildClient } from "./build-client";
@@ -11,13 +12,16 @@ export const metadata: Metadata = {
 
 export default async function BuildPage({ searchParams }: PageProps<"/site/build">) {
   const base = await getSiteBase();
-  const want = (await searchParams).want;
+  const params = await searchParams;
+  const want = params.want;
+  const plan = getPlan(params.plan);
+  const initialPlan = plan ? { plan: plan.id, billing: parseBilling(params.billing) } : null;
   const wanted = (Array.isArray(want) ? want : want ? [want] : []).filter((slug) => PRODUCTS.some((p) => p.slug === slug));
   return (
     <section className="relative min-h-[80vh] overflow-hidden pb-24 pt-32 sm:pt-40">
       <GridBackdrop className="opacity-70" />
       <div className="relative mx-auto max-w-4xl px-4 sm:px-8">
-        <BuildClient base={base} blobEnabled={!!process.env.BLOB_READ_WRITE_TOKEN} initialFeatures={wanted} />
+        <BuildClient base={base} blobEnabled={!!process.env.BLOB_READ_WRITE_TOKEN} initialFeatures={wanted} initialPlan={initialPlan} />
       </div>
     </section>
   );

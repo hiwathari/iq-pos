@@ -17,6 +17,7 @@ import {
   type BriefFields,
   type BriefFile,
 } from "@/lib/site/brief";
+import { planLabel } from "@/lib/site/pricing";
 import { PRODUCTS } from "@/lib/site/products";
 import { BUILD_DRAFT_KEY } from "../_components/hero-prompt";
 import { ProductIcon, StatusBadge } from "../_components/product-icon";
@@ -98,7 +99,17 @@ function formatSize(bytes: number) {
   return bytes > 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
-export function BuildClient({ base, blobEnabled, initialFeatures }: { base: string; blobEnabled: boolean; initialFeatures: string[] }) {
+export function BuildClient({
+  base,
+  blobEnabled,
+  initialFeatures,
+  initialPlan,
+}: {
+  base: string;
+  blobEnabled: boolean;
+  initialFeatures: string[];
+  initialPlan: { plan: string; billing: string } | null;
+}) {
   const [step, setStep] = useState<Step>("describe");
   const [description, setDescription] = useState("");
   const [files, setFiles] = useState<Attached[]>([]);
@@ -107,7 +118,7 @@ export function BuildClient({ base, blobEnabled, initialFeatures }: { base: stri
   const [fields, setFields] = useState<BriefFields>(EMPTY_BRIEF);
   const [found, setFound] = useState<(keyof BriefFields)[]>([]);
   const [extractedWith, setExtractedWith] = useState<"basic" | "ai">("basic");
-  const [answers, setAnswers] = useState<WebsiteBriefAnswers>(DEFAULT_ANSWERS);
+  const [answers, setAnswers] = useState<WebsiteBriefAnswers>(() => ({ ...DEFAULT_ANSWERS, ...initialPlan }));
   const [contact, setContact] = useState({ name: "", email: "", phone: "" });
   const [readingIndex, setReadingIndex] = useState(0);
   const [submitting, setSubmitting] = useState(false);
@@ -280,6 +291,19 @@ export function BuildClient({ base, blobEnabled, initialFeatures }: { base: stri
   return (
     <div ref={topRef} className="scroll-mt-32">
       <Progress step={step} />
+      {answers.plan && step !== "done" && (
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-sm">
+          <span className="rounded-full border border-teal-300/30 bg-teal-300/[0.08] px-3 py-1.5 font-semibold text-teal-100">
+            Plan: {planLabel(answers.plan, answers.billing)} <span className="font-normal text-white/45">ex VAT</span>
+          </span>
+          <Link href={`${base}/pricing`} className="text-white/50 underline-offset-4 hover:text-white hover:underline">
+            Change
+          </Link>
+          <button type="button" onClick={() => setAnswers((a) => ({ ...a, plan: "", billing: "" }))} className="text-white/50 underline-offset-4 hover:text-white hover:underline">
+            Remove
+          </button>
+        </div>
+      )}
 
       {step === "describe" && (
         <div className="mt-10">

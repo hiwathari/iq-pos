@@ -680,6 +680,7 @@ don't assume a change to one automatically applies to the other.
 | Petty cash | — | `lib/actions/petty-cash.ts` | `lib/data/petty-cash.ts` |
 | Reports (Dashboard, all report tabs, CSV, Card Settlements) | `app/reports/` (`reports-client.tsx`, `insight-tabs.tsx`, `report-tabs.ts`) | `lib/actions/terminal-settlements.ts` | `lib/data/reports.ts`, `report-insights.ts`, `terminal-settlements.ts` |
 | Super Admin (create/brand restaurants) | `app/super-admin/` | `lib/actions/restaurants.ts` | — |
+| IQ website (iq.luvder.com: home, products, `/pricing`, `/build` brief) | `app/site/` | `lib/actions/website-requests.ts` | `lib/site/products.ts`, `lib/site/pricing.ts`, `lib/data/website-requests.ts` |
 | Regional admins | `app/super-admin/` | `lib/actions/regional-admins.ts` | — |
 | Auth (staff/admin) | `app/login/`, `till-login/`, `kitchen-login/`, `staff-login/` | `lib/actions/auth.ts`, `pin-auth.ts` | — |
 | Invoice / receipt | `app/invoice/[orderId]/` | — | `lib/data/orders.ts` |
@@ -695,7 +696,7 @@ don't assume a change to one automatically applies to the other.
 app), `/downloads/iq-print-bridge.js`, `/downloads/install-print-bridge.sh`,
 `/downloads/install-print-bridge.ps1`, `/order/<slug>` (online ordering; `/kiosk` and
 `/table/<token>` under it), `/my-card`. Website: `https://iq.luvder.com` (`/build`,
-`/products/<slug>`). FAQ answers are linkable by id, e.g. `/faq#printer-setup`.
+`/pricing`, `/products/<slug>`). FAQ answers are linkable by id, e.g. `/faq#printer-setup`.
 
 **Environment variables** (all read via `process.env`, grep-verified — this is the complete set
 actually used in code):
@@ -851,7 +852,8 @@ when something here gets built, move it to §14 and the section that describes i
 
 ### 13.4 Pending — design, content and testing
 
-- Website: no pricing, contact, privacy-policy or terms pages yet. `/build` collects names, emails
+- Website: no contact, privacy-policy or terms pages yet; no online checkout for plans (the
+  Pricing page's buttons open the `/build` brief with the plan attached). `/build` collects names, emails
   and phone numbers, so a privacy policy is needed before promoting it.
 - The printed brochure still has placeholders (phone, email, website, price).
 - Not yet verified on real hardware: the receipt logo raster and QR code on a thermal printer;
@@ -884,6 +886,19 @@ when something here gets built, move it to §14 and the section that describes i
   `RevenueCompareChart` in `components/charts.tsx`; default tab changed to `dashboard` in
   `app/reports/page.tsx`. See §7.10. No schema change. FAQ "How do I read the reports?" and
   `public/help/reports.webp` updated.
+
+### 2026-10-31 — Pricing on the IQ website
+- Plans (Basic / Standard / Premium, monthly £35.99 / £45.99 / £60.99 or annual £399 / £550 /
+  £699, ex VAT) live in one list, `lib/site/pricing.ts`. Shown by `PricingPlans`
+  (`app/site/_components/pricing.tsx`, Monthly/Annually switch) on the new `/pricing` page
+  (iq.luvder.com/pricing) and in a `#pricing` section on the home page; "Pricing" added to the
+  site nav (desktop + mobile) and footer.
+- Plan buttons go to `/build?plan=<basic|standard|premium>&billing=<monthly|annual>`. The brief
+  shows "Plan: Standard · £550 / year" (Change / Remove) and saves it as `answers.plan` /
+  `answers.billing` inside `website_requests.details` (validated server-side against the list);
+  Super Admin → Website requests shows it on the row and in the detail. No schema change, no
+  online payment yet.
+- FAQ: new "How much does IQ POS cost?" (Getting started).
 
 ### 2026-10-30 — Kitchen Display: instant ticks; edited orders show what changed
 - **Schema** — run on Turso **before** this code is deployed (old code ignores the column):

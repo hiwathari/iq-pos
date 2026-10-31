@@ -1,6 +1,7 @@
 "use server";
 
 import { and, eq, gt } from "drizzle-orm";
+import { getPlan, parseBilling } from "@/lib/site/pricing";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { websiteRequests } from "@/db/schema";
@@ -18,6 +19,9 @@ export interface WebsiteBriefAnswers {
   timeline: string;
   usesIqPos: "yes" | "no" | "interested";
   notes: string;
+  // The IQ POS plan picked on the Pricing page (lib/site/pricing.ts), if they came from there.
+  plan?: string;
+  billing?: string;
 }
 
 export interface WebsiteBriefPayload {
@@ -87,6 +91,8 @@ export async function submitWebsiteRequestAction(payload: WebsiteBriefPayload): 
     timeline: str(a?.timeline, 60),
     usesIqPos: a?.usesIqPos === "yes" || a?.usesIqPos === "no" ? a.usesIqPos : "interested",
     notes: str(a?.notes, 2000),
+    plan: getPlan(a?.plan)?.id ?? "",
+    billing: getPlan(a?.plan) ? parseBilling(a?.billing) : "",
   };
   const files: BriefFile[] = (Array.isArray(payload?.files) ? payload.files : []).slice(0, 12).map((file) => ({
     kind: file?.kind === "logo" || file?.kind === "menu" ? file.kind : "photo",

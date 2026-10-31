@@ -10,6 +10,7 @@ import {
   type WebsiteBriefAnswers,
 } from "@/lib/actions/website-requests";
 import type { BriefFields } from "@/lib/site/brief";
+import { planLabel } from "@/lib/site/pricing";
 import { getProduct } from "@/lib/site/products";
 import type { WebsiteRequestRow } from "@/lib/data/website-requests";
 
@@ -100,7 +101,7 @@ export function WebsiteRequestsClient({
           ) : (
             <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
               {shown.map((r) => {
-                const fields = (r.details as { fields?: BriefFields }).fields;
+                const { fields, answers } = r.details as { fields?: BriefFields; answers?: WebsiteBriefAnswers };
                 return (
                   <button key={r.id} onClick={() => setOpenId(r.id)} className="flex w-full flex-wrap items-center gap-x-5 gap-y-2 border-b border-neutral-100 px-5 py-4 text-left last:border-0 hover:bg-neutral-50">
                     <div className="min-w-[180px] flex-1">
@@ -114,6 +115,11 @@ export function WebsiteRequestsClient({
                       <div className="text-xs text-neutral-400">{r.contactEmail}</div>
                     </div>
                     <div className="flex flex-wrap gap-1">
+                      {answers?.plan && (
+                        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                          {planLabel(answers.plan, answers.billing)}
+                        </span>
+                      )}
                       {(fields?.features ?? []).slice(0, 4).map((f) => (
                         <span key={f} className="rounded-full bg-teal-50 px-2 py-0.5 text-[11px] font-medium text-teal-700">
                           {getProduct(f)?.name ?? f}
@@ -394,6 +400,7 @@ function RequestDrawer({ request, onClose }: { request: WebsiteRequestRow; onClo
                 />
                 <Item label="Timeline" value={a?.timeline ?? ""} />
                 <Item label="Uses IQ POS" value={a ? { yes: "Yes", no: "No", interested: "Interested" }[a.usesIqPos] : ""} />
+                <Item label="Plan" value={planLabel(a?.plan, a?.billing)} />
                 <Item label="Notes" value={a?.notes ?? ""} wide />
               </dl>
             </Block>

@@ -24,6 +24,15 @@ export function Eyebrow({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Under the plan cards: prices exclude VAT; hardware is quoted separately.
+export function GlobalPricingNote() {
+  return (
+    <p className="mx-auto mt-8 max-w-2xl text-center text-sm text-white/40">
+      All prices are in GBP and exclude VAT. Card machines, printers and screens are quoted separately.
+    </p>
+  );
+}
+
 export function GlowText({ children }: { children: React.ReactNode }) {
   return <span className="bg-gradient-to-r from-teal-200 via-teal-300 to-emerald-200 bg-clip-text text-transparent">{children}</span>;
 }

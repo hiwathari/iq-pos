@@ -2,11 +2,13 @@ import Link from "next/link";
 import { ArrowRight, FileText, ListChecks, Rocket } from "lucide-react";
 import { getProduct, PRODUCTS } from "@/lib/site/products";
 import { HeroPrompt } from "./_components/hero-prompt";
+import { PricingPlans } from "./_components/pricing";
 import { ProductIcon } from "./_components/product-icon";
 import { getSiteBase } from "./_components/site-base";
 import {
   CheckList,
   Eyebrow,
+  GlobalPricingNote,
   GlowText,
   GridBackdrop,
   LoyaltyVisual,
@@ -169,6 +171,21 @@ export default async function SiteHome() {
               <ProductCard key={p.slug} product={p} base={base} />
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Pricing */}
+      <section id="pricing" className="scroll-mt-28 py-24">
+        <div className="mx-auto max-w-7xl px-5 sm:px-8">
+          <div className="text-center">
+            <Eyebrow>Pricing</Eyebrow>
+            <h2 className="mt-5 font-display text-4xl font-extrabold tracking-tight sm:text-5xl">Simple plans for every size.</h2>
+            <p className="mx-auto mt-4 max-w-xl text-white/55">Pay monthly or once a year.</p>
+          </div>
+          <div className="mt-10">
+            <PricingPlans base={base} />
+          </div>
+          <GlobalPricingNote />
         </div>
       </section>
 

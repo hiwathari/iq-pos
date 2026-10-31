@@ -22,6 +22,7 @@ export function SiteFooter({ base, posUrl }: { base: string; posUrl: string }) {
         <FooterCol
           title="IQ"
           links={[
+            { href: `${base}/pricing`, label: "Pricing" },
             { href: `${base}/build`, label: "Build my website" },
             { href: "/faq", label: "FAQ & how-to" },
             { href: `${posUrl}/login`, label: "Sign in to IQ POS" },

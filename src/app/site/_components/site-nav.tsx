@@ -101,6 +101,9 @@ export function SiteNav({ base, posUrl }: { base: string; posUrl: string }) {
           <Link href={`${base}/#how`} className="rounded-full px-4 py-2 hover:bg-white/5 hover:text-white">
             How it works
           </Link>
+          <Link href={`${base}/pricing`} className="rounded-full px-4 py-2 hover:bg-white/5 hover:text-white">
+            Pricing
+          </Link>
           <Link href="/faq" className="rounded-full px-4 py-2 hover:bg-white/5 hover:text-white">
             FAQ
           </Link>
@@ -142,6 +145,7 @@ export function SiteNav({ base, posUrl }: { base: string; posUrl: string }) {
           </div>
           <div className="mt-6 flex flex-col gap-3 text-lg text-white/80">
             <Link href={`${base}/#how`} onClick={() => setMobileOpen(false)}>How it works</Link>
+            <Link href={`${base}/pricing`} onClick={() => setMobileOpen(false)}>Pricing</Link>
             <Link href="/faq" onClick={() => setMobileOpen(false)}>FAQ</Link>
             <a href={`${posUrl}/login`}>Sign in</a>
           </div>
