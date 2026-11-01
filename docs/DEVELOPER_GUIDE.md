@@ -850,6 +850,16 @@ when something here gets built, move it to §14 and the section that describes i
 - Email/push alerts for new website briefs (Super Admin list only today, by choice).
 - The invoice link's "valid for 1 week" note isn't enforced.
 
+### 13.3a Planned — grocery shops & warehouses
+
+Full plan, decisions needed, draft SQL and file-by-file changes: **`docs/RETAIL_AND_WAREHOUSE_PLAN.md`**
+(nothing built yet). In short: business types `grocery` and `warehouse` driven by one
+`lib/business-profile.ts`; product fields (barcode, SKU, cost, sell by weight, VAT override, min
+age); a `stock_movements` log behind every stock change; barcode scanning, weighed items, age
+check and refunds on the Till; suppliers, purchase orders, goods in and stocktakes; then
+locations, batches/expiry, picking and trade accounts for warehouses. The Pricing page already
+promises supplier ordering, central menus and till limits, which are part of this plan.
+
 ### 13.4 Pending — design, content and testing
 
 - Website: no contact, privacy-policy or terms pages yet; no online checkout for plans (the
@@ -886,6 +896,11 @@ when something here gets built, move it to §14 and the section that describes i
   `RevenueCompareChart` in `components/charts.tsx`; default tab changed to `dashboard` in
   `app/reports/page.tsx`. See §7.10. No schema change. FAQ "How do I read the reports?" and
   `public/help/reports.webp` updated.
+
+### 2026-11-01 — Plan: grocery shops & warehouses (docs only)
+- New `docs/RETAIL_AND_WAREHOUSE_PLAN.md`: what the code does today, decisions to make, business
+  profile design, draft SQL (not run), changes per area/file, hardware, UK rules, three phases.
+  Linked from §13.3a. No code or schema change.
 
 ### 2026-10-31 — Pricing on the IQ website
 - Plans (Basic / Standard / Premium, monthly £35.99 / £45.99 / £60.99 or annual £399 / £550 /
