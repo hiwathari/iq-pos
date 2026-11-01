@@ -611,7 +611,7 @@ takings (same `accountsFilter` as everywhere else). Dates are inclusive business
 
 `restaurants.businessType` ∈ restaurant / cafe / grocery / retail / warehouse ("Wholesale /
 warehouse" in the UI). `businessProfile(type, features)` returns, per type: label + hint, words
-(Dish/Product, "Manage Dishes"/"Products", Restaurant/Store), feature defaults (`tables`,
+(restaurants and cafes always say Dish, shops always say Product — "Manage Dishes"/"Products", Restaurant/Store), feature defaults (`tables`,
 `kitchenDisplay`), the Till's order types (`channels`, first = default), `counterService`,
 receipt footer, negative-stock default and starter categories with VAT. Screens read it instead
 of checking the type:
@@ -1020,6 +1020,9 @@ promises supplier ordering, central menus and till limits, which are part of thi
 - Products page: search by name/SKU/barcode, "£x / kg" prices, Import / Export / Labels.
   Till tiles show "/ kg" for measured products; VAT override used on both Tills.
 - New pages `/manage-dishes/import` and `/manage-dishes/labels`. See §7.13.
+- Wording rule (owner's request): Restaurant and Cafe say **Dishes** ("Manage Dishes", "All
+  Menu", "Search menu…"); Grocery, Retail and Wholesale say **Products** — now also on the Till's
+  "All Products" button, the top search box and the Inventory subtitle.
 - FAQ: Manage Dishes answer updated; new "sell by weight, barcodes and stock", "import from a
   spreadsheet", "print shelf labels"; Inventory tip; screenshots `product-form`,
   `import-products`, `labels`, `manage-dishes` (re-captured).
