@@ -11,6 +11,7 @@ import { hasPermission } from "@/lib/permissions";
 import { findActiveCoupon } from "@/lib/data/coupons";
 import { findLoyaltyMemberById } from "@/lib/data/loyalty";
 import { freeTableIfNoLiveOrders, isOrderLive, nextOrderNumber } from "@/lib/order-helpers";
+import { businessProfile } from "@/lib/business-profile";
 import { adjustStockForEdit, negativeStockMode, returnStockForOrder, stockShortfalls, stockUsageForItems, takeStockForOrder } from "@/lib/stock";
 
 // An order is "closed out" once it's both served and paid — matches the Till's own
@@ -180,8 +181,17 @@ export async function placeOrderAction(input: PlaceOrderInput): Promise<PlaceOrd
     // nobody's cooking.
     const reopensKitchen =
       (existing?.status === "Ready" || existing?.status === "Served") && editedItems.some((item) => !item.ready);
+    // A parked sale in a shop (no kitchen) that's now paid in full is finished, like a new paid sale.
+    const paidNow = input.payments.reduce((sum, p) => sum + p.amount, 0);
+    const finishesNow =
+      !!existing &&
+      (existing.status === "In Kitchen" || existing.status === "Wait List") &&
+      !!paymentMethod &&
+      paidNow >= orderBreakdown({ items: editedItems, extraDiscount, couponDiscount }).total - 0.01 &&
+      !(await kitchenInUse(restaurantId));
+    const statusAfter: OrderStatus | undefined = reopensKitchen ? "In Kitchen" : finishesNow ? "Served" : existing?.status;
     const closedOutAt =
-      existing && !reopensKitchen && isClosedOut(existing.status, paymentMethod) ? (existing.closedOutAt ?? Date.now()) : null;
+      existing && statusAfter && isClosedOut(statusAfter, paymentMethod) ? (existing.closedOutAt ?? Date.now()) : null;
 
     await db
       .update(orders)
@@ -206,6 +216,7 @@ export async function placeOrderAction(input: PlaceOrderInput): Promise<PlaceOrd
         updatedAt: Date.now(),
         closedOutAt,
         ...(reopensKitchen ? { status: "In Kitchen" as OrderStatus, servedAt: null } : {}),
+        ...(finishesNow ? { status: "Served" as OrderStatus, servedAt: Date.now() } : {}),
       })
       .where(and(eq(orders.id, input.editingOrderId), eq(orders.restaurantId, restaurantId)));
     // Stock follows the edit: only the difference is taken or given back. A Pending customer
@@ -237,25 +248,19 @@ export async function placeOrderAction(input: PlaceOrderInput): Promise<PlaceOrd
     newOrderNumber = await nextOrderNumber(restaurantId);
     newOrderId = crypto.randomUUID();
 
-    // A cafe (see restaurants.businessType) is counter-service: a new order that's already paid
-    // in full skips "In Kitchen" and is created straight as Served — the same end state the
-    // normal flow reaches via the kitchen. A part-paid or unpaid order still goes to the kitchen.
+    // Counter service (a cafe, a shop — anything whose business profile says so or that has the
+    // kitchen switched off, see lib/business-profile.ts): a new order that's already paid in full
+    // skips "In Kitchen" and is created straight as Served — the end state the normal flow reaches
+    // via the kitchen. A part-paid or unpaid one stays open (a shop's "parked" sale).
     let status: OrderStatus = input.channel === "Wait List" ? "Wait List" : "In Kitchen";
     let servedAt: number | null = null;
     let closedOutAt: number | null = null;
     const paidTotal = input.payments.reduce((sum, p) => sum + p.amount, 0);
     const orderTotal = orderBreakdown({ items: input.items, extraDiscount, couponDiscount }).total;
-    if (status === "In Kitchen" && paymentMethod && paidTotal >= orderTotal - 0.01) {
-      const [restaurant] = await db
-        .select({ businessType: restaurants.businessType })
-        .from(restaurants)
-        .where(eq(restaurants.id, restaurantId))
-        .limit(1);
-      if (restaurant?.businessType === "cafe") {
-        status = "Served";
-        servedAt = Date.now();
-        closedOutAt = servedAt;
-      }
+    if (status === "In Kitchen" && paymentMethod && paidTotal >= orderTotal - 0.01 && (await finishesWhenPaid(restaurantId))) {
+      status = "Served";
+      servedAt = Date.now();
+      closedOutAt = servedAt;
     }
 
     await db.insert(orders).values({
@@ -306,6 +311,20 @@ export async function placeOrderAction(input: PlaceOrderInput): Promise<PlaceOrd
     orderNumber: input.editingOrderId ? (existing?.orderNumber ?? "") : newOrderNumber!,
     stockWarnings,
   };
+}
+
+// A paid new sale is finished at once for counter service (cafe, shops) or when the kitchen is
+// switched off; kitchenInUse is the narrower check for finishing a parked sale paid later (a cafe
+// with a kitchen still serves it through the kitchen).
+async function finishesWhenPaid(restaurantId: string) {
+  const [r] = await db.select({ type: restaurants.businessType, features: restaurants.features }).from(restaurants).where(eq(restaurants.id, restaurantId)).limit(1);
+  const profile = businessProfile(r?.type, r?.features);
+  return profile.counterService || !profile.features.kitchenDisplay;
+}
+
+async function kitchenInUse(restaurantId: string) {
+  const [r] = await db.select({ type: restaurants.businessType, features: restaurants.features }).from(restaurants).where(eq(restaurants.id, restaurantId)).limit(1);
+  return businessProfile(r?.type, r?.features).features.kitchenDisplay;
 }
 
 function formatStockQty(n: number) {

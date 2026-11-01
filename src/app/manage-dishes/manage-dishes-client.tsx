@@ -27,12 +27,15 @@ export function ManageDishesClient({
   printers,
   inventoryItems,
   currencySymbol,
+  words,
 }: {
   categories: Category[];
   dishes: Dish[];
   printers: Printer[];
   inventoryItems: InventoryItem[];
   currencySymbol: string;
+  // "Dish"/"Dishes" for restaurants and cafes, "Product"/"Products" for shops (lib/business-profile.ts).
+  words: { product: string; products: string; manageProducts: string };
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -60,7 +63,7 @@ export function ManageDishesClient({
   }, [dishes, selectedCategory, query]);
 
   const categoryName =
-    selectedCategory === "all" ? "All Dishes" : categories.find((c) => c.id === selectedCategory)?.name ?? "Dishes";
+    selectedCategory === "all" ? `All ${words.products}` : categories.find((c) => c.id === selectedCategory)?.name ?? words.products;
 
   function openAddDish() {
     setEditingDish(null);
@@ -136,12 +139,12 @@ export function ManageDishesClient({
     <div className="flex h-full min-h-0">
       {/* Category sidebar */}
       <div className="flex w-72 shrink-0 flex-col border-r border-neutral-200 bg-white p-5">
-        <h1 className="mb-4 text-lg font-semibold text-neutral-900">Dishes Category</h1>
+        <h1 className="mb-4 text-lg font-semibold text-neutral-900">{words.products} Category</h1>
         <div className="flex-1 space-y-1 overflow-y-auto">
           <CategoryRow
             active={selectedCategory === "all"}
             icon="all"
-            name="All Dishes"
+            name={`All ${words.products}`}
             count={counts.all}
             onClick={() => setSelectedCategory("all")}
           />
@@ -168,7 +171,7 @@ export function ManageDishesClient({
       {/* Main content */}
       <div className="flex-1 overflow-y-auto p-6">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-xl font-semibold text-neutral-900">Manage Dishes</h1>
+          <h1 className="text-xl font-semibold text-neutral-900">{words.manageProducts}</h1>
           <div className="flex items-center gap-3">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
@@ -183,7 +186,7 @@ export function ManageDishesClient({
               onClick={openAddDish}
               className="flex items-center gap-2 rounded-xl bg-[var(--brand)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)]"
             >
-              <Plus className="h-4 w-4" /> Add New Dishes
+              <Plus className="h-4 w-4" /> Add New {words.products}
             </button>
           </div>
         </div>
@@ -222,7 +225,9 @@ export function ManageDishesClient({
               <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--brand)] text-white">
                 <Plus className="h-5 w-5" />
               </span>
-              <span className="px-4 text-sm font-medium">Add New Dish to {categoryName}</span>
+              <span className="px-4 text-sm font-medium">
+                Add New {words.product} to {categoryName}
+              </span>
             </button>
             {filteredDishes.map((dish) => (
               <DishCard
@@ -248,7 +253,7 @@ export function ManageDishesClient({
             <table className="w-full text-sm">
               <thead className="bg-neutral-50 text-left text-xs font-medium uppercase tracking-wide text-neutral-400">
                 <tr>
-                  <th className="px-5 py-3">Dish</th>
+                  <th className="px-5 py-3">{words.product}</th>
                   <th className="px-5 py-3">Category</th>
                   <th className="px-5 py-3">Price</th>
                   <th className="px-5 py-3 text-right">Actions</th>
@@ -330,6 +335,7 @@ export function ManageDishesClient({
           defaultCategoryId={selectedCategory}
           initial={editingDish}
           currencySymbol={currencySymbol}
+          productWord={words.product}
         />
       )}
       {categoryModalOpen && (

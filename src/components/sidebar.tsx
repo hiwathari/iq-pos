@@ -61,6 +61,8 @@ export function Sidebar({
   restaurantName,
   restaurantLogoUrl,
   showKitchenDisplay = true,
+  showTables = true,
+  productsLabel = "Manage Dishes",
 }: {
   role: Role;
   name: string;
@@ -71,6 +73,10 @@ export function Sidebar({
   // False once a restaurant has no Kitchen Display screen added (Settings > Printers) — there's
   // nothing for the link to show.
   showKitchenDisplay?: boolean;
+  // From the business type / feature switches (lib/business-profile.ts): shops have no tables
+  // and call their menu "Products".
+  showTables?: boolean;
+  productsLabel?: string;
 }) {
   const pathname = usePathname();
   const isSuperOrRegional = role === "super_admin" || role === "regional_admin";
@@ -82,8 +88,11 @@ export function Sidebar({
     isSuperOrRegional && !isImpersonating
       ? []
       : NAV.filter(
-          (item) => hasPermission(effectiveRole, permissions, item.key) && (item.key !== "kitchen" || showKitchenDisplay)
-        );
+          (item) =>
+            hasPermission(effectiveRole, permissions, item.key) &&
+            (item.key !== "kitchen" || showKitchenDisplay) &&
+            (item.key !== "manage-table" || showTables)
+        ).map((item) => (item.key === "manage-dishes" ? { ...item, label: productsLabel } : item));
 
   // Starts expanded (matches the server-rendered markup) and only collapses once mounted, so
   // there's never a server/client markup mismatch — just a brief flash open on page load for

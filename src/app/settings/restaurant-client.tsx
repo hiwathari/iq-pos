@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  updateBusinessTypeAction,
+  updateBusinessProfileAction,
   updateNegativeStockAction,
   updateKitchenTimerLimitAction,
   updateRestaurantCurrencyAction,
@@ -11,6 +11,7 @@ import {
   updateShopHoursAction,
 } from "@/lib/actions/restaurants";
 import { CURRENCY_OPTIONS, type BusinessType } from "@/lib/types";
+import { BUSINESS_TYPES, FEATURE_SETTINGS, businessProfile, type FeatureKey, type FeatureOverrides } from "@/lib/business-profile";
 
 // Common IANA zones every restaurant is realistically in — falls back to this if the browser
 // doesn't support Intl.supportedValuesOf (older Safari/WebView on an older Till tablet).
@@ -43,6 +44,7 @@ function timezoneOptions() {
 export function RestaurantClient({
   businessType,
   negativeStock,
+  features,
   currencySymbol,
   kitchenTimerLimitMinutes,
   taxEnabled,
@@ -52,6 +54,7 @@ export function RestaurantClient({
 }: {
   businessType: BusinessType;
   negativeStock: "allow" | "warn" | "block";
+  features: FeatureOverrides | null;
   currencySymbol: string;
   kitchenTimerLimitMinutes: number;
   taxEnabled: boolean;
@@ -62,6 +65,7 @@ export function RestaurantClient({
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [type, setType] = useState<BusinessType>(businessType);
+  const [featureOn, setFeatureOn] = useState<Record<FeatureKey, boolean>>(() => businessProfile(businessType, features).features);
   const [stockMode, setStockMode] = useState(negativeStock);
   const [timerLimit, setTimerLimit] = useState(kitchenTimerLimitMinutes);
   const [taxOn, setTaxOn] = useState(taxEnabled);
@@ -78,10 +82,26 @@ export function RestaurantClient({
     });
   }
 
+  // Switching type resets the feature switches to the new type's defaults; nothing is deleted
+  // (tables, categories and printers stay, just hidden where the type doesn't use them).
   function handleBusinessTypeChange(next: BusinessType) {
+    if (next === type) return;
+    const label = businessProfile(next).label;
+    if (!window.confirm(`Switch to ${label}? Menus, screens and wording change to suit it. Nothing is deleted — you can switch back.`)) return;
+    const nextFeatures = businessProfile(next).features;
     setType(next);
+    setFeatureOn(nextFeatures);
     startTransition(async () => {
-      await updateBusinessTypeAction(next);
+      await updateBusinessProfileAction(next, nextFeatures);
+      router.refresh();
+    });
+  }
+
+  function handleFeatureToggle(key: FeatureKey) {
+    const next = { ...featureOn, [key]: !featureOn[key] };
+    setFeatureOn(next);
+    startTransition(async () => {
+      await updateBusinessProfileAction(type, next);
       router.refresh();
     });
   }
@@ -121,28 +141,43 @@ export function RestaurantClient({
 
   return (
     <div>
-      <h2 className="text-lg font-semibold text-neutral-900">Restaurant</h2>
+      <h2 className="text-lg font-semibold text-neutral-900">Business</h2>
       <p className="mb-4 text-sm text-neutral-500">Set the currency used across dishes, the till, and reports.</p>
       <div className="flex flex-wrap gap-6">
         <div className="max-w-xs">
           <label className="mb-1.5 block text-xs font-medium text-neutral-500">Business Type</label>
-          <div className="flex rounded-xl border border-neutral-200 p-1">
-            {(["restaurant", "cafe"] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => handleBusinessTypeChange(t)}
-                className={`flex-1 rounded-lg py-2 text-sm font-medium capitalize ${
-                  type === t ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
-                }`}
-              >
-                {t}
-              </button>
+          <select
+            value={type}
+            onChange={(e) => handleBusinessTypeChange(e.target.value as BusinessType)}
+            className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+          >
+            {BUSINESS_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {businessProfile(t).label}
+              </option>
             ))}
+          </select>
+          <p className="mt-1 text-xs text-neutral-400">{businessProfile(type).hint}.</p>
+          <div className="mt-3 space-y-2">
+            {FEATURE_SETTINGS.map((f) => {
+              const isDefault = featureOn[f.key] === businessProfile(type).features[f.key];
+              return (
+                <label key={f.key} className="flex cursor-pointer items-start gap-3 rounded-xl border border-neutral-200 px-3 py-2.5">
+                  <input
+                    type="checkbox"
+                    checked={featureOn[f.key]}
+                    onChange={() => handleFeatureToggle(f.key)}
+                    className="mt-0.5 h-4 w-4 accent-[var(--brand)]"
+                  />
+                  <span className="text-sm">
+                    <span className="font-medium text-neutral-800">{f.label}</span>
+                    {!isDefault && <span className="ml-1.5 text-xs text-amber-600">changed</span>}
+                    <span className="block text-xs text-neutral-400">{f.hint}</span>
+                  </span>
+                </label>
+              );
+            })}
           </div>
-          <p className="mt-1 text-xs text-neutral-400">
-            Cafe is counter-service: an order paid in full at the till is saved straight as Served. Restaurant keeps
-            the normal kitchen-then-serve flow.
-          </p>
         </div>
         <div className="max-w-xs">
           <label className="mb-1.5 block text-xs font-medium text-neutral-500">When stock runs out</label>
@@ -187,20 +222,22 @@ export function RestaurantClient({
             ))}
           </select>
         </div>
-        <div className="max-w-xs">
-          <label className="mb-1.5 block text-xs font-medium text-neutral-500">Kitchen Ticket Timer (minutes)</label>
-          <input
-            type="number"
-            min={1}
-            max={120}
-            value={timerLimit}
-            onChange={(e) => handleTimerLimitChange(Math.max(1, Number(e.target.value) || 1))}
-            className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-          />
-          <p className="mt-1 text-xs text-neutral-400">
-            An order&apos;s Kitchen Display timer turns fully red once it&apos;s been waiting this long.
-          </p>
-        </div>
+        {featureOn.kitchenDisplay && (
+          <div className="max-w-xs">
+            <label className="mb-1.5 block text-xs font-medium text-neutral-500">Kitchen Ticket Timer (minutes)</label>
+            <input
+              type="number"
+              min={1}
+              max={120}
+              value={timerLimit}
+              onChange={(e) => handleTimerLimitChange(Math.max(1, Number(e.target.value) || 1))}
+              className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+            />
+            <p className="mt-1 text-xs text-neutral-400">
+              An order&apos;s Kitchen Display timer turns fully red once it&apos;s been waiting this long.
+            </p>
+          </div>
+        )}
         <div className="max-w-xs">
           <label className="mb-1.5 block text-xs font-medium text-neutral-500">Tax</label>
           <button

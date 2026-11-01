@@ -3,6 +3,7 @@ import { getRestaurant } from "@/lib/data/restaurants";
 import { listNotifications } from "@/lib/data/notifications";
 import { listPrinters } from "@/lib/data/printers";
 import { hasKitchenDisplay } from "@/lib/types";
+import { businessProfile } from "@/lib/business-profile";
 import { getUserPermissions } from "@/lib/scope";
 import { brandCssVars } from "@/lib/color";
 import { Sidebar } from "./sidebar";
@@ -49,7 +50,9 @@ export async function AppShell({
   // own cross-restaurant /super-admin view.
   const isEffectiveAdmin = session.role === "admin" || isImpersonating;
   const notifications = isEffectiveAdmin && restaurant ? await listNotifications(restaurant.id) : [];
-  const showKitchenDisplay = restaurant ? hasKitchenDisplay(await listPrinters(restaurant.id)) : false;
+  const profile = businessProfile(restaurant?.businessType, restaurant?.features);
+  const showKitchenDisplay =
+    restaurant && profile.features.kitchenDisplay ? hasKitchenDisplay(await listPrinters(restaurant.id)) : false;
 
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-neutral-50" style={brandCssVars(restaurant?.brandColor)}>
@@ -61,6 +64,8 @@ export async function AppShell({
         restaurantName={restaurant?.name}
         restaurantLogoUrl={restaurant?.invoiceLogoUrl}
         showKitchenDisplay={showKitchenDisplay}
+        showTables={profile.features.tables}
+        productsLabel={profile.words.manageProducts}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         {isImpersonating && restaurant && (

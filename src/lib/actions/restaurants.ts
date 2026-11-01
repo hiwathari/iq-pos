@@ -10,6 +10,7 @@ import { assertPermission, assertRestaurantAccess, requireRestaurantContext, req
 import { isValidHexColor } from "@/lib/color";
 import { generatePin } from "@/lib/pin";
 import type { BusinessType } from "@/lib/types";
+import { businessProfile, featureOverridesFor, isBusinessType, type FeatureKey } from "@/lib/business-profile";
 
 // The default Test Staff PIN — easy to remember for training — but tillPin is unique across the
 // whole platform (PIN-login looks a code up with no restaurant context first), so only one
@@ -55,7 +56,9 @@ export async function createRestaurantAction(
   if (session.role !== "super_admin") return { error: "Forbidden." };
 
   const name = String(formData.get("name") || "").trim();
-  const businessType: BusinessType = formData.get("businessType") === "cafe" ? "cafe" : "restaurant";
+  const rawType = formData.get("businessType");
+  const businessType: BusinessType = isBusinessType(rawType) ? rawType : "restaurant";
+  const profile = businessProfile(businessType);
   const adminName = String(formData.get("adminName") || "").trim();
   const adminEmail = String(formData.get("adminEmail") || "")
     .trim()
@@ -76,7 +79,14 @@ export async function createRestaurantAction(
 
   const restaurantId = crypto.randomUUID();
   const slug = slugify(name);
-  await db.insert(restaurants).values({ id: restaurantId, name, slug, businessType });
+  await db.insert(restaurants).values({
+    id: restaurantId,
+    name,
+    slug,
+    businessType,
+    invoiceFooterText: profile.receiptFooter,
+    negativeStock: profile.negativeStock,
+  });
 
   const passwordHash = await hashPassword(adminPassword);
   await db.insert(users).values({
@@ -130,25 +140,35 @@ export async function createRestaurantAction(
     });
   }
 
-  const kitchenPrinterId = crypto.randomUUID();
-  await db.insert(printers).values({
-    id: kitchenPrinterId,
-    restaurantId,
-    name: "Kitchen Printer",
-    station: "Kitchen",
-    connection: "Network",
-    isDefault: true,
-  });
+  // Restaurants and cafes start with a kitchen printer and a "General" category routed to it;
+  // shops start without one (no kitchen) and with the type's own starter categories and VAT rates
+  // (lib/business-profile.ts) — all editable afterwards.
+  let kitchenPrinterId: string | null = null;
+  if (profile.features.kitchenDisplay) {
+    kitchenPrinterId = crypto.randomUUID();
+    await db.insert(printers).values({
+      id: kitchenPrinterId,
+      restaurantId,
+      name: "Kitchen Printer",
+      station: "Kitchen",
+      connection: "Network",
+      isDefault: true,
+    });
+  }
 
   await db.insert(paymentTerminals).values({ id: crypto.randomUUID(), restaurantId, name: "Card 1", isDefault: true });
 
-  await db.insert(categories).values({
-    id: crypto.randomUUID(),
-    restaurantId,
-    name: "General",
-    icon: "all",
-    printerId: kitchenPrinterId,
-  });
+  const starterCategories = profile.defaultCategories.length ? profile.defaultCategories : [{ name: "General", taxRatePercent: 20 }];
+  await db.insert(categories).values(
+    starterCategories.map((c) => ({
+      id: crypto.randomUUID(),
+      restaurantId,
+      name: c.name,
+      icon: "all",
+      printerId: kitchenPrinterId,
+      taxRatePercent: c.taxRatePercent,
+    }))
+  );
 
   revalidatePath("/super-admin");
   return {};
@@ -167,16 +187,19 @@ export async function updateRestaurantCurrencyAction(currencySymbol: string) {
   revalidatePath("/dashboard");
 }
 
-export async function updateBusinessTypeAction(businessType: BusinessType) {
+// Changing type never deletes anything (tables, categories, printers stay — they're just hidden
+// when the new type doesn't use them). Feature switches the owner set are kept only where they
+// still differ from the new type's defaults.
+export async function updateBusinessProfileAction(businessType: BusinessType, features: Partial<Record<FeatureKey, boolean>>) {
   const { session, restaurantId } = await requireRestaurantContext();
   await assertPermission(session, "settings");
+  if (!isBusinessType(businessType)) return;
   await db
     .update(restaurants)
-    .set({ businessType: businessType === "cafe" ? "cafe" : "restaurant" })
+    .set({ businessType, features: featureOverridesFor(businessType, features) })
     .where(eq(restaurants.id, restaurantId));
-  revalidatePath("/settings");
-  revalidatePath("/order-line");
-  revalidatePath("/kitchen");
+  // Sidebar, wording and the Till all change with the type.
+  revalidatePath("/", "layout");
 }
 
 export async function updateNegativeStockAction(mode: "allow" | "warn" | "block") {

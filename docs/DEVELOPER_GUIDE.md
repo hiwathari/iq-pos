@@ -204,7 +204,7 @@ commented definition of every column. Summary by table:
 
 | Table | Purpose |
 |---|---|
-| `restaurants` | One row per tenant. Branding, currency, tax toggle, shop hours/timezone, online-ordering flags, till-open float, SumUp/Teya credentials. |
+| `restaurants` | One row per tenant (any business type). Branding, currency, tax toggle, shop hours/timezone, online-ordering flags, till-open float, SumUp/Teya credentials, `business_type` (restaurant / cafe / grocery / retail / warehouse), `features` (JSON overrides of the type's defaults), `negative_stock`. |
 | `users` | Staff/admin/accounts/super_admin/regional_admin logins. `tillPin`/`kitchenPin` are **globally unique** 6-digit codes (not just per-restaurant) because PIN login looks a code up with no restaurant context first. |
 | `restaurant_access` | Which restaurants a `regional_admin` can manage. |
 | `categories` | Menu categories — printer routing, Kitchen Display station override, tax rate. |
@@ -606,6 +606,32 @@ takings (same `accountsFilter` as everywhere else). Dates are inclusive business
   Till; `block` makes `placeOrderAction` return `{ error }` naming the items — the Till keeps
   the cart and shows the message above the main button. Only the extra stock an edit takes is checked.
 
+### 7.12 Business types (`lib/business-profile.ts`)
+
+`restaurants.businessType` ∈ restaurant / cafe / grocery / retail / warehouse ("Wholesale /
+warehouse" in the UI). `businessProfile(type, features)` returns, per type: label + hint, words
+(Dish/Product, "Manage Dishes"/"Products", Restaurant/Store), feature defaults (`tables`,
+`kitchenDisplay`), the Till's order types (`channels`, first = default), `counterService`,
+receipt footer, negative-stock default and starter categories with VAT. Screens read it instead
+of checking the type:
+
+- **Onboarding** (`createRestaurantAction`): seeds the starter categories (grocery: 11 with UK
+  VAT defaults), receipt footer and negative-stock mode; kitchen printer only when the kitchen is on.
+- **Settings → Business**: type select + feature switches (`updateBusinessProfileAction`); only
+  switches that differ from the type's defaults are stored in `restaurants.features`. Changing
+  type deletes nothing.
+- **Sidebar** (`AppShell` → `Sidebar`): Kitchen Display and Manage Table hidden when those
+  features are off; "Manage Dishes" relabelled. Help Center hides FAQ sections tagged with a
+  feature that's off (`faqForFeatures`); the public `/faq` shows everything.
+- **Till**: order types from the profile (shops: In store, Click & collect, Delivery, Online,
+  Third Party; warehouse: In store, Click & collect, Delivery); no Tables tab; "Parked" instead
+  of "Open Tickets" and "Park Sale" instead of "Place Order" when there are no tables or kitchen.
+- **Server** (`placeOrderAction`): a fully paid new order is created Served for counter-service
+  types or when the kitchen is off (was: cafe only); a parked sale paid later is finished too
+  when the kitchen is off.
+- `OrderChannel` gained "In store" and "Click & collect" (`ALL_CHANNELS` lists every one).
+  Later phases add more feature keys (barcodes, weighed items…) to the same helper.
+
 ## 8. Payment / Card-Machine Integrations
 
 A `payment_terminals` row with `provider: null` is "manual" — staff run the physical machine
@@ -702,7 +728,7 @@ don't assume a change to one automatically applies to the other.
 | Shifts / End Day | `app/dashboard/` | `lib/actions/shifts.ts` | `lib/data/shifts.ts` |
 | Petty cash | — | `lib/actions/petty-cash.ts` | `lib/data/petty-cash.ts` |
 | Reports (Dashboard, all report tabs, CSV, Card Settlements) | `app/reports/` (`reports-client.tsx`, `insight-tabs.tsx`, `report-tabs.ts`) | `lib/actions/terminal-settlements.ts` | `lib/data/reports.ts`, `report-insights.ts`, `terminal-settlements.ts` |
-| Super Admin (create/brand restaurants) | `app/super-admin/` | `lib/actions/restaurants.ts` | — |
+| Super Admin (create/brand businesses of any type) | `app/super-admin/` | `lib/actions/restaurants.ts` | `lib/business-profile.ts` |
 | IQ website (iq.luvder.com: home, products, `/pricing`, `/build` brief) | `app/site/` | `lib/actions/website-requests.ts` | `lib/site/products.ts`, `lib/site/pricing.ts`, `lib/data/website-requests.ts` |
 | Regional admins | `app/super-admin/` | `lib/actions/regional-admins.ts` | — |
 | Auth (staff/admin) | `app/login/`, `till-login/`, `kitchen-login/`, `staff-login/` | `lib/actions/auth.ts`, `pin-auth.ts` | — |
@@ -921,6 +947,26 @@ promises supplier ordering, central menus and till limits, which are part of thi
   `RevenueCompareChart` in `components/charts.tsx`; default tab changed to `dashboard` in
   `app/reports/page.tsx`. See §7.10. No schema change. FAQ "How do I read the reports?" and
   `public/help/reports.webp` updated.
+
+### 2026-11-01 (later) — Retail plan Phase 1: business types, onboarding, feature switches
+- **Schema** — run on Turso **before** this code is deployed:
+  ```sql
+  ALTER TABLE restaurants ADD COLUMN features text;
+  ```
+  (New business types and order types need no SQL — existing text columns.)
+- New `lib/business-profile.ts` (§7.12). Business types Grocery shop, Retail shop and
+  Wholesale / warehouse alongside Restaurant and Cafe; order types "In store" and
+  "Click & collect".
+- Super Admin: "Add Business" with the five types; seeds starter categories + VAT, receipt
+  footer, negative-stock default; no kitchen printer for shops; list shows each business's type.
+- Settings → Business: type select + Tables & guests / Kitchen switches (`restaurants.features`);
+  Kitchen Ticket Timer hidden when the kitchen is off.
+- Sidebar, Manage Dishes (→ "Products"), dish form, staff permission labels and Help Center
+  follow the type. Till: shop order types, no Tables tab, "Parked" and "Park Sale"; paid sales
+  finish straight away for every counter-service type.
+- FAQ: "Which business type should I choose?" (was Restaurant vs Cafe), new "How do I sell in a
+  shop?" (`shop-till.webp`) and "How do I add a new business?" (`add-business.webp`);
+  `business-type.webp` re-captured.
 
 ### 2026-11-01 — Retail plan Phase 0: penny rounding, stock log, stock back on void/edit/delete
 - **Schema** — run on Turso **before** this code is deployed:

@@ -2,6 +2,8 @@
 // screenshot (public/help/<image>.webp). Screenshots use a made-up "Demo Café" with generic staff,
 // dishes and card machines — no real restaurant appears in them.
 
+import type { FeatureKey } from "@/lib/business-profile";
+
 export interface FaqItem {
   id: string;
   q: string;
@@ -13,6 +15,9 @@ export interface FaqItem {
   tip?: string;
   // Who usually does this — shown as a small badge.
   who?: "Everyone" | "Admin" | "Manager" | "Super Admin";
+  // Only shown in the in-app Help Center when the business has this feature on (the public /faq
+  // shows everything).
+  feature?: FeatureKey;
 }
 
 export interface FaqSection {
@@ -20,6 +25,14 @@ export interface FaqSection {
   title: string;
   intro: string;
   items: FaqItem[];
+  feature?: FeatureKey;
+}
+
+export function faqForFeatures(sections: FaqSection[], has: (key: FeatureKey) => boolean): FaqSection[] {
+  return sections
+    .filter((s) => !s.feature || has(s.feature))
+    .map((s) => ({ ...s, items: s.items.filter((i) => !i.feature || has(i.feature)) }))
+    .filter((s) => s.items.length > 0);
 }
 
 export const FAQ: FaqSection[] = [
@@ -133,6 +146,19 @@ export const FAQ: FaqSection[] = [
         image: "notes-custom",
         who: "Everyone",
       },
+      {
+        id: "shop-sales",
+        q: "How do I sell in a shop (grocery, retail, wholesale)?",
+        a: "In a shop the Till has no tables or kitchen. Pick In store (or Click & collect / Delivery), tap the products, take Cash or card and the sale is finished. Serving someone else first? Park the sale and pick it up from Parked when they're ready to pay.",
+        steps: [
+          "Order type — In store for a customer at the counter, Click & collect for an order to pick up later.",
+          "Parked — sales waiting to be paid; tap one to load it back.",
+          "Take payment with Cash or a card machine; the sale finishes as soon as it's paid in full.",
+          "Park Sale keeps the basket for later without taking payment.",
+        ],
+        image: "shop-till",
+        who: "Everyone",
+      },
     ],
   },
   {
@@ -236,6 +262,7 @@ export const FAQ: FaqSection[] = [
   },
   {
     id: "tables",
+    feature: "tables",
     title: "Tables & QR ordering",
     intro: "Seeing the floor, freeing tables and letting customers order from their phones.",
     items: [
@@ -304,6 +331,7 @@ export const FAQ: FaqSection[] = [
   },
   {
     id: "kitchen",
+    feature: "kitchenDisplay",
     title: "Kitchen Display",
     intro: "How the kitchen screen works.",
     items: [
@@ -372,10 +400,10 @@ export const FAQ: FaqSection[] = [
       },
       {
         id: "business-type",
-        q: "What's the difference between Restaurant and Cafe mode?",
-        a: "Restaurant keeps the normal flow: send to the kitchen, serve, then pay. Cafe is counter service — an order paid in full at the Till is finished straight away.",
+        q: "Which business type should I choose?",
+        a: "The business type sets up IQ POS for how you trade. Restaurant: tables, kitchen and serving, then pay. Cafe: counter service — an order paid in full is finished straight away. Grocery shop, Retail shop and Wholesale / warehouse: no tables or kitchen, menus are called Products, the Till offers In store and Click & collect, and a paid sale finishes at once. Changing type never deletes anything — screens you don't use are just hidden.",
         steps: [
-          "Choose Restaurant or Cafe.",
+          "Choose the business type, then switch features on or off — e.g. Kitchen for a shop with a hot-food counter, or Tables for a cafe with table service.",
           "Shop hours: the opening time is when a new business day starts, for reports and the daily reset.",
           "When stock runs out: Allow (sell anyway — stock goes below zero and shows red), Warn (sell, and the Till says which items are now below zero) or Block (the Till refuses the sale and names the item).",
         ],
@@ -433,6 +461,14 @@ export const FAQ: FaqSection[] = [
         steps: ["Payment Terminals — add one per card machine."],
         image: "card-machines",
         who: "Admin",
+      },
+      {
+        id: "add-business",
+        q: "How do I add a new business to IQ POS?",
+        a: "Super Admins add every business — restaurant, cafe, grocery shop, retail shop or wholesale / warehouse — from Super Admin. The business type sets up its starter categories (a grocery gets 11, with their usual VAT rates), receipt wording and which screens it sees. It also gets a ready-made accounts login and a test staff login.",
+        steps: ["Choose the business type — the line underneath says what it sets up.", "Add the first admin's name, email and a temporary password, then Create Business."],
+        image: "add-business",
+        who: "Super Admin",
       },
     ],
   },

@@ -97,7 +97,19 @@ export type TableArea = "Ground Floor" | "1st Floor" | "Basement";
 export type TableStatus = "available" | "reserved" | "on-dine";
 export type ReservationStatus = "upcoming" | "on-dine" | "paid" | "unpaid" | "available";
 export type ReservationSource = "walk-in" | "phone" | "online";
-export type OrderChannel = "Dine in" | "Wait List" | "Take Away" | "Delivery" | "Online" | "Third Party";
+export type OrderChannel =
+  | "Dine in"
+  | "Wait List"
+  | "Take Away"
+  | "Delivery"
+  | "Online"
+  | "Third Party"
+  // Shop order types (grocery / retail / warehouse — see lib/business-profile.ts).
+  | "In store"
+  | "Click & collect";
+
+// Every order type, for pickers that edit any order (Sales Records) whatever the business type.
+export const ALL_CHANNELS: OrderChannel[] = ["Dine in", "Wait List", "Take Away", "Delivery", "Online", "Third Party", "In store", "Click & collect"];
 export type ThirdPartyProvider = "Uber Eats" | "Deliveroo" | "Just Eat" | "Other";
 // "Pending" = placed by a customer (website, table QR, kiosk) and waiting for staff to accept it on
 // the Till — it only reaches the kitchen once accepted (see acceptOnlineOrderAction).
@@ -109,7 +121,7 @@ export type PrinterStation = "Kitchen" | "Bar" | "Receipt" | "Expo";
 export type CategoryDisplayOverride = PrinterStation | "None" | null;
 export type PrinterConnection = "Bluetooth" | "Network" | "WiFi" | "USB";
 export type PrinterKind = "printer" | "display" | "both";
-export type BusinessType = "restaurant" | "cafe";
+export type BusinessType = "restaurant" | "cafe" | "grocery" | "retail" | "warehouse";
 
 // Kitchen features only exist for a restaurant that's actually added the device: a Kitchen
 // Display screen (kind "display"/"both"), or a kitchen-side ticket printer (any station other

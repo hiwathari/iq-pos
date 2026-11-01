@@ -29,6 +29,8 @@ interface DishModalProps {
   defaultCategoryId: string;
   initial?: Dish | null;
   currencySymbol?: string;
+  // "Dish" or "Product" (lib/business-profile.ts).
+  productWord?: string;
 }
 
 // Mount this component only while the modal should be visible (e.g. `{open && <DishModal ... />}`)
@@ -42,6 +44,7 @@ export function DishModal({
   defaultCategoryId,
   initial,
   currencySymbol = "£",
+  productWord = "Dish",
 }: DishModalProps) {
   const [name, setName] = useState(initial?.name ?? "");
   const [categoryId, setCategoryId] = useState(
@@ -70,7 +73,7 @@ export function DishModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-neutral-900">{initial ? "Edit Dish" : "Add New Dish"}</h2>
+          <h2 className="text-lg font-semibold text-neutral-900">{initial ? `Edit ${productWord}` : `Add New ${productWord}`}</h2>
           <button onClick={onClose} className="rounded-full p-1 text-neutral-400 hover:bg-neutral-100">
             <X className="h-5 w-5" />
           </button>
@@ -78,7 +81,7 @@ export function DishModal({
 
         <div className="space-y-4">
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-neutral-500">Dish Name</label>
+            <label className="mb-1.5 block text-xs font-medium text-neutral-500">{productWord} Name</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -229,7 +232,7 @@ export function DishModal({
             }
             className="flex-1 rounded-xl bg-[var(--brand)] py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {initial ? "Save Changes" : "Add Dish"}
+            {initial ? "Save Changes" : `Add ${productWord}`}
           </button>
         </div>
       </div>

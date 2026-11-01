@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { OrderLineClient } from "./order-line-client";
 import { MobileTillClient } from "./mobile-till-client";
-import type { Category, Dish, Order, PaymentTerminal, RestaurantTable } from "@/lib/types";
+import type { Category, Dish, Order, OrderChannel, PaymentTerminal, RestaurantTable } from "@/lib/types";
 
 // A handheld runner's phone/mobile POS gets the simplified order-only Till; a counter tablet
 // or desktop gets the full one. Auto-detected from screen width on first load. Going back to
@@ -35,6 +35,8 @@ export function TillModeSwitcher({
   localPrintTarget,
   staffName,
   hasKitchen,
+  channels,
+  showTables,
 }: {
   categories: Category[];
   dishes: Dish[];
@@ -61,6 +63,10 @@ export function TillModeSwitcher({
   // Whether this restaurant has a Kitchen Display or a kitchen ticket printer (see hasKitchen in
   // lib/types.ts) — without one, the Till says "Place Order" instead of "Send to Kitchen".
   hasKitchen: boolean;
+  // From the business type (lib/business-profile.ts): which order types the Till offers (first =
+  // default) and whether tables/guests exist at all — shops have neither tables nor Dine in.
+  channels: OrderChannel[];
+  showTables: boolean;
 }) {
   const [mode, setMode] = useState<Mode | null>(null);
 
@@ -102,6 +108,7 @@ export function TillModeSwitcher({
         taxEnabled={taxEnabled}
         onSwitchToFull={switchToFull}
         hasKitchen={hasKitchen}
+        channels={channels}
       />
     );
   }
@@ -128,6 +135,8 @@ export function TillModeSwitcher({
       localPrintTarget={localPrintTarget}
       staffName={staffName}
       hasKitchen={hasKitchen}
+      channels={channels}
+      showTables={showTables}
     />
   );
 }

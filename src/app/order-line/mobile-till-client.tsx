@@ -62,14 +62,18 @@ function isOrderClosedOut(o: Order) {
   return o.status === "Served" && !!o.paymentMethod;
 }
 
-const CHANNELS: { channel: OrderChannel; label: string; icon: typeof UtensilsCrossed }[] = [
-  { channel: "Dine in", label: "Dine In", icon: UtensilsCrossed },
-  { channel: "Take Away", label: "Take Away", icon: ShoppingBag },
-  { channel: "Wait List", label: "Wait List", icon: Users },
-  { channel: "Delivery", label: "Delivery", icon: Bike },
-  { channel: "Online", label: "Online", icon: Globe },
-  { channel: "Third Party", label: "Third Party", icon: Store },
-];
+// Every order type the Simple Till can show; the business type (lib/business-profile.ts) picks
+// which ones, in its own order.
+const CHANNEL_BUTTONS: Record<OrderChannel, { label: string; icon: typeof UtensilsCrossed }> = {
+  "Dine in": { label: "Dine In", icon: UtensilsCrossed },
+  "Take Away": { label: "Take Away", icon: ShoppingBag },
+  "Wait List": { label: "Wait List", icon: Users },
+  Delivery: { label: "Delivery", icon: Bike },
+  Online: { label: "Online", icon: Globe },
+  "Third Party": { label: "Third Party", icon: Store },
+  "In store": { label: "In Store", icon: Store },
+  "Click & collect": { label: "Click & Collect", icon: ShoppingBag },
+};
 
 export function MobileTillClient({
   categories,
@@ -81,6 +85,7 @@ export function MobileTillClient({
   taxEnabled,
   onSwitchToFull,
   hasKitchen,
+  channels,
 }: {
   categories: Category[];
   dishes: Dish[];
@@ -91,6 +96,9 @@ export function MobileTillClient({
   taxEnabled: boolean;
   onSwitchToFull: () => void;
   hasKitchen: boolean;
+  // Order types to offer (lib/business-profile.ts) — table seating is only reached via Dine in,
+  // which shops don't have, so no separate tables switch is needed here.
+  channels: OrderChannel[];
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -257,7 +265,7 @@ export function MobileTillClient({
           </div>
           <p className="mb-5 text-sm text-neutral-400">What kind of order is this?</p>
           <div className="grid grid-cols-2 gap-3">
-            {CHANNELS.map(({ channel, label, icon: Icon }) => (
+            {channels.map((channel) => ({ channel, ...CHANNEL_BUTTONS[channel] })).map(({ channel, label, icon: Icon }) => (
               <button
                 key={channel}
                 onClick={() => selectChannel(channel)}

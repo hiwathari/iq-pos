@@ -12,10 +12,10 @@ import {
   updateShiftRecordAction,
 } from "@/lib/actions/sales-records";
 import { shiftDateKey } from "@/lib/business-day";
-import type { Order, OrderChannel, Shift } from "@/lib/types";
+import { ALL_CHANNELS, type Order, type OrderChannel, type Shift } from "@/lib/types";
 import { formatMoney, formatOrderTimestamp, orderSequence, orderTotal, salesByTender, shiftTotals } from "@/lib/types";
 
-const CHANNELS: OrderChannel[] = ["Dine in", "Wait List", "Take Away", "Delivery", "Online", "Third Party"];
+const CHANNELS: OrderChannel[] = ALL_CHANNELS;
 
 function toLocalInput(ms: number) {
   const d = new Date(ms);

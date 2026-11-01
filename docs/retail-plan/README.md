@@ -62,11 +62,11 @@ Every step has the same parts so it can be picked up on its own:
 | 0.2 | Stock movement log + one stock function | **done** 2026-11-01 |
 | 0.3 | Stock back on void / edit / delete (refund in 3.7) | **done** 2026-11-01 |
 | 0.4 | Overselling: allow, warn or block | **done** 2026-11-01 |
-| 1.1 | Business types + `business-profile.ts` | planned |
-| 1.2 | Onboarding (Super Admin) with seeds | planned |
-| 1.3 | Navigation, wording, receipts per type | planned |
-| 1.4 | Feature switches in Settings | planned |
-| 1.5 | Till & Kitchen behaviour per type | planned |
+| 1.1 | Business types + `business-profile.ts` | **done** 2026-11-01 |
+| 1.2 | Onboarding (Super Admin) with seeds | **done** 2026-11-01 |
+| 1.3 | Navigation, wording, receipts per type | **done** 2026-11-01 |
+| 1.4 | Feature switches in Settings | **done** 2026-11-01 |
+| 1.5 | Till & Kitchen behaviour per type | **done** 2026-11-01 |
 | 2.1 | Sold by unit / weight / volume / length | planned |
 | 2.2 | Barcodes (several per product) | planned |
 | 2.3 | Cost, VAT override, minimum age, SKU | planned |

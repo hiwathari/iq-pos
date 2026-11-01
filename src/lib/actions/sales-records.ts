@@ -7,7 +7,7 @@ import { orders, restaurants, shifts } from "@/db/schema";
 import { summarizeShiftWindow } from "@/lib/data/shifts";
 import { adjustStockForEdit, returnStockForOrder } from "@/lib/stock";
 import { assertPermission, requireRestaurantContext } from "@/lib/scope";
-import type { OrderChannel, OrderItem, PaymentLine } from "@/lib/types";
+import { ALL_CHANNELS, type OrderChannel, type OrderItem, type PaymentLine } from "@/lib/types";
 
 // Sales Records (app/sales-records): an admin correcting or removing the "final" entries — End
 // Day reports and closed orders. Gated by the "sales-records" permission (admins always; staff
@@ -135,7 +135,7 @@ export interface OrderRecordInput {
   cashReceived: number | null;
 }
 
-const CHANNELS: OrderChannel[] = ["Dine in", "Wait List", "Take Away", "Delivery", "Online", "Third Party"];
+const CHANNELS: OrderChannel[] = ALL_CHANNELS;
 
 export async function updateOrderRecordAction(orderId: string, input: OrderRecordInput): Promise<RecordActionState> {
   const { session, restaurantId } = await scope();

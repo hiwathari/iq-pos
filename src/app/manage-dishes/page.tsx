@@ -5,6 +5,7 @@ import { listPrinters } from "@/lib/data/printers";
 import { listInventoryItems } from "@/lib/data/inventory";
 import { getRestaurant } from "@/lib/data/restaurants";
 import { ManageDishesClient } from "./manage-dishes-client";
+import { businessProfile } from "@/lib/business-profile";
 
 export default async function ManageDishesPage() {
   const { restaurantId } = await requirePermission("manage-dishes");
@@ -17,14 +18,17 @@ export default async function ManageDishesPage() {
     getRestaurant(restaurantId),
   ]);
 
+  const { words } = businessProfile(restaurant?.businessType, restaurant?.features);
+
   return (
-    <AppShell title="Manage Dishes">
+    <AppShell title={words.manageProducts}>
       <ManageDishesClient
         categories={categories}
         dishes={dishes}
         printers={printers}
         inventoryItems={inventoryItems}
         currencySymbol={restaurant?.currencySymbol ?? "£"}
+        words={words}
       />
     </AppShell>
   );

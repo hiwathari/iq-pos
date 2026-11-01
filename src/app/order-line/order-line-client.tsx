@@ -81,8 +81,20 @@ import {
   Check,
 } from "lucide-react";
 
+// Ticket filter chips. Shops (no tables — see lib/business-profile.ts) get their own order types
+// instead of Dine in / Wait List / Take Away.
 const QUEUE_TABS = ["All", "Dine in", "Wait List", "Take Away", "Delivery", "Served"] as const;
-type QueueTab = (typeof QUEUE_TABS)[number];
+const SHOP_QUEUE_TABS = ["All", "In store", "Click & collect", "Delivery", "Served"] as const;
+type QueueTab = (typeof QUEUE_TABS)[number] | (typeof SHOP_QUEUE_TABS)[number];
+
+// Which open orders a ticket filter chip shows ("Served" and "All" are handled by the caller).
+function matchesQueueTab(o: Order, tab: QueueTab) {
+  if (tab === "All") return true;
+  if (tab === "Served") return o.status === "Served";
+  if (tab === "Wait List") return o.status === "Wait List";
+  if (tab === "Delivery") return o.channel === "Delivery" || o.channel === "Third Party";
+  return o.channel === tab;
+}
 
 type TillView = "order" | "incoming" | "tickets" | "tables" | "history";
 
@@ -168,7 +180,6 @@ const CARD_TINTS: Record<Order["status"], string> = {
   Voided: "bg-rose-50 border-rose-100",
 };
 
-const CHANNELS: OrderChannel[] = ["Dine in", "Wait List", "Take Away", "Delivery", "Online", "Third Party"];
 const THIRD_PARTY_PROVIDERS: ThirdPartyProvider[] = ["Uber Eats", "Deliveroo", "Just Eat", "Other"];
 
 interface CartState {
@@ -199,7 +210,7 @@ interface CartState {
   channelChosen: boolean;
 }
 
-const emptyCart: CartState = {
+const EMPTY_CART: CartState = {
   editingOrderId: null,
   tableId: null,
   tableNumber: null,
@@ -242,6 +253,8 @@ export function OrderLineClient({
   localPrintTarget,
   staffName,
   hasKitchen,
+  channels,
+  showTables,
 }: {
   categories: Category[];
   dishes: Dish[];
@@ -263,9 +276,15 @@ export function OrderLineClient({
   localPrintTarget: { ip: string; port: number | null } | null;
   staffName?: string;
   hasKitchen: boolean;
+  // Order types offered (first = default for a new sale) and whether tables exist — from the
+  // business type (lib/business-profile.ts).
+  channels: OrderChannel[];
+  showTables: boolean;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const emptyCart = useMemo<CartState>(() => ({ ...EMPTY_CART, channel: channels[0] ?? "Dine in" }), [channels]);
+  const queueTabs: readonly QueueTab[] = showTables ? QUEUE_TABS : SHOP_QUEUE_TABS;
   const [, startTransition] = useTransition();
   const [placingOrder, setPlacingOrder] = useState(false);
   // Shown above the main button after placing: "block" stock errors (the sale didn't go
@@ -407,25 +426,18 @@ export function OrderLineClient({
       if (queueTab === "Served") return o.status === "Served";
       if (isOrderClosedOut(o)) return false;
       if (queueTab === "All") return true;
-      if (queueTab === "Dine in") return o.channel === "Dine in";
-      if (queueTab === "Wait List") return o.status === "Wait List";
-      if (queueTab === "Take Away") return o.channel === "Take Away";
-      if (queueTab === "Delivery") return o.channel === "Delivery" || o.channel === "Third Party";
-      return true;
+      return matchesQueueTab(o, queueTab);
     });
   }, [queueOrders, queueTab]);
 
   const activeOrders = useMemo(() => queueOrders.filter((o) => !isOrderClosedOut(o)), [queueOrders]);
 
   const queueCounts = useMemo(() => {
-    return {
-      All: activeOrders.length,
-      "Dine in": activeOrders.filter((o) => o.channel === "Dine in").length,
-      "Wait List": activeOrders.filter((o) => o.status === "Wait List").length,
-      "Take Away": activeOrders.filter((o) => o.channel === "Take Away").length,
-      Delivery: activeOrders.filter((o) => o.channel === "Delivery" || o.channel === "Third Party").length,
-      Served: orders.filter((o) => o.status === "Served").length,
-    } satisfies Record<QueueTab, number>;
+    const counts = {} as Record<QueueTab, number>;
+    for (const tab of [...QUEUE_TABS, ...SHOP_QUEUE_TABS]) {
+      counts[tab] = tab === "Served" ? orders.filter((o) => o.status === "Served").length : activeOrders.filter((o) => matchesQueueTab(o, tab)).length;
+    }
+    return counts;
   }, [orders, activeOrders]);
 
   const menuDishes = useMemo(() => {
@@ -930,6 +942,8 @@ export function OrderLineClient({
     onShareInvoiceClick: () => setShareInvoiceOpen(true),
     onClose: () => setMobileCartOpen(false),
     hasKitchen,
+    channels,
+    emptyCart,
   };
 
   return (
@@ -983,17 +997,19 @@ export function OrderLineClient({
             <TopViewTab
               active={view === "tickets"}
               icon={ClipboardList}
-              label="Open Tickets"
-              shortLabel="Tickets"
+              label={showTables || hasKitchen ? "Open Tickets" : "Parked Sales"}
+              shortLabel={showTables || hasKitchen ? "Tickets" : "Parked"}
               count={queueCounts.All}
               onClick={() => setView("tickets")}
             />
-            <TopViewTab
-              active={view === "tables"}
-              icon={LayoutGrid}
-              label="Tables"
-              onClick={() => setView("tables")}
-            />
+            {showTables && (
+              <TopViewTab
+                active={view === "tables"}
+                icon={LayoutGrid}
+                label="Tables"
+                onClick={() => setView("tables")}
+              />
+            )}
             <TopViewTab
               active={view === "history"}
               icon={History}
@@ -1181,7 +1197,7 @@ export function OrderLineClient({
           <>
             {/* Channel/status filter chips — one row, swiped sideways */}
             <div className="-mx-1 mb-4 flex shrink-0 items-center gap-2 overflow-x-auto px-1 pb-2 [scrollbar-width:thin]">
-              {QUEUE_TABS.map((tab) => (
+              {queueTabs.map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setQueueTab(tab)}
@@ -1418,6 +1434,8 @@ interface CartPanelProps {
   onClose: () => void;
   showClose: boolean;
   hasKitchen: boolean;
+  channels: OrderChannel[];
+  emptyCart: CartState;
 }
 
 function CartPanel({
@@ -1467,6 +1485,8 @@ function CartPanel({
   onClose,
   showClose,
   hasKitchen,
+  channels,
+  emptyCart,
 }: CartPanelProps) {
   const canManageTable = !!cart.editingOrderId && !!cart.tableId && editingOrder?.status !== "Voided";
   // onPaid is set when the charge was started from the Split popup, so it can mark that share paid.
@@ -1582,7 +1602,7 @@ function CartPanel({
           title block, so the tray gets that height. */}
       <div className="mb-2 flex shrink-0 items-center gap-2">
         <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [mask-image:linear-gradient(to_right,black_85%,transparent)]">
-          {CHANNELS.map((c) => (
+          {channels.map((c) => (
             <button
               key={c}
               onClick={() => setCart((prev) => ({ ...prev, channel: c, channelChosen: true }))}
@@ -1591,7 +1611,7 @@ function CartPanel({
               }`}
             >
               {c === "Delivery" && <Bike className="h-4 w-4" />}
-              {c === "Take Away" && <ShoppingBag className="h-4 w-4" />}
+              {(c === "Take Away" || c === "Click & collect") && <ShoppingBag className="h-4 w-4" />}
               {c}
             </button>
           ))}
@@ -2060,7 +2080,9 @@ function CartPanel({
                 ? "Update Order"
                 : hasKitchen
                   ? "Send to Kitchen"
-                  : "Place Order"}{" "}
+                  : channels.includes("Dine in")
+                    ? "Place Order"
+                    : "Park Sale"}{" "}
             · {formatMoney(total, currencySymbol)}
           </button>
           {editingOrder && editingOrder.status !== "Voided" && editingOrder.status !== "Served" && (

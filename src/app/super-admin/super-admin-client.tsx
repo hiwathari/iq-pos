@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { businessProfile } from "@/lib/business-profile";
+import type { BusinessType } from "@/lib/types";
 import Link from "next/link";
 import {
   Building2,
@@ -38,6 +40,7 @@ interface RestaurantRow {
   id: string;
   name: string;
   slug: string;
+  businessType: BusinessType;
   active: boolean;
   staffCount: number;
   dishCount: number;
@@ -105,7 +108,7 @@ export function SuperAdminClient({
               onClick={() => setModalOpen(true)}
               className="flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-700"
             >
-              <Plus className="h-4 w-4" /> Add Restaurant
+              <Plus className="h-4 w-4" /> Add Business
             </button>
           </div>
         )}
@@ -136,7 +139,9 @@ export function SuperAdminClient({
                 )}
                 <div>
                   <h2 className="font-semibold text-neutral-900">{r.name}</h2>
-                  <p className="text-xs text-neutral-400">/{r.slug}</p>
+                  <p className="text-xs text-neutral-400">
+                    /{r.slug} · {businessProfile(r.businessType).label}
+                  </p>
                 </div>
               </div>
               <span
@@ -274,7 +279,7 @@ export function SuperAdminClient({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => setModalOpen(false)}>
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-5 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-neutral-900">Add Restaurant</h2>
+              <h2 className="text-lg font-semibold text-neutral-900">Add Business</h2>
               <button onClick={() => setModalOpen(false)} className="rounded-full p-1 text-neutral-400 hover:bg-neutral-100">
                 <X className="h-5 w-5" />
               </button>

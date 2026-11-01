@@ -28,7 +28,8 @@ interface StaffRow {
 const initialState: CreateStaffState = {};
 const initialEditState: UpdateStaffState = {};
 
-export function StaffClient({ staff }: { staff: StaffRow[] }) {
+// productsLabel: what the business calls its menu screen ("Manage Dishes" / "Products").
+export function StaffClient({ staff, productsLabel = "Manage Dishes" }: { staff: StaffRow[]; productsLabel?: string }) {
   const [, startTransition] = useTransition();
   const [permissionsTarget, setPermissionsTarget] = useState<StaffRow | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -146,12 +147,12 @@ export function StaffClient({ staff }: { staff: StaffRow[] }) {
 
       {modalOpen && <AddStaffModal onClose={() => setModalOpen(false)} />}
       {editingStaff && <EditStaffModal staff={editingStaff} onClose={() => setEditingStaff(null)} />}
-      {permissionsTarget && <PermissionsModal staff={permissionsTarget} onClose={() => setPermissionsTarget(null)} />}
+      {permissionsTarget && <PermissionsModal staff={permissionsTarget} productsLabel={productsLabel} onClose={() => setPermissionsTarget(null)} />}
     </div>
   );
 }
 
-function PermissionsModal({ staff, onClose }: { staff: StaffRow; onClose: () => void }) {
+function PermissionsModal({ staff, productsLabel, onClose }: { staff: StaffRow; productsLabel: string; onClose: () => void }) {
   const [selected, setSelected] = useState<string[]>(staff.permissions ?? DEFAULT_STAFF_PERMISSIONS);
   const [pending, startTransition] = useTransition();
 
@@ -188,7 +189,7 @@ function PermissionsModal({ staff, onClose }: { staff: StaffRow; onClose: () => 
                 onChange={() => toggle(key)}
                 className="h-4 w-4 accent-teal-600"
               />
-              {PERMISSION_LABELS[key]}
+              {key === "manage-dishes" ? productsLabel : PERMISSION_LABELS[key]}
             </label>
           ))}
         </div>

@@ -47,7 +47,10 @@ export const restaurants = sqliteTable("restaurants", {
   // "cafe" is counter-service: a brand-new order that's already paid in full skips "In Kitchen"
   // entirely and is created straight as "Served" (see placeOrderAction). "restaurant" (the
   // default) keeps the normal send-to-kitchen-then-serve flow.
-  businessType: text("business_type", { enum: ["restaurant", "cafe"] }).notNull().default("restaurant"),
+  businessType: text("business_type", { enum: ["restaurant", "cafe", "grocery", "retail", "warehouse"] }).notNull().default("restaurant"),
+  // Per-business switches that differ from the business type's defaults, e.g. {"kitchenDisplay":true}
+  // for a grocery with a hot-food counter. Null = all defaults. See lib/business-profile.ts.
+  features: text("features", { mode: "json" }).$type<Partial<Record<"tables" | "kitchenDisplay", boolean>>>(),
   // What happens when a sale would take a stock item below zero: "allow" (go negative quietly —
   // the negative number shows what was sold without stock), "warn" (sell, then tell the Till)
   // or "block" (refuse the sale, naming the item). See lib/stock.ts.
@@ -251,7 +254,7 @@ export const orders = sqliteTable("orders", {
   tableNumber: int("table_number"),
   guests: int("guests").notNull().default(1),
   channel: text("channel", {
-    enum: ["Dine in", "Wait List", "Take Away", "Delivery", "Online", "Third Party"],
+    enum: ["Dine in", "Wait List", "Take Away", "Delivery", "Online", "Third Party", "In store", "Click & collect"],
   }).notNull(),
   thirdPartyProvider: text("third_party_provider", { enum: ["Uber Eats", "Deliveroo", "Just Eat", "Other"] }),
   status: text("status", { enum: ["Pending", "In Kitchen", "Wait List", "Ready", "Served", "Voided"] }).notNull(),

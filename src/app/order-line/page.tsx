@@ -7,6 +7,7 @@ import { listTables } from "@/lib/data/tables";
 import { listOrders } from "@/lib/data/orders";
 import { listPaymentTerminals, listPrinters } from "@/lib/data/printers";
 import { getRestaurant } from "@/lib/data/restaurants";
+import { businessProfile } from "@/lib/business-profile";
 import { hasKitchen, salesByTender } from "@/lib/types";
 import { businessDayStart } from "@/lib/business-day";
 import { TodaySales } from "@/components/today-sales";
@@ -43,6 +44,7 @@ export default async function OrderLinePage() {
 
   const currencySymbol = restaurant?.currencySymbol ?? "£";
   const restaurantName = restaurant?.name ?? "IQ POS";
+  const profile = businessProfile(restaurant?.businessType, restaurant?.features);
   // Discounting an order's total is a manager-level call by default — Admin/Super/Regional Admin
   // always have it; a Staff login only gets it if explicitly granted the till-discount permission.
   const canDiscount = hasPermission(session.role, permissions, "till-discount");
@@ -79,12 +81,14 @@ export default async function OrderLinePage() {
         invoiceEmail={restaurant?.invoiceEmail ?? undefined}
         invoiceWebsite={restaurant?.invoiceWebsite ?? undefined}
         invoiceLogoUrl={restaurant?.invoiceLogoUrl ?? undefined}
-        invoiceFooterText={restaurant?.invoiceFooterText ?? "Thank you for dining with us!"}
+        invoiceFooterText={restaurant?.invoiceFooterText ?? profile.receiptFooter}
         openTime={restaurant?.openTime ?? null}
         timezone={restaurant?.timezone ?? "UTC"}
         localPrintTarget={localPrintTarget}
         staffName={session.name}
-        hasKitchen={hasKitchen(printers)}
+        hasKitchen={profile.features.kitchenDisplay && hasKitchen(printers)}
+        channels={profile.channels}
+        showTables={profile.features.tables}
       />
     </AppShell>
   );

@@ -1,4 +1,5 @@
 import { AppShell } from "@/components/app-shell";
+import { businessProfile } from "@/lib/business-profile";
 import { requirePermission } from "@/lib/scope";
 import { getAccountsLogin, listStaff } from "@/lib/data/staff";
 import { getRestaurant } from "@/lib/data/restaurants";
@@ -35,6 +36,7 @@ export default async function SettingsPage() {
         <RestaurantClient
           businessType={restaurant?.businessType ?? "restaurant"}
           negativeStock={restaurant?.negativeStock ?? "allow"}
+          features={restaurant?.features ?? null}
           currencySymbol={restaurant?.currencySymbol ?? "£"}
           kitchenTimerLimitMinutes={restaurant?.kitchenTimerLimitMinutes ?? 30}
           taxEnabled={restaurant?.taxEnabled ?? false}
@@ -53,7 +55,7 @@ export default async function SettingsPage() {
           />
         </div>
         <div className="border-t border-neutral-100 pt-8">
-          <StaffClient staff={staff} />
+          <StaffClient staff={staff} productsLabel={businessProfile(restaurant?.businessType, restaurant?.features).words.manageProducts} />
         </div>
         <div className="border-t border-neutral-100 pt-8">
           <AccountsLoginClient
