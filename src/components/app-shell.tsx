@@ -77,6 +77,7 @@ export async function AppShell({
           role={session.role}
           notifications={notifications}
           titleExtra={headerExtra}
+          searchPlaceholder={`Search ${profile.words.products === "Dishes" ? "menu" : "products"}, orders and more`}
         />
         <main className="flex-1 overflow-y-auto">{children}</main>
       </div>

@@ -43,7 +43,10 @@ export function Topbar({
   role,
   notifications = [],
   titleExtra,
+  searchPlaceholder = "Search menu, orders and more",
 }: {
+  // "Search products, orders and more" for shops (lib/business-profile.ts).
+  searchPlaceholder?: string;
   title?: string;
   titleExtra?: React.ReactNode;
   name: string;
@@ -72,7 +75,7 @@ export function Topbar({
         <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400" />
         <input
           type="text"
-          placeholder="Search menu, orders and more"
+          placeholder={searchPlaceholder}
           className="w-full rounded-xl border border-neutral-200 bg-neutral-50 py-2.5 pl-9 pr-4 text-sm text-neutral-700 placeholder:text-neutral-400 outline-none focus:border-teal-500 focus:bg-white focus:ring-2 focus:ring-teal-100"
         />
       </div>

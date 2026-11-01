@@ -1085,7 +1085,7 @@ export function OrderLineClient({
                   <span className="text-xs font-semibold">Search</span>
                 </button>
                 <div className="-mr-1 flex min-w-0 flex-1 snap-x gap-2.5 overflow-x-auto pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [mask-image:linear-gradient(to_right,black_88%,transparent)]">
-                  <CategoryBox active={menuCategory === "all"} label="All Menu" icon="all" onClick={() => setMenuCategory("all")} />
+                  <CategoryBox active={menuCategory === "all"} label={channels.includes("Dine in") ? "All Menu" : "All Products"} icon="all" onClick={() => setMenuCategory("all")} />
                   {categories.map((c) => (
                     <CategoryBox key={c.id} active={menuCategory === c.id} label={c.name} icon={c.icon} onClick={() => setMenuCategory(c.id)} />
                   ))}

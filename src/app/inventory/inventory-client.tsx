@@ -12,7 +12,8 @@ import {
 } from "@/lib/actions/inventory";
 import { AlertTriangle, Minus, Package, Pencil, Plus, Trash2, X } from "lucide-react";
 
-export function InventoryClient({ items }: { items: InventoryItem[] }) {
+// productWord: "dish" or "product" (lib/business-profile.ts).
+export function InventoryClient({ items, productWord = "dish" }: { items: InventoryItem[]; productWord?: string }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [modalOpen, setModalOpen] = useState(false);
@@ -55,7 +56,7 @@ export function InventoryClient({ items }: { items: InventoryItem[] }) {
         <div>
           <h1 className="text-xl font-semibold text-neutral-900">Inventory</h1>
           <p className="text-sm text-neutral-400">
-            Track stock levels and link a dish to an item so selling it decrements stock automatically.
+            Track stock levels — link a {productWord} to an item (or tick Track stock on a product) and every sale takes it off automatically.
           </p>
         </div>
         <button
