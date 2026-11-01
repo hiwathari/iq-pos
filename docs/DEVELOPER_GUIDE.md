@@ -223,7 +223,8 @@ commented definition of every column. Summary by table:
 | `integrations` | Third-party delivery platform credentials (Uber Eats/Deliveroo/Just Eat) — **present in schema, not wired to a real API anywhere yet** (see §13). |
 | `order_counters` | Per-restaurant running counter that `nextOrderNumber()` encodes into the 5-char order code. |
 | `shifts` | A closed-out End Day reconciliation — frozen sales/cash figures, not recomputed later. See §7.2. |
-| `inventory_items` | Tracked stock (ingredients, drinks, packaging). Quantity can go below zero (see `restaurants.negativeStock`). Only ever changed through `applyStockChanges` (§7.11). |
+| `inventory_items` | Tracked stock (ingredients, drinks, packaging — or a product's own stock when `dish_id` is set). Quantity can go below zero (see `restaurants.negativeStock`). Only ever changed through `applyStockChanges` (§7.11). |
+| `product_barcodes` | A product's barcodes (several per product; `pack_qty` = how many one scan adds), canonical (UPC-A stored as EAN-13), unique per business. |
 | `stock_movements` | One row per stock change: signed `change`, `quantity_after`, `reason` (sale / void / edit / received / adjust / opening, later refund, count, waste, transfers), `reference_id` (the order), who, when. The stock history. |
 | `petty_cash_entries` | Manual cash in/out, outside of order payments. |
 | `terminal_payouts` / `terminal_expenses` | Hand-entered, per-terminal-per-day bank payout and provider-fee figures, reconciled against the Till's own recorded card sales on the "Card Settlements" Reports tab. |
@@ -632,6 +633,34 @@ of checking the type:
 - `OrderChannel` gained "In store" and "Click & collect" (`ALL_CHANNELS` lists every one).
   Later phases add more feature keys (barcodes, weighed items…) to the same helper.
 
+### 7.13 Products: units, barcodes, own stock, import, labels
+
+- **Sold by** (`dishes.sell_by` unit / weight / volume / length, `dishes.unit`): price is per
+  unit; helpers in `lib/units.ts` (`priceLabel` "£2.40 / kg", `unitPriceLabel` per 100 g/ml or
+  per m, `formatQty`, `stockUnitFor`). Measured products may set `min_qty`, `qty_step`, `tare`.
+  Selling a measured quantity on the Till (weight pad) is Phase 3.
+- **Barcodes** (`lib/barcode.ts`, dependency-free): `checkBarcode` (GS1 mod-10 check digit for
+  EAN-13/EAN-8/UPC-A/GTIN-14, anything else is Code 128), `canonicalCode` (UPC-A → EAN-13),
+  `makeInternalEan13(seq)` — the business's own codes, prefix **20** + `restaurants.barcode_seq`
+  (21–29 are kept for scale labels, step 3.2), `eanModules` for drawing. The product form checks
+  live; `normaliseDishInput` in `lib/actions/menu.ts` re-checks and refuses a code (or SKU)
+  another product already has.
+- **Own stock** (`dishes.track_stock`): `syncProductStock` creates/updates an `inventory_items`
+  row with `dish_id` = the product (unit pcs or the product's kg/l/m), links the dish with usage
+  1, and logs "In stock now" changes as `opening` / `count` movements. Unticking unlinks it;
+  deleting the product keeps the stock item (its `dish_id` is cleared).
+- **VAT override** (`dishes.tax_rate_override`) wins over the category rate in both Tills'
+  `taxRateFor`. Cost price, brand, SKU (unique when set) and `min_age` are stored (the age check
+  on the Till is step 3.5).
+- **Import / export** (`/manage-dishes/import`, `lib/actions/product-import.ts`,
+  `lib/product-columns.ts`, `lib/csv.ts`): CSV with `IMPORT_COLUMNS`; rows sent in chunks of 200,
+  each chunk loads products/barcodes/categories/stock once and writes in one `db.batch`
+  (2,000 rows ≈ 3 s locally). Matching: SKU → barcode → exact name. Export button on the
+  products page downloads the same columns.
+- **Labels** (`/manage-dishes/labels`, `components/ean-barcode.tsx`): shelf labels (21 or 8 per
+  A4) and stickers (65 per A4), printed with `window.print()`; barcodes are SVG (verified to
+  decode with ZXing); `dishes.label_printed_at` set on print for "never printed only".
+
 ## 8. Payment / Card-Machine Integrations
 
 A `payment_terminals` row with `provider: null` is "manual" — staff run the physical machine
@@ -947,6 +976,53 @@ promises supplier ordering, central menus and till limits, which are part of thi
   `RevenueCompareChart` in `components/charts.tsx`; default tab changed to `dashboard` in
   `app/reports/page.tsx`. See §7.10. No schema change. FAQ "How do I read the reports?" and
   `public/help/reports.webp` updated.
+
+### 2026-11-01 (later) — Retail plan Phase 2: products by unit or weight, barcodes, import, labels
+- **Schema** — run on Turso **before** this code is deployed:
+  ```sql
+  ALTER TABLE dishes ADD COLUMN sell_by text NOT NULL DEFAULT 'unit';
+  ALTER TABLE dishes ADD COLUMN unit text NOT NULL DEFAULT 'each';
+  ALTER TABLE dishes ADD COLUMN min_qty real;
+  ALTER TABLE dishes ADD COLUMN qty_step real;
+  ALTER TABLE dishes ADD COLUMN tare real;
+  ALTER TABLE dishes ADD COLUMN sku text;
+  ALTER TABLE dishes ADD COLUMN brand text;
+  ALTER TABLE dishes ADD COLUMN cost_price real;
+  ALTER TABLE dishes ADD COLUMN tax_rate_override real;
+  ALTER TABLE dishes ADD COLUMN min_age integer;
+  ALTER TABLE dishes ADD COLUMN supplier_id text;
+  ALTER TABLE dishes ADD COLUMN track_stock integer NOT NULL DEFAULT 0;
+  ALTER TABLE dishes ADD COLUMN label_printed_at integer;
+  CREATE UNIQUE INDEX IF NOT EXISTS dishes_restaurant_sku_idx ON dishes (restaurant_id, sku) WHERE sku IS NOT NULL;
+  CREATE TABLE IF NOT EXISTS product_barcodes (
+    id text PRIMARY KEY NOT NULL,
+    restaurant_id text NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+    dish_id text NOT NULL REFERENCES dishes(id) ON DELETE CASCADE,
+    variant_id text,
+    code text NOT NULL,
+    symbology text NOT NULL,
+    pack_qty real NOT NULL DEFAULT 1,
+    created_at integer NOT NULL
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS product_barcodes_code_idx ON product_barcodes (restaurant_id, code);
+  CREATE INDEX IF NOT EXISTS product_barcodes_dish_idx ON product_barcodes (dish_id);
+  ALTER TABLE restaurants ADD COLUMN barcode_seq integer NOT NULL DEFAULT 0;
+  ALTER TABLE inventory_items ADD COLUMN dish_id text;
+  ALTER TABLE inventory_items ADD COLUMN cost_price real;
+  ALTER TABLE inventory_items ADD COLUMN reorder_level real;
+  ALTER TABLE inventory_items ADD COLUMN reorder_qty real;
+  ```
+- Product form (`components/dish-modal.tsx`) rebuilt: Sold by (Unit / Weight / Volume / Length)
+  with unit and "per kg" price, barcodes (scan/type, checked, pack ×, "Make one"), Track stock
+  (in stock now, low level) or an ingredient link, and More details (SKU, brand, cost + margin,
+  VAT override, age restriction, smallest sale, tare, photo, icon, printer, description).
+  Save errors (duplicate barcode/SKU) show on the form.
+- Products page: search by name/SKU/barcode, "£x / kg" prices, Import / Export / Labels.
+  Till tiles show "/ kg" for measured products; VAT override used on both Tills.
+- New pages `/manage-dishes/import` and `/manage-dishes/labels`. See §7.13.
+- FAQ: Manage Dishes answer updated; new "sell by weight, barcodes and stock", "import from a
+  spreadsheet", "print shelf labels"; Inventory tip; screenshots `product-form`,
+  `import-products`, `labels`, `manage-dishes` (re-captured).
 
 ### 2026-11-01 (later) — Retail plan Phase 1: business types, onboarding, feature switches
 - **Schema** — run on Turso **before** this code is deployed:

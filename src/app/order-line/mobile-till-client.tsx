@@ -121,6 +121,8 @@ export function MobileTillClient({
   };
   const taxRateFor = (dish: Dish) => {
     if (!taxEnabled) return 0;
+    // A product's own VAT rate (e.g. crisps in a zero-rated category) wins over its category's.
+    if (dish.taxRateOverride != null) return dish.taxRateOverride;
     const category = categories.find((c) => c.id === dish.categoryId);
     return category?.taxRatePercent ?? 0;
   };
@@ -381,7 +383,10 @@ export function MobileTillClient({
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-semibold text-neutral-900">{dish.name}</div>
-                      <div className="text-sm text-neutral-500">{formatMoney(price, currencySymbol)}</div>
+                      <div className="text-sm text-neutral-500">
+                        {formatMoney(price, currencySymbol)}
+                        {dish.sellBy !== "unit" && ` / ${dish.unit}`}
+                      </div>
                     </div>
                     {dish.outOfStock ? (
                       <span className="flex items-center gap-1 rounded-full bg-rose-100 px-2.5 py-1 text-xs font-bold text-rose-700">

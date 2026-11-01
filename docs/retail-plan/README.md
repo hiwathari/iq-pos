@@ -67,12 +67,12 @@ Every step has the same parts so it can be picked up on its own:
 | 1.3 | Navigation, wording, receipts per type | **done** 2026-11-01 |
 | 1.4 | Feature switches in Settings | **done** 2026-11-01 |
 | 1.5 | Till & Kitchen behaviour per type | **done** 2026-11-01 |
-| 2.1 | Sold by unit / weight / volume / length | planned |
-| 2.2 | Barcodes (several per product) | planned |
-| 2.3 | Cost, VAT override, minimum age, SKU | planned |
-| 2.4 | Automatic stock item per product | planned |
-| 2.5 | CSV import / export | planned |
-| 2.6 | Shelf-edge & barcode labels | planned |
+| 2.1 | Sold by unit / weight / volume / length | **done** 2026-11-01 |
+| 2.2 | Barcodes (several per product) | **done** 2026-11-01 |
+| 2.3 | Cost, VAT override, minimum age, SKU | **done** 2026-11-01 |
+| 2.4 | Automatic stock item per product | **done** 2026-11-01 |
+| 2.5 | CSV import / export | **done** 2026-11-01 |
+| 2.6 | Shelf-edge & barcode labels | **done** 2026-11-01 |
 | 3.1 | Scanner input on the Till | planned |
 | 3.2 | Price- / weight-embedded barcodes | planned |
 | 3.3 | Weighed sales (typed weight) | planned |

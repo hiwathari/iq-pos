@@ -8,6 +8,7 @@ import type {
   orders,
   paymentTerminals,
   pettyCashEntries,
+  productBarcodes,
   printers,
   reservations,
   restaurants,
@@ -53,6 +54,7 @@ export type LoyaltyMember = typeof loyaltyMembers.$inferSelect;
 export type LoyaltyContactType = "phone" | "email";
 export type InventoryItem = typeof inventoryItems.$inferSelect;
 export type StockMovement = typeof stockMovements.$inferSelect;
+export type ProductBarcode = typeof productBarcodes.$inferSelect;
 export type PettyCashEntry = typeof pettyCashEntries.$inferSelect;
 export type TerminalPayout = typeof terminalPayouts.$inferSelect;
 export type TerminalExpense = typeof terminalExpenses.$inferSelect;

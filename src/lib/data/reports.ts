@@ -1,7 +1,7 @@
 import { and, eq, gte, lt } from "drizzle-orm";
 import { db } from "@/db/client";
 import { categories, dishes, orders, pettyCashEntries, reservations } from "@/db/schema";
-import { itemsSubtotal, lineTotal, orderBreakdown, orderTotal, orderSequence } from "@/lib/types";
+import { lineTotal, orderBreakdown, orderTotal, orderSequence } from "@/lib/types";
 import { filterOrdersForAccountsRole } from "@/lib/accounts-filter";
 import { businessDateKey, businessDayRange, getLocalParts, shiftDateKey } from "@/lib/business-day";
 
@@ -74,7 +74,6 @@ export async function getReportData(
 
   for (const o of liveOrders) {
     const total = orderTotal(o);
-    const subtotal = itemsSubtotal(o.items);
 
     // Split-payment orders carry the true per-method breakdown; everything else falls back
     // to the single paymentMethod string (legacy orders, or the common single-method case).

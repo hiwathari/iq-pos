@@ -5,7 +5,10 @@ import { useRouter } from "next/navigation";
 import { CategoryIconView } from "@/components/category-icon";
 import { DishModal } from "@/components/dish-modal";
 import type { Category, CategoryDisplayOverride, Dish, InventoryItem, Printer, PrinterStation } from "@/lib/types";
-import { formatMoney } from "@/lib/types";
+import { priceLabel } from "@/lib/units";
+import { exportProductsAction } from "@/lib/actions/product-import";
+import { downloadCsv, toCsv } from "@/lib/csv";
+import Link from "next/link";
 import {
   createCategoryAction,
   createDishAction,
@@ -17,7 +20,7 @@ import {
   type DishInput,
   type UpdateCategoryInput,
 } from "@/lib/actions/menu";
-import { LayoutGrid, List, Plus, Search, SlidersHorizontal, MoreVertical, Pencil, Trash2, X, Ban } from "lucide-react";
+import { LayoutGrid, List, Plus, Search, SlidersHorizontal, MoreVertical, Pencil, Trash2, X, Ban, Download, Tag, Upload } from "lucide-react";
 
 const STATION_OPTIONS: PrinterStation[] = ["Kitchen", "Bar", "Receipt", "Expo"];
 
@@ -28,6 +31,8 @@ export function ManageDishesClient({
   inventoryItems,
   currencySymbol,
   words,
+  barcodesByDish,
+  isShop,
 }: {
   categories: Category[];
   dishes: Dish[];
@@ -36,6 +41,9 @@ export function ManageDishesClient({
   currencySymbol: string;
   // "Dish"/"Dishes" for restaurants and cafes, "Product"/"Products" for shops (lib/business-profile.ts).
   words: { product: string; products: string; manageProducts: string };
+  // dishId → its barcodes (product_barcodes), for the form and for searching by barcode.
+  barcodesByDish: Record<string, { code: string; packQty: number }[]>;
+  isShop: boolean;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -57,13 +65,23 @@ export function ManageDishesClient({
   const filteredDishes = useMemo(() => {
     return dishes.filter((d) => {
       const inCategory = selectedCategory === "all" || d.categoryId === selectedCategory;
-      const matchesQuery = d.name.toLowerCase().includes(query.toLowerCase());
+      const q = query.trim().toLowerCase();
+      const matchesQuery =
+        !q ||
+        d.name.toLowerCase().includes(q) ||
+        (d.sku ?? "").toLowerCase() === q ||
+        (barcodesByDish[d.id] ?? []).some((b) => b.code.includes(q));
       return inCategory && matchesQuery;
     });
-  }, [dishes, selectedCategory, query]);
+  }, [dishes, selectedCategory, query, barcodesByDish]);
 
   const categoryName =
     selectedCategory === "all" ? `All ${words.products}` : categories.find((c) => c.id === selectedCategory)?.name ?? words.products;
+
+  async function exportProducts() {
+    const { header, rows } = await exportProductsAction();
+    downloadCsv(`${words.products.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(header, rows));
+  }
 
   function openAddDish() {
     setEditingDish(null);
@@ -76,17 +94,13 @@ export function ManageDishesClient({
     setDishModalOpen(true);
   }
 
-  function handleSaveDish(values: DishInput) {
-    startTransition(async () => {
-      if (editingDish) {
-        await updateDishAction(editingDish.id, values);
-      } else {
-        await createDishAction(values);
-      }
-      router.refresh();
-    });
+  // Resolves with an error for the form to show (the modal stays open), or closes it when saved.
+  async function handleSaveDish(values: DishInput) {
+    const result = editingDish ? await updateDishAction(editingDish.id, values) : await createDishAction(values);
+    if (result.error) return result.error;
     setDishModalOpen(false);
     setEditingDish(null);
+    startTransition(() => router.refresh());
   }
 
   function handleDeleteDish(dishId: string) {
@@ -172,21 +186,45 @@ export function ManageDishesClient({
       <div className="flex-1 overflow-y-auto p-6">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-xl font-semibold text-neutral-900">{words.manageProducts}</h1>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 [&>a]:whitespace-nowrap [&>button]:whitespace-nowrap">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search dishes"
-                className="w-64 rounded-xl border border-neutral-200 bg-white py-2.5 pl-9 pr-4 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+                placeholder={`Search ${words.products.toLowerCase()}, SKU or barcode`}
+                className="w-52 rounded-xl border border-neutral-200 bg-white py-2.5 pl-9 pr-4 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 2xl:w-64"
               />
             </div>
+            <Link
+              href="/manage-dishes/import"
+              aria-label="Import from a spreadsheet"
+              title="Import from a spreadsheet"
+              className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm font-medium text-neutral-600 hover:bg-neutral-50"
+            >
+              <Upload className="h-4 w-4" /> <span className="hidden 2xl:inline">Import</span>
+            </Link>
+            <button
+              onClick={exportProducts}
+              aria-label="Export to a spreadsheet"
+              title="Export to a spreadsheet"
+              className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm font-medium text-neutral-600 hover:bg-neutral-50"
+            >
+              <Download className="h-4 w-4" /> <span className="hidden 2xl:inline">Export</span>
+            </button>
+            <Link
+              href="/manage-dishes/labels"
+              aria-label="Print labels"
+              title="Print labels"
+              className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm font-medium text-neutral-600 hover:bg-neutral-50"
+            >
+              <Tag className="h-4 w-4" /> <span className="hidden 2xl:inline">Labels</span>
+            </Link>
             <button
               onClick={openAddDish}
               className="flex items-center gap-2 rounded-xl bg-[var(--brand)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)]"
             >
-              <Plus className="h-4 w-4" /> Add New {words.products}
+              <Plus className="h-4 w-4" /> Add New {words.product}
             </button>
           </div>
         </div>
@@ -281,7 +319,7 @@ export function ManageDishesClient({
                     <td className="px-5 py-3 text-neutral-500">
                       {categories.find((c) => c.id === dish.categoryId)?.name}
                     </td>
-                    <td className="px-5 py-3 font-semibold text-neutral-800">{formatMoney(dish.price, currencySymbol)}</td>
+                    <td className="px-5 py-3 font-semibold text-neutral-800">{priceLabel(dish.price, dish.sellBy, dish.unit, currencySymbol)}</td>
                     <td className="px-5 py-3">
                       <div className="flex justify-end gap-2">
                         <button
@@ -336,6 +374,12 @@ export function ManageDishesClient({
           initial={editingDish}
           currencySymbol={currencySymbol}
           productWord={words.product}
+          isShop={isShop}
+          initialBarcodes={editingDish ? (barcodesByDish[editingDish.id] ?? []) : []}
+          ownStock={(() => {
+            const own = editingDish?.trackStock ? inventoryItems.find((i) => i.dishId === editingDish.id) : undefined;
+            return own ? { quantity: own.quantity, lowStockThreshold: own.lowStockThreshold } : null;
+          })()}
         />
       )}
       {categoryModalOpen && (
@@ -478,7 +522,7 @@ function DishCard({
           <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">Sold Out</span>
         )}
       </div>
-      <div className="font-semibold text-neutral-800">{formatMoney(dish.price, currencySymbol)}</div>
+      <div className="font-semibold text-neutral-800">{priceLabel(dish.price, dish.sellBy, dish.unit, currencySymbol)}</div>
     </div>
   );
 }

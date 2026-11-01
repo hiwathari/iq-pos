@@ -55,6 +55,8 @@ export const restaurants = sqliteTable("restaurants", {
   // the negative number shows what was sold without stock), "warn" (sell, then tell the Till)
   // or "block" (refuse the sale, naming the item). See lib/stock.ts.
   negativeStock: text("negative_stock", { enum: ["allow", "warn", "block"] }).notNull().default("allow"),
+  // Last number used for the business's own "Make a barcode" codes (lib/barcode.ts makeInternalEan13).
+  barcodeSeq: int("barcode_seq").notNull().default(0),
   // Shop hours, as "HH:MM" 24-hour clock times in the restaurant's own timezone (below).
   // openTime anchors the "business day" boundary used by autoVoidStaleOrders, Kitchen Display's
   // Completed panel, and Reports' daily/weekly buckets, so a shift running past midnight still
@@ -201,7 +203,52 @@ export const dishes = sqliteTable("dishes", {
   // placeOrderAction. Null/null for a dish with no tracked ingredient (the common case).
   inventoryItemId: text("inventory_item_id").references(() => inventoryItems.id, { onDelete: "set null" }),
   inventoryUsagePerOrder: real("inventory_usage_per_order"),
+  // ---- Retail fields (docs/retail-plan step 2.x) ----
+  // How it's sold: "unit" (each/pack/box/case) or measured ("weight" kg/g, "volume" l/ml,
+  // "length" m/cm); `price` is per `unit`. minQty / qtyStep / tare apply to measured products.
+  sellBy: text("sell_by", { enum: ["unit", "weight", "volume", "length"] }).notNull().default("unit"),
+  unit: text("unit").notNull().default("each"),
+  minQty: real("min_qty"),
+  qtyStep: real("qty_step"),
+  tare: real("tare"),
+  sku: text("sku"),
+  brand: text("brand"),
+  // Per unit of sale (per kg for a weight product) — for margin and stock value.
+  costPrice: real("cost_price"),
+  // Null = use the category's rate; set for e.g. crisps in an otherwise zero-rated category.
+  taxRateOverride: real("tax_rate_override"),
+  // Age-restricted product (16 / 18 / 21 / 25); the Till's age check comes in step 3.5.
+  minAge: int("min_age"),
+  supplierId: text("supplier_id"),
+  // On: the product has its own stock item (inventory_items.dish_id = this dish, used 1 per unit
+  // sold), created and kept in step by the product form — see syncProductStock in lib/actions/menu.ts.
+  trackStock: int("track_stock", { mode: "boolean" }).notNull().default(false),
+  labelPrintedAt: int("label_printed_at"),
 });
+
+// A product's barcodes — several per product (single item, multipack, outer case: pack_qty is
+// how many one scan adds). Codes are stored canonical (UPC-A as EAN-13) and unique per business.
+export const productBarcodes = sqliteTable(
+  "product_barcodes",
+  {
+    id: id(),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    dishId: text("dish_id")
+      .notNull()
+      .references(() => dishes.id, { onDelete: "cascade" }),
+    variantId: text("variant_id"),
+    code: text("code").notNull(),
+    symbology: text("symbology", { enum: ["ean13", "ean8", "upca", "gtin14", "code128"] }).notNull(),
+    packQty: real("pack_qty").notNull().default(1),
+    createdAt: timestamp("created_at"),
+  },
+  (table) => [
+    uniqueIndex("product_barcodes_code_idx").on(table.restaurantId, table.code),
+    index("product_barcodes_dish_idx").on(table.dishId),
+  ]
+);
 
 export const tables = sqliteTable(
   "tables",
@@ -672,6 +719,11 @@ export const inventoryItems = sqliteTable(
     unit: text("unit").notNull().default("pcs"),
     quantity: real("quantity").notNull().default(0),
     lowStockThreshold: real("low_stock_threshold").notNull().default(0),
+    // Set when this item is a product's own stock (dishes.trackStock) rather than an ingredient.
+    dishId: text("dish_id"),
+    costPrice: real("cost_price"),
+    reorderLevel: real("reorder_level"),
+    reorderQty: real("reorder_qty"),
     createdAt: timestamp("created_at"),
   },
   (table) => [uniqueIndex("inventory_items_restaurant_name_idx").on(table.restaurantId, table.name)]

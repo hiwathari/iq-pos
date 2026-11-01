@@ -1,6 +1,6 @@
 import { AppShell } from "@/components/app-shell";
 import { requirePermission } from "@/lib/scope";
-import { listCategories, listDishes } from "@/lib/data/menu";
+import { listBarcodesByDish, listCategories, listDishes } from "@/lib/data/menu";
 import { listPrinters } from "@/lib/data/printers";
 import { listInventoryItems } from "@/lib/data/inventory";
 import { getRestaurant } from "@/lib/data/restaurants";
@@ -10,15 +10,17 @@ import { businessProfile } from "@/lib/business-profile";
 export default async function ManageDishesPage() {
   const { restaurantId } = await requirePermission("manage-dishes");
 
-  const [categories, dishes, printers, inventoryItems, restaurant] = await Promise.all([
+  const [categories, dishes, printers, inventoryItems, restaurant, barcodesByDish] = await Promise.all([
     listCategories(restaurantId),
     listDishes(restaurantId),
     listPrinters(restaurantId),
     listInventoryItems(restaurantId),
     getRestaurant(restaurantId),
+    listBarcodesByDish(restaurantId),
   ]);
 
-  const { words } = businessProfile(restaurant?.businessType, restaurant?.features);
+  const profile = businessProfile(restaurant?.businessType, restaurant?.features);
+  const { words } = profile;
 
   return (
     <AppShell title={words.manageProducts}>
@@ -29,6 +31,8 @@ export default async function ManageDishesPage() {
         inventoryItems={inventoryItems}
         currencySymbol={restaurant?.currencySymbol ?? "£"}
         words={words}
+        barcodesByDish={barcodesByDish}
+        isShop={!profile.features.kitchenDisplay && !profile.features.tables}
       />
     </AppShell>
   );

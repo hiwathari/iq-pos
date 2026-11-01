@@ -468,6 +468,8 @@ export function OrderLineClient({
   // order untouched — only relevant while the restaurant has tax turned on at all.
   const taxRateFor = (dish: Dish) => {
     if (!taxEnabled) return 0;
+    // A product's own VAT rate (e.g. crisps in a zero-rated category) wins over its category's.
+    if (dish.taxRateOverride != null) return dish.taxRateOverride;
     const category = categories.find((c) => c.id === dish.categoryId);
     return category?.taxRatePercent ?? 0;
   };
@@ -1153,6 +1155,7 @@ export function OrderLineClient({
                     <div className="mt-auto">
                       <div className="mb-1.5 text-[15px] font-semibold text-neutral-800">
                         {formatMoney(price, currencySymbol)}
+                        {dish.sellBy !== "unit" && <span className="text-xs font-normal text-neutral-500"> / {dish.unit}</span>}
                         {price !== dish.price && <span className="ml-1 text-[10px] font-normal text-teal-600">({cart.channel})</span>}
                       </div>
                       {dish.outOfStock ? (

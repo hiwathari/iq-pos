@@ -1,11 +1,14 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
-import { categories, dishes } from "@/db/schema";
+import { categories, dishes, inventoryItems, productBarcodes, restaurants } from "@/db/schema";
 import { assertPermission, requireRestaurantContext } from "@/lib/scope";
 import type { CategoryDisplayOverride } from "@/lib/types";
+import { checkBarcode, makeInternalEan13 } from "@/lib/barcode";
+import { isSellBy, isUnitFor, stockUnitFor, type SellBy } from "@/lib/units";
+import { applyStockChanges } from "@/lib/stock";
 
 export interface CreateCategoryInput {
   name: string;
@@ -92,56 +95,243 @@ export interface DishInput {
   printerId?: string | null;
   inventoryItemId?: string | null;
   inventoryUsagePerOrder?: number | null;
+  // Retail fields (all optional so older callers keep working).
+  sellBy?: SellBy;
+  unit?: string;
+  minQty?: number | null;
+  qtyStep?: number | null;
+  tare?: number | null;
+  sku?: string;
+  brand?: string;
+  costPrice?: number | null;
+  taxRateOverride?: number | null;
+  minAge?: number | null;
+  barcodes?: { code: string; packQty: number }[];
+  // Own stock (step 2.4): when on, the product gets its own stock item; stockQty sets how many
+  // are in stock now (a change is logged as a count), lowStock its low-stock level.
+  trackStock?: boolean;
+  stockQty?: number | null;
+  lowStock?: number | null;
 }
 
-export async function createDishAction(input: DishInput) {
-  const { session, restaurantId } = await requireRestaurantContext();
-  await assertPermission(session, "manage-dishes");
-  await db.insert(dishes).values({
-    id: crypto.randomUUID(),
-    restaurantId,
+export interface DishActionResult {
+  error?: string;
+}
+
+const MIN_AGES = [16, 18, 21, 25];
+const optNum = (v: unknown, min = 0, max = 1e7) => {
+  const n = typeof v === "number" ? v : v === null || v === undefined || v === "" ? NaN : Number(v);
+  return Number.isFinite(n) && n >= min && n <= max ? n : null;
+};
+
+// Cleans and checks everything the product form sends. Returns the columns to write plus the
+// checked barcodes, or an error to show on the form.
+async function normaliseDishInput(restaurantId: string, input: DishInput, dishId: string | null) {
+  const name = String(input.name ?? "").trim().slice(0, 120);
+  if (!name) return { error: "Enter a name." } as const;
+  const price = optNum(input.price, 0, 1e6);
+  if (price === null) return { error: "Enter a valid price." } as const;
+  const sellBy: SellBy = isSellBy(input.sellBy) ? input.sellBy : "unit";
+  const unit = isUnitFor(sellBy, input.unit) ? input.unit : sellBy === "unit" ? "each" : sellBy === "weight" ? "kg" : sellBy === "volume" ? "l" : "m";
+  const sku = String(input.sku ?? "").trim().slice(0, 64) || null;
+  const taxRateOverride = optNum(input.taxRateOverride, 0, 100);
+  const minAge = input.minAge && MIN_AGES.includes(Number(input.minAge)) ? Number(input.minAge) : null;
+
+  const seen = new Set<string>();
+  const barcodes: { code: string; symbology: "ean13" | "ean8" | "upca" | "gtin14" | "code128"; packQty: number }[] = [];
+  for (const b of (Array.isArray(input.barcodes) ? input.barcodes : []).slice(0, 20)) {
+    const check = checkBarcode(String(b?.code ?? ""));
+    if (!check.code) continue;
+    if (!check.ok) return { error: `Barcode ${check.code}: ${check.message}` } as const;
+    if (seen.has(check.code)) continue;
+    seen.add(check.code);
+    barcodes.push({ code: check.code, symbology: check.symbology, packQty: optNum(b?.packQty, 0.001, 10000) ?? 1 });
+  }
+  if (barcodes.length) {
+    const taken = await db
+      .select({ code: productBarcodes.code, dishName: dishes.name, dishId: productBarcodes.dishId })
+      .from(productBarcodes)
+      .innerJoin(dishes, eq(dishes.id, productBarcodes.dishId))
+      .where(and(eq(productBarcodes.restaurantId, restaurantId), inArray(productBarcodes.code, barcodes.map((b) => b.code))));
+    const clash = taken.find((t) => t.dishId !== dishId);
+    if (clash) return { error: `Barcode ${clash.code} is already used by ${clash.dishName}.` } as const;
+  }
+  if (sku) {
+    const [skuTaken] = await db
+      .select({ name: dishes.name })
+      .from(dishes)
+      .where(and(eq(dishes.restaurantId, restaurantId), eq(dishes.sku, sku), dishId ? ne(dishes.id, dishId) : undefined))
+      .limit(1);
+    if (skuTaken) return { error: `SKU ${sku} is already used by ${skuTaken.name}.` } as const;
+  }
+
+  const values = {
+    name,
     categoryId: input.categoryId,
-    name: input.name,
-    price: input.price,
+    price,
     emoji: input.emoji,
-    color: "#DCEEE8",
     description: input.description || null,
     imageUrl: input.imageUrl?.trim() || null,
     printerId: input.printerId ?? null,
-    inventoryItemId: input.inventoryItemId || null,
-    inventoryUsagePerOrder: input.inventoryItemId ? input.inventoryUsagePerOrder || null : null,
-  });
-  revalidatePath("/manage-dishes");
-  revalidatePath("/order-line");
+    sellBy,
+    unit,
+    minQty: sellBy === "unit" ? null : optNum(input.minQty, 0, 1e4),
+    qtyStep: sellBy === "unit" ? null : optNum(input.qtyStep, 0, 1e4),
+    tare: sellBy === "unit" ? null : optNum(input.tare, 0, 1e4),
+    sku,
+    brand: String(input.brand ?? "").trim().slice(0, 80) || null,
+    costPrice: optNum(input.costPrice, 0, 1e6),
+    taxRateOverride,
+    minAge,
+    trackStock: !!input.trackStock,
+  };
+  return { values, barcodes } as const;
 }
 
-export async function updateDishAction(dishId: string, input: DishInput) {
+async function saveBarcodes(restaurantId: string, dishId: string, barcodes: { code: string; symbology: "ean13" | "ean8" | "upca" | "gtin14" | "code128"; packQty: number }[]) {
+  await db.delete(productBarcodes).where(and(eq(productBarcodes.restaurantId, restaurantId), eq(productBarcodes.dishId, dishId)));
+  if (barcodes.length) await db.insert(productBarcodes).values(barcodes.map((b) => ({ restaurantId, dishId, ...b })));
+}
+
+// Step 2.4: a product with "Track stock" on gets its own stock item (inventory_items.dish_id),
+// named and counted in step with the product; the dish uses 1 of it per unit sold. Turning
+// tracking off unlinks it (the item and its history stay on the Inventory page).
+async function syncProductStock(
+  restaurantId: string,
+  dish: { id: string; name: string; sellBy: SellBy; unit: string; costPrice: number | null; trackStock: boolean },
+  input: DishInput,
+  byName: string
+) {
+  const [own] = await db
+    .select()
+    .from(inventoryItems)
+    .where(and(eq(inventoryItems.restaurantId, restaurantId), eq(inventoryItems.dishId, dish.id)))
+    .limit(1);
+  if (!dish.trackStock) {
+    await db.update(dishes).set({ inventoryItemId: input.inventoryItemId || null, inventoryUsagePerOrder: input.inventoryItemId ? input.inventoryUsagePerOrder || null : null }).where(eq(dishes.id, dish.id));
+    return;
+  }
+  const unit = stockUnitFor(dish.sellBy, dish.unit);
+  const lowStock = optNum(input.lowStock, 0, 1e7) ?? 0;
+  let itemId = own?.id;
+  if (own) {
+    await db
+      .update(inventoryItems)
+      .set({ name: await freeItemName(restaurantId, dish.name, own.id), unit, lowStockThreshold: lowStock, costPrice: dish.costPrice })
+      .where(eq(inventoryItems.id, own.id));
+  } else {
+    const [created] = await db
+      .insert(inventoryItems)
+      .values({ restaurantId, name: await freeItemName(restaurantId, dish.name, null), unit, quantity: 0, lowStockThreshold: lowStock, dishId: dish.id, costPrice: dish.costPrice })
+      .returning({ id: inventoryItems.id });
+    itemId = created.id;
+  }
+  await db.update(dishes).set({ inventoryItemId: itemId, inventoryUsagePerOrder: 1 }).where(eq(dishes.id, dish.id));
+  const wanted = optNum(input.stockQty, -1e7, 1e7);
+  if (wanted !== null && itemId) {
+    const current = own?.quantity ?? 0;
+    if (Math.abs(wanted - current) > 1e-9) {
+      await applyStockChanges(restaurantId, new Map([[itemId, wanted - current]]), {
+        reason: own ? "count" : "opening",
+        byName,
+        note: own ? "Set in the product form" : null,
+      });
+    }
+  }
+}
+
+// inventory_items names are unique per business: reuse the product name, adding " (2)" etc. if
+// an ingredient already has it.
+async function freeItemName(restaurantId: string, name: string, selfId: string | null) {
+  for (let n = 1; n < 50; n++) {
+    const candidate = n === 1 ? name : `${name} (${n})`;
+    const [hit] = await db
+      .select({ id: inventoryItems.id })
+      .from(inventoryItems)
+      .where(and(eq(inventoryItems.restaurantId, restaurantId), eq(inventoryItems.name, candidate)))
+      .limit(1);
+    if (!hit || hit.id === selfId) return candidate;
+  }
+  return `${name} (${crypto.randomUUID().slice(0, 4)})`;
+}
+
+export async function createDishAction(input: DishInput): Promise<DishActionResult> {
   const { session, restaurantId } = await requireRestaurantContext();
   await assertPermission(session, "manage-dishes");
-  await db
-    .update(dishes)
-    .set({
-      name: input.name,
-      categoryId: input.categoryId,
-      price: input.price,
-      emoji: input.emoji,
-      description: input.description || null,
-      imageUrl: input.imageUrl?.trim() || null,
-      printerId: input.printerId ?? null,
-      inventoryItemId: input.inventoryItemId || null,
-      inventoryUsagePerOrder: input.inventoryItemId ? input.inventoryUsagePerOrder || null : null,
-    })
-    .where(and(eq(dishes.id, dishId), eq(dishes.restaurantId, restaurantId)));
+  const checked = await normaliseDishInput(restaurantId, input, null);
+  if ("error" in checked) return { error: checked.error };
+  const id = crypto.randomUUID();
+  await db.insert(dishes).values({ id, restaurantId, color: "#DCEEE8", ...checked.values });
+  await saveBarcodes(restaurantId, id, checked.barcodes);
+  await syncProductStock(restaurantId, { id, ...checked.values }, input, session.name);
+  revalidateProducts();
+  return {};
+}
+
+export async function updateDishAction(dishId: string, input: DishInput): Promise<DishActionResult> {
+  const { session, restaurantId } = await requireRestaurantContext();
+  await assertPermission(session, "manage-dishes");
+  const [existing] = await db.select({ id: dishes.id }).from(dishes).where(and(eq(dishes.id, dishId), eq(dishes.restaurantId, restaurantId))).limit(1);
+  if (!existing) return { error: "That product no longer exists." };
+  const checked = await normaliseDishInput(restaurantId, input, dishId);
+  if ("error" in checked) return { error: checked.error };
+  await db.update(dishes).set(checked.values).where(eq(dishes.id, dishId));
+  await saveBarcodes(restaurantId, dishId, checked.barcodes);
+  await syncProductStock(restaurantId, { id: dishId, ...checked.values }, input, session.name);
+  revalidateProducts();
+  return {};
+}
+
+// "Make a barcode": the business's next own EAN-13 (prefix 20). The counter only moves forward,
+// so a code is never handed out twice even if the form is cancelled.
+export async function nextInternalBarcodeAction(): Promise<{ code?: string; error?: string }> {
+  const { session, restaurantId } = await requireRestaurantContext();
+  await assertPermission(session, "manage-dishes");
+  for (let tries = 0; tries < 20; tries++) {
+    const [row] = await db
+      .update(restaurants)
+      .set({ barcodeSeq: sql`${restaurants.barcodeSeq} + 1` })
+      .where(eq(restaurants.id, restaurantId))
+      .returning({ seq: restaurants.barcodeSeq });
+    if (!row) return { error: "Business not found." };
+    const code = makeInternalEan13(row.seq);
+    const [taken] = await db
+      .select({ id: productBarcodes.id })
+      .from(productBarcodes)
+      .where(and(eq(productBarcodes.restaurantId, restaurantId), eq(productBarcodes.code, code)))
+      .limit(1);
+    if (!taken) return { code };
+  }
+  return { error: "Couldn't make a free barcode — try again." };
+}
+
+// After printing labels: remembered so "Never printed only" can find products still without one.
+export async function markLabelsPrintedAction(dishIds: string[]) {
+  const { session, restaurantId } = await requireRestaurantContext();
+  await assertPermission(session, "manage-dishes");
+  const ids = (Array.isArray(dishIds) ? dishIds : []).filter((id) => typeof id === "string").slice(0, 2000);
+  if (!ids.length) return;
+  await db.update(dishes).set({ labelPrintedAt: Date.now() }).where(and(eq(dishes.restaurantId, restaurantId), inArray(dishes.id, ids)));
+  revalidatePath("/manage-dishes/labels");
+}
+
+function revalidateProducts() {
   revalidatePath("/manage-dishes");
   revalidatePath("/order-line");
+  revalidatePath("/inventory");
 }
 
 export async function deleteDishAction(dishId: string) {
   const { session, restaurantId } = await requireRestaurantContext();
   await assertPermission(session, "manage-dishes");
   await db.delete(dishes).where(and(eq(dishes.id, dishId), eq(dishes.restaurantId, restaurantId)));
-  revalidatePath("/manage-dishes");
-  revalidatePath("/order-line");
+  // Its own stock item (if it tracked stock) stays on the Inventory page with its history, as a
+  // plain stock item; delete it there if it's no longer needed.
+  await db
+    .update(inventoryItems)
+    .set({ dishId: null })
+    .where(and(eq(inventoryItems.restaurantId, restaurantId), eq(inventoryItems.dishId, dishId)));
+  revalidateProducts();
 }
 
 // Toggled from the Till or the Kitchen Display when an item runs out mid-service — deliberately
