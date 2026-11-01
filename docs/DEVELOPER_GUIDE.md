@@ -852,8 +852,9 @@ when something here gets built, move it to §14 and the section that describes i
 
 ### 13.3a Planned — grocery shops & warehouses
 
-Full plan, decisions needed, draft SQL and file-by-file changes: **`docs/RETAIL_AND_WAREHOUSE_PLAN.md`**
-(nothing built yet). In short: business types `grocery` and `warehouse` driven by one
+Full plan set, step by step, with SQL, files, checks and docs per step: **`docs/retail-plan/`**
+(start at `README.md`; nothing built yet). Business types Grocery, Retail and Warehouse; products
+sold by unit or by weight (or volume/length); barcodes. In short: business types `grocery` and `warehouse` driven by one
 `lib/business-profile.ts`; product fields (barcode, SKU, cost, sell by weight, VAT override, min
 age); a `stock_movements` log behind every stock change; barcode scanning, weighed items, age
 check and refunds on the Till; suppliers, purchase orders, goods in and stocktakes; then
@@ -897,8 +898,18 @@ promises supplier ordering, central menus and till limits, which are part of thi
   `app/reports/page.tsx`. See §7.10. No schema change. FAQ "How do I read the reports?" and
   `public/help/reports.webp` updated.
 
+### 2026-11-01 (later) — Retail plan set (docs only)
+- The plan moved to `docs/retail-plan/` and was expanded into a step-by-step set: README (index,
+  feature matrix by business type, status table, build order), 00 overview, 01 foundations
+  (penny rounding, stock movement log, stock back on void/edit/delete, oversell setting),
+  02 business types, 03 products by unit or weight + barcodes + CSV + labels, 04 Till (scanning,
+  embedded barcodes, weighed sales, age check, refunds), 05 stock control & purchasing, 06 general
+  retail (variants, serials, promotions, gift receipts, store credit), 07 warehouse & multi-site,
+  08 reports/printing/online, 09 testing & rollout. Found while planning: line totals are not
+  rounded (`price * qty` in 24 places) — fixed first in step 0.1. No code or schema change.
+
 ### 2026-11-01 — Plan: grocery shops & warehouses (docs only)
-- New `docs/RETAIL_AND_WAREHOUSE_PLAN.md`: what the code does today, decisions to make, business
+- New `docs/RETAIL_AND_WAREHOUSE_PLAN.md` (now `docs/retail-plan/00-overview.md`): what the code does today, decisions to make, business
   profile design, draft SQL (not run), changes per area/file, hardware, UK rules, three phases.
   Linked from §13.3a. No code or schema change.
 
