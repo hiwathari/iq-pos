@@ -14,7 +14,7 @@ import type {
   RestaurantTable,
   ThirdPartyProvider,
 } from "@/lib/types";
-import { formatMoney, formatOccupiedTime, formatOrderTimestamp, orderSequence, orderTotal } from "@/lib/types";
+import { formatMoney, formatOccupiedTime, formatOrderTimestamp, itemsRawTax, itemsSubtotal, lineTotal, orderSequence, orderTotal, roundMoney } from "@/lib/types";
 import {
   acceptOnlineOrderAction,
   mergeTableIntoOrderAction,
@@ -111,18 +111,17 @@ function isOrderClosedOut(o: Order) {
 // on payment, which fires after setCart(emptyCart)) — both call sites must agree exactly, since
 // this mirrors orderTotal()/orderBreakdown() in lib/types.ts for what actually gets saved.
 function computeCartTotals(cart: CartState) {
-  const subtotal = cart.items.reduce((sum, i) => sum + i.price * i.qty, 0);
+  const subtotal = itemsSubtotal(cart.items);
   const extraDiscountRaw =
     cart.extraDiscountMode === "percent" ? subtotal * (Math.max(0, Number(cart.extraDiscount) || 0) / 100) : Number(cart.extraDiscount) || 0;
-  const extraDiscountAmount = Math.max(0, Math.min(subtotal, extraDiscountRaw));
+  const extraDiscountAmount = roundMoney(Math.max(0, Math.min(subtotal, extraDiscountRaw)));
   const couponDiscountAmount = cart.appliedCoupon
     ? Math.max(0, Math.min(subtotal - extraDiscountAmount, cart.appliedCoupon.discount))
     : 0;
   const discountedSubtotal = Math.max(0, subtotal - extraDiscountAmount - couponDiscountAmount);
-  const rawTax = cart.items.reduce((sum, i) => sum + i.price * i.qty * ((i.taxRate ?? 0) / 100), 0);
   const discountFactor = subtotal > 0 ? discountedSubtotal / subtotal : 0;
-  const tax = rawTax * discountFactor;
-  const total = discountedSubtotal + tax;
+  const tax = roundMoney(itemsRawTax(cart.items) * discountFactor);
+  const total = roundMoney(discountedSubtotal + tax);
   return { subtotal, extraDiscountAmount, couponDiscountAmount, tax, total };
 }
 
@@ -269,6 +268,9 @@ export function OrderLineClient({
   const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
   const [placingOrder, setPlacingOrder] = useState(false);
+  // Shown above the main button after placing: "block" stock errors (the sale didn't go
+  // through, the cart is kept) or "warn" notices (it did). See the negative-stock setting.
+  const [stockNotice, setStockNotice] = useState<{ kind: "error" | "warn"; text: string } | null>(null);
 
   const [cart, setCart] = useState<CartState>(() => {
     const tableId = searchParams.get("tableId");
@@ -726,6 +728,11 @@ export function OrderLineClient({
           customerPhone: cart.customerPhone.trim() || undefined,
           customerAddress: cart.customerAddress.trim() || undefined,
         });
+        if (result && "error" in result) {
+          setStockNotice({ kind: "error", text: result.error });
+          return;
+        }
+        setStockNotice(result?.stockWarnings?.length ? { kind: "warn", text: `Sold with stock below zero: ${result.stockWarnings.join(", ")}.` } : null);
         setCart(emptyCart);
         setCouponError(null);
         setLoyaltyError(null);
@@ -907,6 +914,8 @@ export function OrderLineClient({
     onAddCustomItem: () => setCustomItemModalOpen(true),
     handlePlaceOrder,
     placingOrder,
+    stockNotice,
+    onDismissStockNotice: () => setStockNotice(null),
     handleAdvanceStatus,
     handlePrint,
     onSwapTableClick: () => {
@@ -1398,6 +1407,8 @@ interface CartPanelProps {
   onAddCustomItem: () => void;
   handlePlaceOrder: () => void;
   placingOrder: boolean;
+  stockNotice: { kind: "error" | "warn"; text: string } | null;
+  onDismissStockNotice: () => void;
   handleAdvanceStatus: (next: OrderStatus) => void;
   handlePrint: () => void;
   onSwapTableClick: () => void;
@@ -1445,6 +1456,8 @@ function CartPanel({
   onAddCustomItem,
   handlePlaceOrder,
   placingOrder,
+  stockNotice,
+  onDismissStockNotice,
   handleAdvanceStatus,
   handlePrint,
   onSwapTableClick,
@@ -1823,7 +1836,7 @@ function CartPanel({
                   <span className="truncate text-neutral-700">{item.name}</span>
                 </div>
                 <div className="flex shrink-0 items-center">
-                  <span className="mr-0.5 font-semibold text-neutral-800">{formatMoney(item.price * item.qty, currencySymbol)}</span>
+                  <span className="mr-0.5 font-semibold text-neutral-800">{formatMoney(lineTotal(item), currencySymbol)}</span>
                   <button
                     onClick={() => setNoteEditorFor(noteEditorFor === lineId ? null : lineId)}
                     title="Add note for kitchen"
@@ -2009,6 +2022,20 @@ function CartPanel({
         {editingOrder?.status === "Voided" && (
           <div className="mb-2 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">
             Voided{editingOrder.voidReason ? ` — ${editingOrder.voidReason}` : ""}
+          </div>
+        )}
+
+        {stockNotice && (
+          <div
+            role="alert"
+            className={`flex items-start justify-between gap-2 rounded-lg px-3 py-2 text-sm font-medium ${
+              stockNotice.kind === "error" ? "bg-rose-50 text-rose-700 ring-1 ring-rose-200" : "bg-amber-50 text-amber-800 ring-1 ring-amber-200"
+            }`}
+          >
+            <span>{stockNotice.text}</span>
+            <button type="button" onClick={onDismissStockNotice} aria-label="Dismiss" className="shrink-0 opacity-60 hover:opacity-100">
+              <X className="h-4 w-4" />
+            </button>
           </div>
         )}
 

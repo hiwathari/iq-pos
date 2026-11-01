@@ -4,7 +4,7 @@ import { db } from "@/db/client";
 import { categories, dishes, inventoryItems, loyaltyMembers, orders, shifts } from "@/db/schema";
 import { filterOrdersForAccountsRole } from "@/lib/accounts-filter";
 import { businessDateKey, getLocalParts } from "@/lib/business-day";
-import { orderBreakdown, orderTotal, shiftTotals, type Order } from "@/lib/types";
+import { itemsSubtotal, lineTotal, orderBreakdown, orderTotal, shiftTotals, type Order } from "@/lib/types";
 import type { BusinessDayConfig } from "./reports";
 
 // The Reports "Dashboard" and the newer report tabs (Items, Discounts, Voids, Tax, Customers &
@@ -157,7 +157,7 @@ export async function getReportInsights(
       const key = dish ? dish.id : `name:${it.name.toLowerCase()}`;
       const row = itemMap.get(key) ?? { name: it.name, category: dish ? (categoryName.get(dish.categoryId) ?? "Other") : "Custom / Other", qty: 0, revenue: 0, orderIds: new Set<string>() };
       row.qty += it.qty;
-      row.revenue += it.price * it.qty;
+      row.revenue += lineTotal(it);
       row.orderIds.add(o.id);
       itemMap.set(key, row);
     }
@@ -245,12 +245,12 @@ export async function getReportInsights(
   // ---- Tax, by rate ----
   const taxMap = new Map<number, { rate: number; net: number; tax: number }>();
   for (const o of live) {
-    const subtotal = o.items.reduce((s, i) => s + i.price * i.qty, 0);
+    const subtotal = itemsSubtotal(o.items);
     const discount = Math.min(subtotal, (o.extraDiscount ?? 0) + (o.couponDiscount ?? 0));
     const factor = subtotal > 0 ? (subtotal - discount) / subtotal : 0;
     for (const it of o.items) {
       const rate = it.taxRate ?? 0;
-      const net = it.price * it.qty * factor;
+      const net = lineTotal(it) * factor;
       const row = taxMap.get(rate) ?? { rate, net: 0, tax: 0 };
       row.net += net;
       row.tax += net * (rate / 100);

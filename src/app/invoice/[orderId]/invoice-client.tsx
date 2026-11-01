@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { formatMoney, formatOrderTimestamp, orderBreakdown, type Order } from "@/lib/types";
+import { formatMoney, formatOrderTimestamp, lineTotal, orderBreakdown, type Order } from "@/lib/types";
 import { Printer, Share2, ChefHat } from "lucide-react";
 
 type InvoiceOrder = Pick<
@@ -119,7 +119,7 @@ export function InvoiceClient({
               </div>
               {item.note && <div className="text-xs italic text-neutral-400">↳ {item.note}</div>}
             </div>
-            <div className="font-semibold text-neutral-800">{formatMoney(item.price * item.qty, currencySymbol)}</div>
+            <div className="font-semibold text-neutral-800">{formatMoney(lineTotal(item), currencySymbol)}</div>
           </div>
         ))}
       </div>

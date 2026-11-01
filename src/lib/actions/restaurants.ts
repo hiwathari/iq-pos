@@ -179,6 +179,15 @@ export async function updateBusinessTypeAction(businessType: BusinessType) {
   revalidatePath("/kitchen");
 }
 
+export async function updateNegativeStockAction(mode: "allow" | "warn" | "block") {
+  const { session, restaurantId } = await requireRestaurantContext();
+  await assertPermission(session, "settings");
+  const negativeStock = mode === "warn" || mode === "block" ? mode : "allow";
+  await db.update(restaurants).set({ negativeStock }).where(eq(restaurants.id, restaurantId));
+  revalidatePath("/settings");
+  revalidatePath("/inventory");
+}
+
 export async function updateRestaurantTaxEnabledAction(enabled: boolean) {
   const { session, restaurantId } = await requireRestaurantContext();
   await assertPermission(session, "settings");

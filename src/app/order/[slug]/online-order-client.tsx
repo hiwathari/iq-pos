@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import type { Category, Dish, OrderItem, RestaurantTable } from "@/lib/types";
-import { formatMoney } from "@/lib/types";
+import { formatMoney, itemsSubtotal, lineTotal } from "@/lib/types";
 import { placePublicOrderAction, placeTableQrOrderAction } from "@/lib/actions/public-order";
 import { ShoppingBag, Plus, Minus, X, CreditCard, CheckCircle2, Users } from "lucide-react";
 
@@ -69,7 +69,7 @@ export function OnlineOrderClient({
     setItems((prev) => prev.map((i) => (i.dishId === dishId ? { ...i, qty: i.qty - 1 } : i)).filter((i) => i.qty > 0));
   }
 
-  const total = items.reduce((sum, i) => sum + i.price * i.qty, 0);
+  const total = itemsSubtotal(items);
   const itemCount = items.reduce((sum, i) => sum + i.qty, 0);
 
   function submitOrder() {
@@ -270,7 +270,7 @@ export function OnlineOrderClient({
                   <span className="text-neutral-700">
                     {item.qty}x {item.name}
                   </span>
-                  <span className="font-semibold text-neutral-800">{formatMoney(item.price * item.qty, currencySymbol)}</span>
+                  <span className="font-semibold text-neutral-800">{formatMoney(lineTotal(item), currencySymbol)}</span>
                 </div>
               ))}
             </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import QRCode from "qrcode";
+import { lineTotal } from "@/lib/types";
 
 export interface TicketData {
   orderNumber: string;
@@ -46,7 +47,7 @@ export async function printTicket(ticket: TicketData) {
   const rows = ticket.items
     .map(
       (i) =>
-        `<tr><td>${i.qty}x ${escapeHtml(i.name)}${i.note ? `<div class="note">↳ ${escapeHtml(i.note)}</div>` : ""}</td><td class="right">${money(i.price * i.qty)}</td></tr>`
+        `<tr><td>${i.qty}x ${escapeHtml(i.name)}${i.note ? `<div class="note">↳ ${escapeHtml(i.note)}</div>` : ""}</td><td class="right">${money(lineTotal(i))}</td></tr>`
     )
     .join("");
 

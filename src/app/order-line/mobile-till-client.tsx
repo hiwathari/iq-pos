@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { placeOrderAction } from "@/lib/actions/orders";
-import { formatMoney } from "@/lib/types";
+import { formatMoney, itemsRawTax, itemsSubtotal, roundMoney } from "@/lib/types";
 import type { Category, Dish, Order, OrderChannel, OrderItem, RestaurantTable, ThirdPartyProvider } from "@/lib/types";
 import {
   ArrowLeft,
@@ -117,9 +117,9 @@ export function MobileTillClient({
     return category?.taxRatePercent ?? 0;
   };
   const qtyFor = (dishId: string) => cart.items.find((i) => i.dishId === dishId)?.qty ?? 0;
-  const subtotal = cart.items.reduce((sum, i) => sum + i.price * i.qty, 0);
-  const tax = cart.items.reduce((sum, i) => sum + i.price * i.qty * ((i.taxRate ?? 0) / 100), 0);
-  const total = subtotal + tax;
+  const subtotal = itemsSubtotal(cart.items);
+  const tax = roundMoney(itemsRawTax(cart.items));
+  const total = roundMoney(subtotal + tax);
   const itemCount = cart.items.reduce((sum, i) => sum + i.qty, 0);
 
   function selectChannel(channel: OrderChannel) {
@@ -205,7 +205,7 @@ export function MobileTillClient({
     if (cart.items.length === 0 || sending) return;
     setSending(true);
     startTransition(async () => {
-      await placeOrderAction({
+      const result = await placeOrderAction({
         editingOrderId: cart.editingOrderId,
         tableId: cart.tableId,
         tableNumber: cart.tableNumber,
@@ -217,8 +217,20 @@ export function MobileTillClient({
         customerName: cart.customerName.trim() || undefined,
         customerPhone: cart.customerPhone.trim() || undefined,
       });
+      if (result && "error" in result) {
+        setSending(false);
+        setToast(result.error);
+        setTimeout(() => setToast(null), 6000);
+        return;
+      }
       router.refresh();
-      setToast(cart.tableNumber ? `Sent to Table ${cart.tableNumber}` : `Sent — ${cart.channel}`);
+      setToast(
+        result?.stockWarnings?.length
+          ? `Sent — stock now below zero: ${result.stockWarnings.join(", ")}`
+          : cart.tableNumber
+            ? `Sent to Table ${cart.tableNumber}`
+            : `Sent — ${cart.channel}`
+      );
       setSending(false);
       setCart(emptyCart);
       setMenuCategory("all");

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import type { Category, Dish, LoyaltyContactType, OrderItem, RestaurantTable } from "@/lib/types";
-import { formatMoney } from "@/lib/types";
+import { formatMoney, itemsSubtotal } from "@/lib/types";
 import { placePublicOrderAction, kioskLoyaltyLookupAction } from "@/lib/actions/public-order";
 import { ShoppingBag, Plus, Minus, ArrowLeft, CheckCircle2, Utensils, ShoppingBasket, CreditCard, Gift } from "lucide-react";
 
@@ -84,7 +84,7 @@ export function KioskClient({
     setItems((prev) => prev.map((i) => (i.dishId === dishId ? { ...i, qty: i.qty - 1 } : i)).filter((i) => i.qty > 0));
   }
 
-  const total = items.reduce((sum, i) => sum + i.price * i.qty, 0);
+  const total = itemsSubtotal(items);
   const itemCount = items.reduce((sum, i) => sum + i.qty, 0);
 
   function lookupLoyalty() {

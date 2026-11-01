@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { formatMoney, orderSequence, formatOrderTimestamp } from "@/lib/types";
+import { formatMoney, itemsSubtotal, orderSequence, formatOrderTimestamp } from "@/lib/types";
 import type { Order, Reservation, PettyCashEntry, PaymentTerminal, TerminalPayout, TerminalExpense } from "@/lib/types";
 import type { ReportData, DailySummary, WeeklyDaySummary } from "@/lib/data/reports";
 import type { TerminalSettlementReport, TerminalSettlementRow } from "@/lib/data/terminal-settlements";
@@ -797,7 +797,7 @@ function WeeklySummaryTab({ days, currencySymbol }: { days: WeeklyDaySummary[]; 
 
 function OnlineOfflineTab({ orders, currencySymbol, online }: { orders: Order[]; currencySymbol: string; online: boolean }) {
   const filtered = orders.filter((o) => (online ? o.placedVia !== "staff" : o.placedVia === "staff") && o.status !== "Voided");
-  const total = filtered.reduce((sum, o) => sum + o.items.reduce((s, i) => s + i.price * i.qty, 0), 0);
+  const total = filtered.reduce((sum, o) => sum + itemsSubtotal(o.items), 0);
   const columns: Column<Order>[] = [
     { key: "orderNumber", label: "Order #", render: (o) => o.orderNumber },
     { key: "seq", label: "Seq", render: (o) => orderSequence(o.orderNumber), sortValue: (o) => orderSequence(o.orderNumber) },
@@ -809,8 +809,8 @@ function OnlineOfflineTab({ orders, currencySymbol, online }: { orders: Order[];
       key: "total",
       label: "Total",
       align: "right",
-      render: (o) => formatMoney(o.items.reduce((s, i) => s + i.price * i.qty, 0), currencySymbol),
-      sortValue: (o) => o.items.reduce((s, i) => s + i.price * i.qty, 0),
+      render: (o) => formatMoney(itemsSubtotal(o.items), currencySymbol),
+      sortValue: (o) => itemsSubtotal(o.items),
     },
   ];
 

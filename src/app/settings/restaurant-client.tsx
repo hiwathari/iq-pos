@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   updateBusinessTypeAction,
+  updateNegativeStockAction,
   updateKitchenTimerLimitAction,
   updateRestaurantCurrencyAction,
   updateRestaurantTaxEnabledAction,
@@ -41,6 +42,7 @@ function timezoneOptions() {
 
 export function RestaurantClient({
   businessType,
+  negativeStock,
   currencySymbol,
   kitchenTimerLimitMinutes,
   taxEnabled,
@@ -49,6 +51,7 @@ export function RestaurantClient({
   timezone,
 }: {
   businessType: BusinessType;
+  negativeStock: "allow" | "warn" | "block";
   currencySymbol: string;
   kitchenTimerLimitMinutes: number;
   taxEnabled: boolean;
@@ -59,12 +62,21 @@ export function RestaurantClient({
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [type, setType] = useState<BusinessType>(businessType);
+  const [stockMode, setStockMode] = useState(negativeStock);
   const [timerLimit, setTimerLimit] = useState(kitchenTimerLimitMinutes);
   const [taxOn, setTaxOn] = useState(taxEnabled);
   const [shopOpenTime, setShopOpenTime] = useState(openTime ?? "");
   const [shopCloseTime, setShopCloseTime] = useState(closeTime ?? "");
   const [shopTimezone, setShopTimezone] = useState(timezone);
   const [timezones] = useState(timezoneOptions);
+
+  function handleStockModeChange(next: "allow" | "warn" | "block") {
+    setStockMode(next);
+    startTransition(async () => {
+      await updateNegativeStockAction(next);
+      router.refresh();
+    });
+  }
 
   function handleBusinessTypeChange(next: BusinessType) {
     setType(next);
@@ -130,6 +142,35 @@ export function RestaurantClient({
           <p className="mt-1 text-xs text-neutral-400">
             Cafe is counter-service: an order paid in full at the till is saved straight as Served. Restaurant keeps
             the normal kitchen-then-serve flow.
+          </p>
+        </div>
+        <div className="max-w-xs">
+          <label className="mb-1.5 block text-xs font-medium text-neutral-500">When stock runs out</label>
+          <div className="flex rounded-xl border border-neutral-200 p-1">
+            {(
+              [
+                ["allow", "Allow"],
+                ["warn", "Warn"],
+                ["block", "Block"],
+              ] as const
+            ).map(([mode, label]) => (
+              <button
+                key={mode}
+                onClick={() => handleStockModeChange(mode)}
+                className={`flex-1 rounded-lg py-2 text-sm font-medium ${
+                  stockMode === mode ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1 text-xs text-neutral-400">
+            {stockMode === "block"
+              ? "A sale that would take a tracked stock item below zero is refused, naming the item."
+              : stockMode === "warn"
+                ? "The sale goes through and the Till says which items are now below zero."
+                : "Sales always go through; stock can go below zero and shows in red on Inventory."}
           </p>
         </div>
         <div className="max-w-xs">

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { orders, restaurants, shifts } from "@/db/schema";
 import { summarizeShiftWindow } from "@/lib/data/shifts";
+import { adjustStockForEdit, returnStockForOrder } from "@/lib/stock";
 import { assertPermission, requireRestaurantContext } from "@/lib/scope";
 import type { OrderChannel, OrderItem, PaymentLine } from "@/lib/types";
 
@@ -197,6 +198,10 @@ export async function updateOrderRecordAction(orderId: string, input: OrderRecor
       updatedAt: Date.now(),
     })
     .where(eq(orders.id, orderId));
+  // Stock follows the corrected items (only the difference), unless the order never took stock.
+  if (order.status !== "Pending" && order.status !== "Voided") {
+    await adjustStockForEdit(restaurantId, order.id, order.items, items, session.name);
+  }
 
   console.log(`[sales-records] order ${order.orderNumber} edited by ${session.name}`);
   revalidateSales();
@@ -204,16 +209,18 @@ export async function updateOrderRecordAction(orderId: string, input: OrderRecor
 }
 
 // Permanent. Print jobs and card-machine records that pointed at it keep their own rows (their
-// order link becomes empty). Stock that was used isn't put back.
+// order link becomes empty). The stock it used is put back, like a void (once; not for an order
+// that was already voided or never accepted).
 export async function deleteOrderRecordAction(orderId: string): Promise<RecordActionState> {
   const { session, restaurantId } = await scope();
   const [order] = await db
-    .select({ orderNumber: orders.orderNumber })
+    .select({ id: orders.id, orderNumber: orders.orderNumber, status: orders.status, items: orders.items })
     .from(orders)
     .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)))
     .limit(1);
   if (!order) return {};
   await db.delete(orders).where(eq(orders.id, orderId));
+  await returnStockForOrder(restaurantId, order, { byName: session.name, note: `Order ${order.orderNumber} deleted in Sales Records` });
   console.log(`[sales-records] order ${order.orderNumber} deleted by ${session.name}`);
   revalidateSales();
   return {};

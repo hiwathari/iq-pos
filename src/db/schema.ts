@@ -1,4 +1,4 @@
-import { int, sqliteTable, text, real, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, int, sqliteTable, text, real, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 const id = (name = "id") => text(name).primaryKey().$defaultFn(() => crypto.randomUUID());
 const timestamp = (name: string) => int(name).notNull().$defaultFn(() => Date.now());
@@ -48,6 +48,10 @@ export const restaurants = sqliteTable("restaurants", {
   // entirely and is created straight as "Served" (see placeOrderAction). "restaurant" (the
   // default) keeps the normal send-to-kitchen-then-serve flow.
   businessType: text("business_type", { enum: ["restaurant", "cafe"] }).notNull().default("restaurant"),
+  // What happens when a sale would take a stock item below zero: "allow" (go negative quietly —
+  // the negative number shows what was sold without stock), "warn" (sell, then tell the Till)
+  // or "block" (refuse the sale, naming the item). See lib/stock.ts.
+  negativeStock: text("negative_stock", { enum: ["allow", "warn", "block"] }).notNull().default("allow"),
   // Shop hours, as "HH:MM" 24-hour clock times in the restaurant's own timezone (below).
   // openTime anchors the "business day" boundary used by autoVoidStaleOrders, Kitchen Display's
   // Completed panel, and Reports' daily/weekly buckets, so a shift running past midnight still
@@ -653,7 +657,7 @@ export const shifts = sqliteTable("shifts", {
 
 // A tracked stock item (an ingredient/supply, not necessarily a sellable dish). `quantity` is
 // adjusted manually from /inventory and automatically when a dish linked via
-// dishes.inventoryItemId is sold — see decrementInventoryForOrder in lib/actions/orders.ts.
+// dishes.inventoryItemId is sold — see takeStockForOrder in lib/stock.ts.
 export const inventoryItems = sqliteTable(
   "inventory_items",
   {
@@ -668,6 +672,36 @@ export const inventoryItems = sqliteTable(
     createdAt: timestamp("created_at"),
   },
   (table) => [uniqueIndex("inventory_items_restaurant_name_idx").on(table.restaurantId, table.name)]
+);
+
+// Every change to an inventory item's quantity, with the reason — written only by
+// applyStockChanges (lib/stock.ts). `change` is signed (+ in, − out) in the item's own unit;
+// referenceId is the order (sale/void/edit) or, later, the purchase order / stocktake.
+export const stockMovements = sqliteTable(
+  "stock_movements",
+  {
+  id: id(),
+  restaurantId: text("restaurant_id")
+    .notNull()
+    .references(() => restaurants.id, { onDelete: "cascade" }),
+  inventoryItemId: text("inventory_item_id")
+    .notNull()
+    .references(() => inventoryItems.id, { onDelete: "cascade" }),
+  change: real("change").notNull(),
+  quantityAfter: real("quantity_after").notNull(),
+  reason: text("reason", {
+    enum: ["sale", "void", "edit", "refund", "received", "adjust", "count", "waste", "transfer_in", "transfer_out", "opening"],
+  }).notNull(),
+  referenceId: text("reference_id"),
+  note: text("note"),
+  unitCost: real("unit_cost"),
+  createdByName: text("created_by_name"),
+  createdAt: timestamp("created_at"),
+  },
+  (table) => [
+    index("stock_movements_item_idx").on(table.restaurantId, table.inventoryItemId, table.createdAt),
+    index("stock_movements_ref_idx").on(table.restaurantId, table.referenceId),
+  ]
 );
 
 // Ad-hoc cash movements outside of order payments (e.g. "Bought cleaning supplies — £15 out",

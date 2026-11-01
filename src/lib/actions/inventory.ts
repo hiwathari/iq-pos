@@ -6,6 +6,7 @@ import { db } from "@/db/client";
 import { inventoryItems } from "@/db/schema";
 import { assertPermission, requireRestaurantContext } from "@/lib/scope";
 import { findInventoryItem } from "@/lib/data/inventory";
+import { applyStockChanges } from "@/lib/stock";
 
 export interface InventoryItemInput {
   name: string;
@@ -26,13 +27,18 @@ export async function createInventoryItemAction(input: InventoryItemInput): Prom
   if (!name) return { error: "Enter an item name." };
   if (!Number.isFinite(input.quantity) || input.quantity < 0) return { error: "Enter a valid starting quantity." };
 
-  await db.insert(inventoryItems).values({
-    restaurantId,
-    name,
-    unit: input.unit.trim() || "pcs",
-    quantity: input.quantity,
-    lowStockThreshold: Math.max(0, input.lowStockThreshold || 0),
-  });
+  // Created at 0 and filled through applyStockChanges, so the opening stock is in its history.
+  const [created] = await db
+    .insert(inventoryItems)
+    .values({
+      restaurantId,
+      name,
+      unit: input.unit.trim() || "pcs",
+      quantity: 0,
+      lowStockThreshold: Math.max(0, input.lowStockThreshold || 0),
+    })
+    .returning({ id: inventoryItems.id });
+  await applyStockChanges(restaurantId, new Map([[created.id, input.quantity]]), { reason: "opening", byName: session.name });
   revalidatePath("/inventory");
   revalidatePath("/dashboard");
   return {};
@@ -59,7 +65,8 @@ export async function updateInventoryItemAction(itemId: string, input: Inventory
 }
 
 // A manual stock change (restock, waste, correction) — positive to add, negative to remove.
-// Clamped so quantity never reads negative on the UI.
+// Can't take more than is there (sales can, depending on the negative-stock setting; a person
+// correcting stock by hand can't), but adding to a negative quantity is fine.
 export async function adjustInventoryStockAction(itemId: string, delta: number): Promise<InventoryFormState> {
   const { session, restaurantId } = await requireRestaurantContext();
   await assertPermission(session, "inventory");
@@ -67,9 +74,9 @@ export async function adjustInventoryStockAction(itemId: string, delta: number):
 
   const item = await findInventoryItem(restaurantId, itemId);
   if (!item) return { error: "Item not found." };
+  if (delta < 0 && item.quantity + delta < -1e-9) return { error: `Only ${Math.max(0, item.quantity)} ${item.unit} in stock.` };
 
-  const quantity = Math.max(0, item.quantity + delta);
-  await db.update(inventoryItems).set({ quantity }).where(and(eq(inventoryItems.id, itemId), eq(inventoryItems.restaurantId, restaurantId)));
+  await applyStockChanges(restaurantId, new Map([[itemId, delta]]), { reason: delta > 0 ? "received" : "adjust", byName: session.name });
   revalidatePath("/inventory");
   revalidatePath("/dashboard");
   return {};

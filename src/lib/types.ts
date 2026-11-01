@@ -12,6 +12,7 @@ import type {
   reservations,
   restaurants,
   shifts,
+  stockMovements,
   sumupCheckouts,
   sunmiPrintJobs,
   tables,
@@ -51,6 +52,7 @@ export type CouponType = "percent" | "fixed";
 export type LoyaltyMember = typeof loyaltyMembers.$inferSelect;
 export type LoyaltyContactType = "phone" | "email";
 export type InventoryItem = typeof inventoryItems.$inferSelect;
+export type StockMovement = typeof stockMovements.$inferSelect;
 export type PettyCashEntry = typeof pettyCashEntries.$inferSelect;
 export type TerminalPayout = typeof terminalPayouts.$inferSelect;
 export type TerminalExpense = typeof terminalExpenses.$inferSelect;
@@ -161,12 +163,35 @@ export function orderTotal(order: Pick<Order, "items" | "extraDiscount" | "coupo
 // wherever a full breakdown needs to be displayed (e.g. a printed/shared invoice) rather than
 // just the bottom-line figure.
 export function orderBreakdown(order: Pick<Order, "items" | "extraDiscount" | "couponDiscount">) {
-  const subtotal = order.items.reduce((sum, i) => sum + i.price * i.qty, 0);
-  const discount = Math.min(subtotal, (order.extraDiscount ?? 0) + (order.couponDiscount ?? 0));
+  const subtotal = itemsSubtotal(order.items);
+  const discount = roundMoney(Math.min(subtotal, (order.extraDiscount ?? 0) + (order.couponDiscount ?? 0)));
   const discountFactor = subtotal > 0 ? (subtotal - discount) / subtotal : 0;
-  const rawTax = order.items.reduce((sum, i) => sum + i.price * i.qty * ((i.taxRate ?? 0) / 100), 0);
-  const tax = rawTax * discountFactor;
-  return { subtotal, discount, tax, total: subtotal - discount + tax };
+  const tax = roundMoney(itemsRawTax(order.items) * discountFactor);
+  return { subtotal, discount, tax, total: roundMoney(subtotal - discount + tax) };
+}
+
+// Money rule, used everywhere a line or order total is worked out (Till, receipts, invoices,
+// reports, the server): each line is rounded to the penny — a weighed line like 0.734 kg ×
+// £2.40 would otherwise carry fractions of a penny — and tax and the order total are rounded once
+// at the end (not per line), so whole-penny prices give exactly the totals they always did.
+export function roundMoney(n: number) {
+  // toPrecision(12) strips binary noise first (1.005 * 100 is 100.49999999999999 in floating
+  // point), and halves round away from zero so a refund rounds the same way as the sale.
+  const pence = Math.round(Number((Math.abs(n) * 100).toPrecision(12)));
+  return (n < 0 ? -pence : pence) / 100;
+}
+
+export function lineTotal(item: Pick<OrderItem, "price" | "qty">) {
+  return roundMoney(item.price * item.qty);
+}
+
+export function itemsSubtotal(items: Pick<OrderItem, "price" | "qty">[]) {
+  return roundMoney(items.reduce((sum, i) => sum + lineTotal(i), 0));
+}
+
+// Tax before any discount and before rounding — callers apply the discount factor, then round.
+export function itemsRawTax(items: Pick<OrderItem, "price" | "qty" | "taxRate">[]) {
+  return items.reduce((sum, i) => sum + lineTotal(i) * ((i.taxRate ?? 0) / 100), 0);
 }
 
 // Money taken per tender across a set of orders: voided orders are skipped, an order's recorded

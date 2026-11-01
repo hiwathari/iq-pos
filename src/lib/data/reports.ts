@@ -1,7 +1,7 @@
 import { and, eq, gte, lt } from "drizzle-orm";
 import { db } from "@/db/client";
 import { categories, dishes, orders, pettyCashEntries, reservations } from "@/db/schema";
-import { orderTotal, orderSequence } from "@/lib/types";
+import { itemsSubtotal, lineTotal, orderBreakdown, orderTotal, orderSequence } from "@/lib/types";
 import { filterOrdersForAccountsRole } from "@/lib/accounts-filter";
 import { businessDateKey, businessDayRange, getLocalParts, shiftDateKey } from "@/lib/business-day";
 
@@ -74,7 +74,7 @@ export async function getReportData(
 
   for (const o of liveOrders) {
     const total = orderTotal(o);
-    const subtotal = o.items.reduce((sum, i) => sum + i.price * i.qty, 0);
+    const subtotal = itemsSubtotal(o.items);
 
     // Split-payment orders carry the true per-method breakdown; everything else falls back
     // to the single paymentMethod string (legacy orders, or the common single-method case).
@@ -92,12 +92,9 @@ export async function getReportData(
     bump(staffMap, o.createdByName ?? "Unattributed", total);
 
     totalGuests += o.guests ?? 0;
-    // Mirrors orderTotal()'s tax math: each item's own snapshotted rate, discount applied
-    // proportionally across the tax base — 0 for every order placed while tax was disabled.
-    const discount = Math.min(subtotal, (o.extraDiscount ?? 0) + (o.couponDiscount ?? 0));
-    const discountFactor = subtotal > 0 ? (subtotal - discount) / subtotal : 0;
-    const rawTax = o.items.reduce((sum, i) => sum + i.price * i.qty * ((i.taxRate ?? 0) / 100), 0);
-    totalTax += rawTax * discountFactor;
+    // Same tax math as orderBreakdown(): each item's own snapshotted rate, discount applied
+    // proportionally across the tax base, rounded per order — 0 while tax was disabled.
+    totalTax += orderBreakdown(o).tax;
 
     const dateKey = businessDay ? businessDateKey(o.createdAt, businessDay.openTime, businessDay.timezone) : new Date(o.createdAt).toISOString().slice(0, 10);
     dailyMap.set(dateKey, (dailyMap.get(dateKey) ?? 0) + total);
@@ -108,11 +105,11 @@ export async function getReportData(
 
     for (const item of o.items) {
       itemQty.set(item.name, (itemQty.get(item.name) ?? 0) + item.qty);
-      itemRevenue.set(item.name, (itemRevenue.get(item.name) ?? 0) + item.price * item.qty);
+      itemRevenue.set(item.name, (itemRevenue.get(item.name) ?? 0) + lineTotal(item));
 
       const catName = categoryNameByDishId.get(item.dishId) ?? "Custom / Other";
       const catEntry = categoryMap.get(catName) ?? { revenue: 0, qty: 0 };
-      catEntry.revenue += item.price * item.qty;
+      catEntry.revenue += lineTotal(item);
       catEntry.qty += item.qty;
       categoryMap.set(catName, catEntry);
     }

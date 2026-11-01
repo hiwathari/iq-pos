@@ -58,10 +58,10 @@ Every step has the same parts so it can be picked up on its own:
 
 | Step | Title | Status |
 |---|---|---|
-| 0.1 | Money: line totals rounded to the penny | planned |
-| 0.2 | Stock movement log + one stock function | planned |
-| 0.3 | Stock back on void / edit / delete / refund | planned |
-| 0.4 | Overselling: allow, warn or block | planned |
+| 0.1 | Money: line totals rounded to the penny | **done** 2026-11-01 |
+| 0.2 | Stock movement log + one stock function | **done** 2026-11-01 |
+| 0.3 | Stock back on void / edit / delete (refund in 3.7) | **done** 2026-11-01 |
+| 0.4 | Overselling: allow, warn or block | **done** 2026-11-01 |
 | 1.1 | Business types + `business-profile.ts` | planned |
 | 1.2 | Onboarding (Super Admin) with seeds | planned |
 | 1.3 | Navigation, wording, receipts per type | planned |

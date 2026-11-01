@@ -5,12 +5,13 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { orders, restaurants, tables } from "@/db/schema";
 import type { Order, OrderChannel, OrderItem, OrderStatus, PaymentLine, ThirdPartyProvider } from "@/lib/types";
-import { orderBreakdown, resolveCouponDiscount } from "@/lib/types";
+import { itemsSubtotal, orderBreakdown, resolveCouponDiscount } from "@/lib/types";
 import { getUserPermissions, requireRestaurantContext } from "@/lib/scope";
 import { hasPermission } from "@/lib/permissions";
 import { findActiveCoupon } from "@/lib/data/coupons";
 import { findLoyaltyMemberById } from "@/lib/data/loyalty";
-import { decrementInventoryForOrder, freeTableIfNoLiveOrders, isOrderLive, nextOrderNumber } from "@/lib/order-helpers";
+import { freeTableIfNoLiveOrders, isOrderLive, nextOrderNumber } from "@/lib/order-helpers";
+import { adjustStockForEdit, negativeStockMode, returnStockForOrder, stockShortfalls, stockUsageForItems, takeStockForOrder } from "@/lib/stock";
 
 // An order is "closed out" once it's both served and paid — matches the Till's own
 // definition (see isOrderClosedOut in order-line-client.tsx). closedOutAt records the moment
@@ -94,7 +95,9 @@ export interface PlaceOrderInput {
 // link right after placement (see order-line-client.tsx's handlePlaceOrder), since auto-print on
 // payment needs an id to exist before the page's own data has refreshed to include it. undefined
 // for every early-return path (no items, a deduped double-tap) where nothing was actually placed.
-export async function placeOrderAction(input: PlaceOrderInput): Promise<{ id: string; orderNumber: string } | undefined> {
+export type PlaceOrderResult = { id: string; orderNumber: string; stockWarnings?: string[] } | { error: string } | undefined;
+
+export async function placeOrderAction(input: PlaceOrderInput): Promise<PlaceOrderResult> {
   const { session, restaurantId } = await requireRestaurantContext();
   if (input.items.length === 0) return;
 
@@ -119,7 +122,7 @@ export async function placeOrderAction(input: PlaceOrderInput): Promise<{ id: st
   // never introduce or change one, since a Staff session's own input value is never trusted.
   const permissions = session.role === "staff" ? await getUserPermissions(session.userId) : null;
   const canDiscount = hasPermission(session.role, permissions, "till-discount");
-  const subtotal = input.items.reduce((sum, i) => sum + i.price * i.qty, 0);
+  const subtotal = itemsSubtotal(input.items);
   let extraDiscount: number;
   let couponCode: string | null;
   let couponDiscount: number;
@@ -147,6 +150,22 @@ export async function placeOrderAction(input: PlaceOrderInput): Promise<{ id: st
   // Till only ever hands back an ID it just resolved itself, but never trust a client ID as-is.
   const loyaltyMember = input.loyaltyMemberId ? await findLoyaltyMemberById(restaurantId, input.loyaltyMemberId) : null;
   const loyaltyMemberId = loyaltyMember?.id ?? null;
+
+  // Negative-stock setting (lib/stock.ts): how much more stock this sale takes than the order
+  // already held — all of it for a new order, only the extra for an edit — checked against what's
+  // left. "block" refuses the sale naming the items; "warn" sells and tells the Till.
+  let stockWarnings: string[] | undefined;
+  const stockMode = await negativeStockMode(restaurantId);
+  if (stockMode !== "allow") {
+    const takesStock = !existing || (existing.status !== "Pending" && existing.status !== "Voided");
+    const after = await stockUsageForItems(restaurantId, input.items);
+    const before = existing && takesStock ? await stockUsageForItems(restaurantId, existing.items) : new Map<string, number>();
+    const extra = new Map([...after].map(([id, qty]) => [id, qty - (before.get(id) ?? 0)] as const));
+    const short = takesStock ? await stockShortfalls(restaurantId, extra) : [];
+    const lines = short.map((r) => `${r.name} (${formatStockQty(r.quantity)} ${r.unit} left)`);
+    if (lines.length && stockMode === "block") return { error: `Not enough stock: ${lines.join(", ")}.` };
+    if (lines.length) stockWarnings = lines;
+  }
 
   let newOrderId: string | undefined;
   let newOrderNumber: string | undefined;
@@ -189,6 +208,11 @@ export async function placeOrderAction(input: PlaceOrderInput): Promise<{ id: st
         ...(reopensKitchen ? { status: "In Kitchen" as OrderStatus, servedAt: null } : {}),
       })
       .where(and(eq(orders.id, input.editingOrderId), eq(orders.restaurantId, restaurantId)));
+    // Stock follows the edit: only the difference is taken or given back. A Pending customer
+    // order hasn't taken any stock yet, and a voided one has nothing left to adjust.
+    if (existing && existing.status !== "Pending" && existing.status !== "Voided") {
+      await adjustStockForEdit(restaurantId, existing.id, existing.items, editedItems, session.name);
+    }
   } else {
     // Guard against double/triple-tapping "Place Order" (or a slow network making someone tap
     // again) creating duplicate orders — if the same staff member just placed an identical order
@@ -269,7 +293,7 @@ export async function placeOrderAction(input: PlaceOrderInput): Promise<{ id: st
         .where(and(eq(tables.id, input.tableId), eq(tables.restaurantId, restaurantId)));
     }
 
-    await decrementInventoryForOrder(restaurantId, input.items);
+    await takeStockForOrder(restaurantId, newOrderId, input.items, session.name);
   }
 
   revalidatePath("/order-line");
@@ -280,7 +304,12 @@ export async function placeOrderAction(input: PlaceOrderInput): Promise<{ id: st
   return {
     id: input.editingOrderId ?? newOrderId!,
     orderNumber: input.editingOrderId ? (existing?.orderNumber ?? "") : newOrderNumber!,
+    stockWarnings,
   };
+}
+
+function formatStockQty(n: number) {
+  return Number.isInteger(n) ? String(n) : n.toFixed(3).replace(/0+$/, "");
 }
 
 // itemKey is item.lineId when the item has one, else its dishId — matches whichever identity
@@ -350,9 +379,9 @@ export async function setOrderStatusAction(orderId: string, status: OrderStatus)
 }
 
 export async function voidOrderAction(orderId: string, reason: string) {
-  const { restaurantId } = await requireRestaurantContext();
+  const { session, restaurantId } = await requireRestaurantContext();
   const [order] = await db
-    .select({ tableId: orders.tableId })
+    .select({ id: orders.id, tableId: orders.tableId, status: orders.status, items: orders.items })
     .from(orders)
     .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)))
     .limit(1);
@@ -360,6 +389,7 @@ export async function voidOrderAction(orderId: string, reason: string) {
     .update(orders)
     .set({ status: "Voided", voidReason: reason || "No reason given", voidedAt: Date.now() })
     .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)));
+  if (order) await returnStockForOrder(restaurantId, order, { byName: session.name, note: reason || null });
   // A voided order no longer occupies its table — free it up the same moment, rather than
   // leaving it stuck "on-dine" until something else happens to notice.
   if (order?.tableId) await freeTableIfNoLiveOrders(restaurantId, order.tableId, orderId);
@@ -375,14 +405,14 @@ export async function voidOrderAction(orderId: string, reason: string) {
 // The status check is part of the update itself, so two tills tapping Accept at the same moment
 // can't both send it through (or both take the stock).
 export async function acceptOnlineOrderAction(orderId: string): Promise<{ error?: string }> {
-  const { restaurantId } = await requireRestaurantContext();
+  const { session, restaurantId } = await requireRestaurantContext();
   const accepted = await db
     .update(orders)
     .set({ status: "In Kitchen" })
     .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId), eq(orders.status, "Pending")))
     .returning({ items: orders.items });
   if (accepted.length === 0) return { error: "Someone already handled this order." };
-  await decrementInventoryForOrder(restaurantId, accepted[0].items);
+  await takeStockForOrder(restaurantId, orderId, accepted[0].items, session.name);
   revalidatePath("/order-line");
   revalidatePath("/manage-table");
   revalidatePath("/dashboard");

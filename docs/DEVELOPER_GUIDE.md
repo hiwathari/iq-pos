@@ -223,7 +223,8 @@ commented definition of every column. Summary by table:
 | `integrations` | Third-party delivery platform credentials (Uber Eats/Deliveroo/Just Eat) — **present in schema, not wired to a real API anywhere yet** (see §13). |
 | `order_counters` | Per-restaurant running counter that `nextOrderNumber()` encodes into the 5-char order code. |
 | `shifts` | A closed-out End Day reconciliation — frozen sales/cash figures, not recomputed later. See §7.2. |
-| `inventory_items` | Tracked stock, manually adjusted or auto-decremented on sale. |
+| `inventory_items` | Tracked stock (ingredients, drinks, packaging). Quantity can go below zero (see `restaurants.negativeStock`). Only ever changed through `applyStockChanges` (§7.11). |
+| `stock_movements` | One row per stock change: signed `change`, `quantity_after`, `reason` (sale / void / edit / received / adjust / opening, later refund, count, waste, transfers), `reference_id` (the order), who, when. The stock history. |
 | `petty_cash_entries` | Manual cash in/out, outside of order payments. |
 | `terminal_payouts` / `terminal_expenses` | Hand-entered, per-terminal-per-day bank payout and provider-fee figures, reconciled against the Till's own recorded card sales on the "Card Settlements" Reports tab. |
 
@@ -583,6 +584,28 @@ takings (same `accountsFilter` as everywhere else). Dates are inclusive business
   items, subtotal, discount, tax, total, payment, status, void reason. **Print** uses the print
   stylesheet (`print:hidden` on the filter bar).
 
+### 7.11 Money rounding and stock (`lib/types.ts`, `lib/stock.ts`)
+
+- **Money.** `lineTotal(item)` = price × qty rounded to the penny (`roundMoney`: halves away from
+  zero, float noise stripped). `itemsSubtotal` sums rounded lines; `orderBreakdown` rounds the
+  discount, the tax (applied proportionally after the discount, as before) and the total once.
+  Every screen, receipt, invoice, report and the server use these — never `price * qty` directly.
+  Whole-penny prices give exactly the totals they always did (checked on 991 demo orders); it
+  exists for weighed / fractional quantities.
+- **Stock.** `applyStockChanges(restaurantId, Map<itemId, signedChange>, { reason, referenceId, byName, note })`
+  is the only writer of `inventory_items.quantity`; it writes a `stock_movements` row per item.
+  - Sale: `takeStockForOrder` — Till order placed (`placeOrderAction`) or online order accepted.
+  - Edit: `adjustStockForEdit(old, new)` — only the difference (Till edit, Sales Records edit).
+  - Void / auto-void / Sales Records delete: `returnStockForOrder` — once per order, exactly
+    the sum of that order's own sale/edit movements (orders from before the log fall back to
+    what their items use now). Skips Pending (never took stock) and already-voided orders.
+  - Merged tables: the secondary order is voided but its items move, so no stock change.
+  - Inventory page: opening stock (`opening`), + (`received`), − (`adjust`, can't go below zero by hand).
+- **When stock runs out** (`restaurants.negativeStock`, Settings): `allow` (default) sells and
+  lets quantities go negative (red on Inventory); `warn` sells and returns `stockWarnings` to the
+  Till; `block` makes `placeOrderAction` return `{ error }` naming the items — the Till keeps
+  the cart and shows the message above the main button. Only the extra stock an edit takes is checked.
+
 ## 8. Payment / Card-Machine Integrations
 
 A `payment_terminals` row with `provider: null` is "manual" — staff run the physical machine
@@ -844,7 +867,8 @@ when something here gets built, move it to §14 and the section that describes i
 - Per-guest receipts when a bill is split (Split pays each share, but one receipt prints).
 - A "packing charge" line — not a concept anywhere yet.
 - **Audit trail for Sales Records** — edits/deletes are only written to the server log; there's no
-  history table or "who changed what" screen. Editing/deleting orders doesn't put stock back.
+  history table or "who changed what" screen. (Stock *is* put back on void/edit/delete since
+  2026-11-01 and logged in `stock_movements`.)
 - Automatic custom-domain setup (adding a restaurant's ordering domain to Vercel via its API) —
   today it's added by hand in Vercel, then set in Super Admin.
 - Email/push alerts for new website briefs (Super Admin list only today, by choice).
@@ -897,6 +921,43 @@ promises supplier ordering, central menus and till limits, which are part of thi
   `RevenueCompareChart` in `components/charts.tsx`; default tab changed to `dashboard` in
   `app/reports/page.tsx`. See §7.10. No schema change. FAQ "How do I read the reports?" and
   `public/help/reports.webp` updated.
+
+### 2026-11-01 — Retail plan Phase 0: penny rounding, stock log, stock back on void/edit/delete
+- **Schema** — run on Turso **before** this code is deployed:
+  ```sql
+  ALTER TABLE restaurants ADD COLUMN negative_stock text NOT NULL DEFAULT 'allow';
+  CREATE TABLE IF NOT EXISTS stock_movements (
+    id text PRIMARY KEY NOT NULL,
+    restaurant_id text NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+    inventory_item_id text NOT NULL REFERENCES inventory_items(id) ON DELETE CASCADE,
+    change real NOT NULL,
+    quantity_after real NOT NULL,
+    reason text NOT NULL,
+    reference_id text,
+    note text,
+    unit_cost real,
+    created_by_name text,
+    created_at integer NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS stock_movements_item_idx ON stock_movements (restaurant_id, inventory_item_id, created_at);
+  CREATE INDEX IF NOT EXISTS stock_movements_ref_idx ON stock_movements (restaurant_id, reference_id);
+  ```
+- **0.1 Money**: `roundMoney` / `lineTotal` / `itemsSubtotal` / `itemsRawTax` in `lib/types.ts`;
+  `orderBreakdown` rounds discount, tax and total. All 22 `price * qty` calculations (Till, Simple
+  Till, kiosk, online order, invoice, receipts, reports, server) now use them. No displayed order
+  total changed on 991 demo orders; report aggregates can differ by pennies because they now add
+  up the rounded totals customers actually paid.
+- **0.2 Stock log**: `stock_movements` table; `lib/stock.ts` (`applyStockChanges`,
+  `stockUsageForItems`, `takeStockForOrder`, `returnStockForOrder`, `adjustStockForEdit`,
+  `stockShortfalls`). `decrementInventoryForOrder` removed. Inventory create/adjust go through it.
+- **0.3 Stock back**: Till void, auto-void (`autoVoidStaleOrders`), Sales Records delete give
+  stock back once; Till edits and Sales Records edits take/return the difference.
+- **0.4 When stock runs out**: `restaurants.negative_stock` (allow / warn / block) in Settings;
+  `placeOrderAction` returns `{ error }` (block) or `stockWarnings` (warn), shown on both Tills.
+  Quantities may go negative (red on Inventory); a manual − can't take more than is there.
+- FAQ: new "How do I keep track of stock?" (`public/help/inventory.webp`); "Restaurant and Cafe
+  mode" answer + screenshot gain the When-stock-runs-out step. Guide §6, §7.11, §13.3.
+- Plan: `docs/retail-plan/` steps 0.1–0.4 marked done.
 
 ### 2026-11-01 (later) — Retail plan set (docs only)
 - The plan moved to `docs/retail-plan/` and was expanded into a step-by-step set: README (index,

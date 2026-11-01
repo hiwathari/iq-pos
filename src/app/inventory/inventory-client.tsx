@@ -86,14 +86,16 @@ export function InventoryClient({ items }: { items: InventoryItem[] }) {
           <tbody className="divide-y divide-neutral-100">
             {items.map((item) => {
               const low = item.quantity <= item.lowStockThreshold;
+              // Below zero = sold more than was recorded in stock (see the negative-stock setting).
+              const negative = item.quantity < 0;
               return (
-                <tr key={item.id} className={low ? "bg-amber-50/40" : undefined}>
+                <tr key={item.id} className={negative ? "bg-rose-50/50" : low ? "bg-amber-50/40" : undefined}>
                   <td className="flex items-center gap-3 px-5 py-3">
                     <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--brand-light)] text-[var(--brand-dark)]">
                       <Package className="h-4 w-4" />
                     </span>
                     <span className="font-medium text-neutral-800">{item.name}</span>
-                    {low && <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />}
+                    {low && <AlertTriangle className={`h-3.5 w-3.5 ${negative ? "text-rose-500" : "text-amber-500"}`} />}
                   </td>
                   <td className="px-5 py-3">
                     <div className="flex items-center gap-2">
@@ -104,8 +106,11 @@ export function InventoryClient({ items }: { items: InventoryItem[] }) {
                       >
                         <Minus className="h-3.5 w-3.5" />
                       </button>
-                      <span className={`font-semibold ${low ? "text-amber-700" : "text-neutral-800"}`}>
-                        {item.quantity} {item.unit}
+                      <span
+                        className={`font-semibold ${negative ? "text-rose-600" : low ? "text-amber-700" : "text-neutral-800"}`}
+                        title={negative ? "Below zero — more was sold than was in stock" : undefined}
+                      >
+                        {Math.round(item.quantity * 1000) / 1000} {item.unit}
                       </span>
                       <button
                         onClick={() => setAdjustFor(item)}
@@ -259,7 +264,11 @@ function AdjustModal({ item, onClose, onDone }: { item: InventoryItem; onClose: 
       return;
     }
     startTransition(async () => {
-      await adjustInventoryStockAction(item.id, value * sign);
+      const result = await adjustInventoryStockAction(item.id, value * sign);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
       onDone();
       onClose();
     });

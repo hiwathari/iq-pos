@@ -34,6 +34,7 @@ export default async function SettingsPage() {
 
         <RestaurantClient
           businessType={restaurant?.businessType ?? "restaurant"}
+          negativeStock={restaurant?.negativeStock ?? "allow"}
           currencySymbol={restaurant?.currencySymbol ?? "£"}
           kitchenTimerLimitMinutes={restaurant?.kitchenTimerLimitMinutes ?? 30}
           taxEnabled={restaurant?.taxEnabled ?? false}

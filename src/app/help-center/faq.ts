@@ -374,8 +374,25 @@ export const FAQ: FaqSection[] = [
         id: "business-type",
         q: "What's the difference between Restaurant and Cafe mode?",
         a: "Restaurant keeps the normal flow: send to the kitchen, serve, then pay. Cafe is counter service — an order paid in full at the Till is finished straight away.",
-        steps: ["Choose Restaurant or Cafe.", "Shop hours: the opening time is when a new business day starts, for reports and the daily reset."],
+        steps: [
+          "Choose Restaurant or Cafe.",
+          "Shop hours: the opening time is when a new business day starts, for reports and the daily reset.",
+          "When stock runs out: Allow (sell anyway — stock goes below zero and shows red), Warn (sell, and the Till says which items are now below zero) or Block (the Till refuses the sale and names the item).",
+        ],
         image: "business-type",
+        who: "Admin",
+      },
+      {
+        id: "inventory",
+        q: "How do I keep track of stock?",
+        a: "Inventory lists the things you keep in stock — ingredients, drinks, packaging — with how much is left. Link a dish to a stock item (and how much one dish uses) and every sale takes it off automatically. Voiding an order, editing it on the Till, or deleting it in Sales Records puts the stock back, and every change is recorded with who made it and why.",
+        steps: [
+          "New Item — name, unit (pcs, kg, L…), how much you have now, and the level that counts as low.",
+          "− / + to record a delivery, waste or a correction. You can't remove more than is there.",
+          "Red means below zero: more was sold than was in stock. Count it and add the difference.",
+        ],
+        image: "inventory",
+        tip: "Link a dish in Manage Dishes → edit the dish → Linked Inventory Item, e.g. a cappuccino uses 0.2 L of milk.",
         who: "Admin",
       },
       {
