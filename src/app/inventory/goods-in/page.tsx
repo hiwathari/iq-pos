@@ -19,7 +19,7 @@ export default async function GoodsInPage({ searchParams }: { searchParams: Prom
   return (
     <AppShell title="Goods in">
       <GoodsInClient
-        items={items.map((i) => ({ id: i.id, name: i.name, unit: i.unit, sku: i.sku, costPrice: i.costPrice, supplierId: i.supplierId, barcodes: i.packBarcodes }))}
+        items={items.map((i) => ({ id: i.id, name: i.name, unit: i.unit, sku: i.sku, costPrice: i.costPrice, supplierId: i.supplierId, trackSerials: i.trackSerials, barcodes: i.packBarcodes }))}
         suppliers={suppliers.map((s) => ({ id: s.id, name: s.name }))}
         currencySymbol={restaurant?.currencySymbol ?? "£"}
         order={

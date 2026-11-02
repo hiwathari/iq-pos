@@ -1,5 +1,7 @@
 "use client";
 
+import { VariantsEditor, initialVariantsState, variantsPayload, type VariantsState } from "./variants-editor";
+import type { VariantDetail } from "@/lib/data/menu";
 import { useState } from "react";
 import { Barcode, ChevronDown, Plus, Trash2, X } from "lucide-react";
 import type { Category, Dish, InventoryItem, Printer } from "@/lib/types";
@@ -31,6 +33,8 @@ interface DishModalProps {
   defaultCategoryId: string;
   initial?: Dish | null;
   initialBarcodes?: { code: string; packQty: number }[];
+  // Variants already saved for this product (step 5.1).
+  initialVariants?: VariantDetail[];
   // The product's own stock item (dishes.trackStock), when it has one.
   ownStock?: { quantity: number; lowStockThreshold: number } | null;
   currencySymbol?: string;
@@ -52,6 +56,7 @@ export function DishModal({
   defaultCategoryId,
   initial,
   initialBarcodes = [],
+  initialVariants = [],
   ownStock = null,
   currencySymbol = "£",
   productWord = "Dish",
@@ -93,6 +98,8 @@ export function DishModal({
   const [supplierId, setSupplierId] = useState(initial?.supplierId ?? "");
   const [supplierCode, setSupplierCode] = useState(initial?.supplierCode ?? "");
   const [moreOpen, setMoreOpen] = useState(false);
+  const [variantsState, setVariantsState] = useState<VariantsState>(() => initialVariantsState(initial?.variantOptions, initialVariants));
+  const [trackSerials, setTrackSerials] = useState(initial?.trackSerials ?? false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -166,6 +173,8 @@ export function DishModal({
       plu: plu.trim(),
       supplierId: supplierId || null,
       supplierCode: supplierCode.trim(),
+      trackSerials,
+      ...variantsPayload(variantsState),
       barcodes: allBarcodes.map((b) => ({ code: b.code, packQty: Number(b.packQty) || 1 })),
       trackStock,
       stockQty: trackStock && stockQty !== "" ? Number(stockQty) : null,
@@ -319,8 +328,20 @@ export function DishModal({
             </button>
           </div>
 
+          {/* Variants — sizes, colours… (shops) */}
+          {isShop && !measured && (
+            <VariantsEditor state={variantsState} onChange={setVariantsState} currencySymbol={currencySymbol} basePrice={Number(price) || 0} />
+          )}
+
+          {isShop && !measured && (
+            <label className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-neutral-200 p-3 text-sm font-medium text-neutral-800">
+              <input type="checkbox" checked={trackSerials} onChange={(e) => setTrackSerials(e.target.checked)} className="h-4 w-4 accent-[var(--brand)]" />
+              Track serial / IMEI numbers (phones, electronics…)
+            </label>
+          )}
+
           {/* Stock */}
-          <div className="rounded-xl border border-neutral-200 p-3">
+          <div className="rounded-xl border border-neutral-200 p-3" hidden={isShop && variantsState.enabled}>
             <label className="flex cursor-pointer items-center gap-2.5 text-sm font-medium text-neutral-800">
               <input type="checkbox" checked={trackStock} onChange={(e) => setTrackStock(e.target.checked)} className="h-4 w-4 accent-[var(--brand)]" />
               Track stock for this {productWord.toLowerCase()}

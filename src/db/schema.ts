@@ -233,6 +233,11 @@ export const dishes = sqliteTable("dishes", {
   labelPrintedAt: int("label_printed_at"),
   // The item code a labelling scale prints inside its barcodes (step 3.2).
   plu: text("plu"),
+  // Variants (step 5.1): option names and their values, e.g. [{name:"Size",values:["S","M"]}]; the
+  // combinations live in product_variants. Null = no variants.
+  variantOptions: text("variant_options", { mode: "json" }).$type<{ name: string; values: string[] }[]>(),
+  // Serial / IMEI numbers (step 5.2): every unit sold is a specific serial from serial_numbers.
+  trackSerials: int("track_serials", { mode: "boolean" }).notNull().default(false),
 });
 
 // A product's barcodes — several per product (single item, multipack, outer case: pack_qty is
@@ -332,6 +337,8 @@ export const orders = sqliteTable("orders", {
       priceOverride?: { original: number; reason: string; by?: string };
       ageCheck?: { minAge: number; method: "looks-over-25" | "id-checked"; by?: string };
       promo?: { id: string; name: string; saving: number };
+      variantId?: string;
+      serials?: string[];
     }[]
   >(),
   // "Cash", the name of a payment terminal, or "Split" when paid across multiple methods
@@ -738,6 +745,8 @@ export const inventoryItems = sqliteTable(
     lowStockThreshold: real("low_stock_threshold").notNull().default(0),
     // Set when this item is a product's own stock (dishes.trackStock) rather than an ingredient.
     dishId: text("dish_id"),
+    // The variant this is the stock of (step 5.1); dishId is then its product.
+    variantId: text("variant_id"),
     costPrice: real("cost_price"),
     reorderLevel: real("reorder_level"),
     reorderQty: real("reorder_qty"),
@@ -974,6 +983,50 @@ export const storeCredits = sqliteTable(
     createdAt: timestamp("created_at"),
   },
   (table) => [uniqueIndex("store_credits_code_idx").on(table.restaurantId, table.code)]
+);
+
+// One size / colour combination of a product (step 5.1), with its own SKU, barcode (in
+// product_barcodes.variant_id), optional price and cost, and its own stock item.
+export const productVariants = sqliteTable(
+  "product_variants",
+  {
+    id: id(),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    dishId: text("dish_id")
+      .notNull()
+      .references(() => dishes.id, { onDelete: "cascade" }),
+    options: text("options", { mode: "json" }).notNull().$type<Record<string, string>>(),
+    name: text("name").notNull(),
+    sku: text("sku"),
+    price: real("price"),
+    costPrice: real("cost_price"),
+    inventoryItemId: text("inventory_item_id"),
+    active: int("active", { mode: "boolean" }).notNull().default(true),
+    sort: int("sort").notNull().default(0),
+  },
+  (table) => [index("product_variants_dish_idx").on(table.dishId)]
+);
+
+// Serial / IMEI numbers (step 5.2): one row per physical unit of a product that tracks serials.
+export const serialNumbers = sqliteTable(
+  "serial_numbers",
+  {
+    id: id(),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    dishId: text("dish_id").notNull(),
+    variantId: text("variant_id"),
+    serial: text("serial").notNull(),
+    status: text("status", { enum: ["in_stock", "sold", "returned", "faulty"] }).notNull().default("in_stock"),
+    orderId: text("order_id"),
+    receivedAt: int("received_at"),
+    soldAt: int("sold_at"),
+    createdAt: timestamp("created_at"),
+  },
+  (table) => [uniqueIndex("serial_numbers_serial_idx").on(table.restaurantId, table.serial), index("serial_numbers_dish_idx").on(table.dishId, table.status)]
 );
 
 // Ad-hoc cash movements outside of order payments (e.g. "Bought cleaning supplies — £15 out",

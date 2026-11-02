@@ -1,5 +1,6 @@
 "use client";
 
+import type { VariantDetail } from "@/lib/data/menu";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CategoryIconView } from "@/components/category-icon";
@@ -33,6 +34,7 @@ export function ManageDishesClient({
   words,
   barcodesByDish,
   suppliers = [],
+  variantsByDish = {},
   isShop,
 }: {
   categories: Category[];
@@ -43,8 +45,9 @@ export function ManageDishesClient({
   // "Dish"/"Dishes" for restaurants and cafes, "Product"/"Products" for shops (lib/business-profile.ts).
   words: { product: string; products: string; manageProducts: string };
   // dishId → its barcodes (product_barcodes), for the form and for searching by barcode.
-  barcodesByDish: Record<string, { code: string; packQty: number }[]>;
+  barcodesByDish: Record<string, { code: string; packQty: number; variantId?: string }[]>;
   suppliers?: { id: string; name: string }[];
+  variantsByDish?: Record<string, VariantDetail[]>;
   isShop: boolean;
 }) {
   const router = useRouter();
@@ -378,7 +381,8 @@ export function ManageDishesClient({
           currencySymbol={currencySymbol}
           productWord={words.product}
           isShop={isShop}
-          initialBarcodes={editingDish ? (barcodesByDish[editingDish.id] ?? []) : []}
+          initialBarcodes={editingDish ? (barcodesByDish[editingDish.id] ?? []).filter((b) => !("variantId" in b && b.variantId)) : []}
+          initialVariants={editingDish ? (variantsByDish[editingDish.id] ?? []) : []}
           ownStock={(() => {
             const own = editingDish?.trackStock ? inventoryItems.find((i) => i.dishId === editingDish.id) : undefined;
             return own ? { quantity: own.quantity, lowStockThreshold: own.lowStockThreshold } : null;

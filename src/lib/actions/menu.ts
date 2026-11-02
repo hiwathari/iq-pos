@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { categories, dishes, inventoryItems, productBarcodes, restaurants, suppliers } from "@/db/schema";
@@ -9,6 +9,8 @@ import type { CategoryDisplayOverride } from "@/lib/types";
 import { checkBarcode, makeInternalEan13 } from "@/lib/barcode";
 import { isSellBy, isUnitFor, stockUnitFor, type SellBy } from "@/lib/units";
 import { applyStockChanges } from "@/lib/stock";
+import { saveVariantsForDish, type VariantInput } from "@/lib/variants-server";
+import { cleanOptions, combinations } from "@/lib/variants";
 
 export interface CreateCategoryInput {
   name: string;
@@ -112,6 +114,10 @@ export interface DishInput {
   supplierId?: string | null;
   supplierCode?: string;
   barcodes?: { code: string; packQty: number }[];
+  // Variants (step 5.1): the options and every combination's own SKU / barcode / price / stock.
+  variantOptions?: { name: string; values: string[] }[];
+  variants?: VariantInput[];
+  trackSerials?: boolean;
   // Own stock (step 2.4): when on, the product gets its own stock item; stockQty sets how many
   // are in stock now (a change is logged as a count), lowStock its low-stock level.
   trackStock?: boolean;
@@ -194,15 +200,18 @@ async function normaliseDishInput(restaurantId: string, input: DishInput, dishId
     taxRateOverride,
     minAge,
     plu: String(input.plu ?? "").replace(/\D/g, "").slice(0, 6) || null,
+    trackSerials: !!input.trackSerials,
     supplierId,
     supplierCode: String(input.supplierCode ?? "").trim().slice(0, 60) || null,
-    trackStock: !!input.trackStock,
+    // A product with variants keeps its stock per variant, not on the product itself.
+    trackStock: !!input.trackStock && combinations(cleanOptions(input.variantOptions)).length === 0,
   };
   return { values, barcodes } as const;
 }
 
 async function saveBarcodes(restaurantId: string, dishId: string, barcodes: { code: string; symbology: "ean13" | "ean8" | "upca" | "gtin14" | "code128"; packQty: number }[]) {
-  await db.delete(productBarcodes).where(and(eq(productBarcodes.restaurantId, restaurantId), eq(productBarcodes.dishId, dishId)));
+  // Only the product's own barcodes — variants keep theirs (saveVariantsForDish).
+  await db.delete(productBarcodes).where(and(eq(productBarcodes.restaurantId, restaurantId), eq(productBarcodes.dishId, dishId), isNull(productBarcodes.variantId)));
   if (barcodes.length) await db.insert(productBarcodes).values(barcodes.map((b) => ({ restaurantId, dishId, ...b })));
 }
 
@@ -218,7 +227,7 @@ async function syncProductStock(
   const [own] = await db
     .select()
     .from(inventoryItems)
-    .where(and(eq(inventoryItems.restaurantId, restaurantId), eq(inventoryItems.dishId, dish.id)))
+    .where(and(eq(inventoryItems.restaurantId, restaurantId), eq(inventoryItems.dishId, dish.id), isNull(inventoryItems.variantId)))
     .limit(1);
   if (!dish.trackStock) {
     await db.update(dishes).set({ inventoryItemId: input.inventoryItemId || null, inventoryUsagePerOrder: input.inventoryItemId ? input.inventoryUsagePerOrder || null : null }).where(eq(dishes.id, dish.id));
@@ -277,8 +286,9 @@ export async function createDishAction(input: DishInput): Promise<DishActionResu
   await db.insert(dishes).values({ id, restaurantId, color: "#DCEEE8", ...checked.values });
   await saveBarcodes(restaurantId, id, checked.barcodes);
   await syncProductStock(restaurantId, { id, ...checked.values }, input, session.name);
+  const vres = await saveVariantsForDish(restaurantId, { id, name: checked.values.name, supplierId: checked.values.supplierId }, input.variantOptions, input.variants, session.name);
   revalidateProducts();
-  return {};
+  return vres.error ? { error: vres.error } : {};
 }
 
 export async function updateDishAction(dishId: string, input: DishInput): Promise<DishActionResult> {
@@ -291,8 +301,9 @@ export async function updateDishAction(dishId: string, input: DishInput): Promis
   await db.update(dishes).set(checked.values).where(eq(dishes.id, dishId));
   await saveBarcodes(restaurantId, dishId, checked.barcodes);
   await syncProductStock(restaurantId, { id: dishId, ...checked.values }, input, session.name);
+  const vres = await saveVariantsForDish(restaurantId, { id: dishId, name: checked.values.name, supplierId: checked.values.supplierId }, input.variantOptions, input.variants, session.name);
   revalidateProducts();
-  return {};
+  return vres.error ? { error: vres.error } : {};
 }
 
 // "Make a barcode": the business's next own EAN-13 (prefix 20). The counter only moves forward,

@@ -2,10 +2,11 @@
 
 import { priceItemsWithPromotions } from "@/lib/data/promotions";
 import { redeemStoreCredits, restoreStoreCredits } from "@/lib/data/store-credit";
-import { and, eq, gte } from "drizzle-orm";
+import { releaseSerials, sellSerials, serialsOf } from "@/lib/data/serials";
+import { and, eq, gte, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
-import { ageChecks, orders, restaurants, tables } from "@/db/schema";
+import { ageChecks, orders, restaurants, serialNumbers, tables } from "@/db/schema";
 import type { Order, OrderChannel, OrderItem, OrderStatus, PaymentLine, ThirdPartyProvider } from "@/lib/types";
 import { itemsSubtotal, orderBreakdown, resolveCouponDiscount } from "@/lib/types";
 import { getUserPermissions, requireRestaurantContext } from "@/lib/scope";
@@ -184,6 +185,24 @@ export async function placeOrderAction(rawInput: PlaceOrderInput): Promise<Place
     if (taken.error) return { error: taken.error };
   }
 
+  // Serial numbers (step 5.2): every serial on a line must be in stock for that product, except the
+  // ones this order already holds (an edit re-sends them). Marked sold once the order has an id.
+  const priorSerials = new Set(serialsOf(existing?.items ?? []));
+  const wantedSerials = input.items.flatMap((i) => (i.serials ?? []).map((serial) => ({ serial, dishId: i.dishId, name: i.name }))).filter((s) => !priorSerials.has(s.serial));
+  if (wantedSerials.length) {
+    if (new Set(wantedSerials.map((s) => s.serial)).size !== wantedSerials.length) return { error: "The same serial number is on the sale twice." };
+    const found = await db
+      .select({ serial: serialNumbers.serial, status: serialNumbers.status, dishId: serialNumbers.dishId })
+      .from(serialNumbers)
+      .where(and(eq(serialNumbers.restaurantId, restaurantId), inArray(serialNumbers.serial, wantedSerials.map((s) => s.serial))));
+    const byCode = new Map(found.map((f) => [f.serial, f]));
+    for (const w of wantedSerials) {
+      const f = byCode.get(w.serial);
+      if (!f || f.dishId !== w.dishId) return { error: `Serial ${w.serial} isn't recorded for ${w.name}.` };
+      if (f.status !== "in_stock") return { error: `Serial ${w.serial} (${w.name}) isn't available — it's ${f.status === "sold" ? "already sold" : f.status}.` };
+    }
+  }
+
   let newOrderId: string | undefined;
   let newOrderNumber: string | undefined;
 
@@ -317,6 +336,15 @@ export async function placeOrderAction(rawInput: PlaceOrderInput): Promise<Place
     await takeStockForOrder(restaurantId, newOrderId, input.items, session.name);
   }
 
+  // Serials: sold against this order; any the edit dropped go back on the shelf.
+  {
+    const orderIdNow = input.editingOrderId ?? newOrderId!;
+    const nowSet = new Set(serialsOf(input.items));
+    const dropped = [...priorSerials].filter((s) => !nowSet.has(s));
+    if (dropped.length) await releaseSerials(restaurantId, dropped);
+    if (wantedSerials.length) await sellSerials(restaurantId, orderIdNow, input.items, priorSerials);
+  }
+
   // Challenge 25 log: an age-restricted line the Till approved, recorded once against the order.
   const priorLines = new Set((existing?.items ?? []).filter((i) => i.ageCheck).map((i) => i.lineId ?? i.dishId));
   const approved = input.items.filter((i) => i.ageCheck && !priorLines.has(i.lineId ?? i.dishId));
@@ -442,6 +470,7 @@ export async function voidOrderAction(orderId: string, reason: string) {
   if (order && order.status !== "Voided") {
     const used = (order.payments ?? []).filter((p) => p.creditCode).map((p) => ({ code: p.creditCode!, amount: p.amount }));
     if (used.length) await restoreStoreCredits(restaurantId, used);
+    await releaseSerials(restaurantId, serialsOf(order.items));
   }
   await db
     .update(orders)

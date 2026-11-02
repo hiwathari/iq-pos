@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { Fragment, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, CheckCircle2, Trash2 } from "lucide-react";
 import { StockItemPicker, type PickItem } from "@/components/stock-item-picker";
@@ -12,7 +12,11 @@ interface Line {
   item: PickItem;
   qty: string;
   cost: string;
+  // Serial / IMEI numbers, one per line, for serial-tracked products (step 5.2).
+  serials: string;
 }
+
+const serialList = (t: string) => [...new Set(t.split(/[\n,]+/).map((x) => x.trim()).filter(Boolean))];
 
 // Goods in (docs/retail-plan step 4.2): book a delivery in by scanning. Opened from a purchase
 // order it arrives filled in with what's still to come.
@@ -35,7 +39,7 @@ export function GoodsInClient({
     (order?.lines ?? [])
       .map((l) => ({ item: items.find((i) => i.id === l.itemId), qty: l.qty, cost: l.cost }))
       .filter((l): l is { item: PickItem; qty: number; cost: number | null } => !!l.item && l.qty > 0)
-      .map((l) => ({ item: l.item, qty: String(l.qty), cost: l.cost != null ? String(l.cost) : l.item.costPrice != null ? String(l.item.costPrice) : "" }))
+      .map((l) => ({ item: l.item, qty: String(l.qty), cost: l.cost != null ? String(l.cost) : l.item.costPrice != null ? String(l.item.costPrice) : "", serials: "" }))
   );
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -44,12 +48,14 @@ export function GoodsInClient({
     setDone(null);
     setLines((cur) => {
       const at = cur.findIndex((l) => l.item.id === item.id);
+      if (at >= 0 && item.trackSerials) return cur;
       if (at >= 0) return cur.map((l, i) => (i === at ? { ...l, qty: String(Math.round((Number(l.qty) + packQty) * 1000) / 1000) } : l));
-      return [...cur, { item, qty: String(packQty), cost: item.costPrice != null ? String(item.costPrice) : "" }];
+      return [...cur, { item, qty: item.trackSerials ? "0" : String(packQty), cost: item.costPrice != null ? String(item.costPrice) : "", serials: "" }];
     });
   }
 
-  const total = lines.reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.cost) || 0), 0);
+  const qtyOf = (l: Line) => (l.item.trackSerials ? serialList(l.serials).length : Number(l.qty) || 0);
+  const total = lines.reduce((s, l) => s + qtyOf(l) * (Number(l.cost) || 0), 0);
 
   function save() {
     setError(null);
@@ -58,7 +64,10 @@ export function GoodsInClient({
         supplierId: supplierId || null,
         reference,
         purchaseOrderId: order?.id ?? null,
-        lines: lines.map((l) => ({ itemId: l.item.id, qty: Number(l.qty), cost: l.cost === "" ? null : Number(l.cost) })),
+        lines: lines.map((l) => {
+          const serials = l.item.trackSerials ? serialList(l.serials) : undefined;
+          return { itemId: l.item.id, qty: serials ? serials.length : Number(l.qty), cost: l.cost === "" ? null : Number(l.cost), serials };
+        }),
       });
       if (res.error) return setError(res.error);
       setLines([]);
@@ -110,9 +119,13 @@ export function GoodsInClient({
           </thead>
           <tbody className="divide-y divide-neutral-100">
             {lines.map((l, idx) => (
-              <tr key={l.item.id}>
+              <Fragment key={l.item.id}>
+              <tr>
                 <td className="px-4 py-2.5 font-medium text-neutral-800">{l.item.name}</td>
                 <td className="px-4 py-2.5">
+                  {l.item.trackSerials ? (
+                    <span className="text-sm font-semibold text-neutral-700">{qtyOf(l)} serials</span>
+                  ) : (
                   <div className="flex items-center gap-1.5">
                     <input
                       value={l.qty}
@@ -123,6 +136,7 @@ export function GoodsInClient({
                     />
                     <span className="text-xs text-neutral-400">{l.item.unit}</span>
                   </div>
+                  )}
                 </td>
                 <td className="px-4 py-2.5">
                   <input
@@ -140,6 +154,21 @@ export function GoodsInClient({
                   </button>
                 </td>
               </tr>
+              {l.item.trackSerials && (
+                <tr>
+                  <td colSpan={4} className="px-4 pb-3">
+                    <textarea
+                      value={l.serials}
+                      onChange={(e) => setLines((cur) => cur.map((c, i) => (i === idx ? { ...c, serials: e.target.value } : c)))}
+                      rows={3}
+                      placeholder="Scan or type one serial / IMEI per line"
+                      aria-label={`Serial numbers for ${l.item.name}`}
+                      className="w-full rounded-lg border border-neutral-200 px-2.5 py-1.5 font-mono text-sm outline-none focus:border-teal-500"
+                    />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
             {lines.length === 0 && (
               <tr>

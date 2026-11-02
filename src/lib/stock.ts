@@ -1,7 +1,7 @@
 import "server-only";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db/client";
-import { dishes, inventoryItems, restaurants, stockMovements } from "@/db/schema";
+import { dishes, inventoryItems, productVariants, restaurants, stockMovements } from "@/db/schema";
 import type { OrderItem, OrderStatus } from "@/lib/types";
 
 // The one place stock quantities change. Every change updates inventory_items.quantity and
@@ -63,7 +63,7 @@ export async function applyStockChanges(restaurantId: string, changes: Map<strin
 
 // How much of each stock item these order lines use: dish → linked inventory item ×
 // usage-per-order × qty. Custom ("custom:…") lines and dishes without a link use nothing.
-export async function stockUsageForItems(restaurantId: string, items: Pick<OrderItem, "dishId" | "qty">[]) {
+export async function stockUsageForItems(restaurantId: string, items: Pick<OrderItem, "dishId" | "qty" | "variantId">[]) {
   const usage = new Map<string, number>();
   const dishIds = [...new Set(items.map((i) => i.dishId))].filter((id) => !id.startsWith("custom:"));
   if (dishIds.length === 0) return usage;
@@ -71,7 +71,22 @@ export async function stockUsageForItems(restaurantId: string, items: Pick<Order
     .select({ id: dishes.id, inventoryItemId: dishes.inventoryItemId, perOrder: dishes.inventoryUsagePerOrder })
     .from(dishes)
     .where(and(eq(dishes.restaurantId, restaurantId), inArray(dishes.id, dishIds)));
+  // A variant line takes its own variant's stock item, 1 per unit (step 5.1).
+  const variantIds = [...new Set(items.map((i) => i.variantId).filter((v): v is string => !!v))];
+  const variantItem = new Map<string, string>();
+  if (variantIds.length) {
+    const rows = await db
+      .select({ id: productVariants.id, itemId: productVariants.inventoryItemId })
+      .from(productVariants)
+      .where(and(eq(productVariants.restaurantId, restaurantId), inArray(productVariants.id, variantIds)));
+    for (const r of rows) if (r.itemId) variantItem.set(r.id, r.itemId);
+  }
   for (const item of items) {
+    if (item.variantId) {
+      const itemId = variantItem.get(item.variantId);
+      if (itemId) usage.set(itemId, (usage.get(itemId) ?? 0) + item.qty);
+      continue;
+    }
     const dish = linked.find((d) => d.id === item.dishId);
     if (!dish?.inventoryItemId || !dish.perOrder) continue;
     usage.set(dish.inventoryItemId, (usage.get(dish.inventoryItemId) ?? 0) + dish.perOrder * item.qty);

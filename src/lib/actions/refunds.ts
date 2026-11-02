@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
 import { orders, refunds } from "@/db/schema";
@@ -9,6 +9,8 @@ import { itemsSubtotal, lineTotal, orderBreakdown, roundMoney, type OrderItem } 
 import { listRefundsForOrder } from "@/lib/data/refunds";
 import { applyStockChanges, stockUsageForItems } from "@/lib/stock";
 import { issueStoreCredit } from "@/lib/data/store-credit";
+import { releaseSerials } from "@/lib/data/serials";
+import { serialNumbers } from "@/db/schema";
 
 // Refunds and returns on the Till (docs/retail-plan step 3.7). A paid sale can be refunded in
 // parts: chosen lines (and how much of each), back to cash or a card machine, optionally putting
@@ -95,6 +97,14 @@ export async function refundOrderAction(orderId: string, input: { lines: RefundL
 
   // Returned goods go back into stock (logged against the sale, so a later void of the same
   // sale only gives back what's still out).
+  // Refunded serial numbers: back on the shelf when the goods go back to stock, otherwise
+  // "returned" (faulty / written off) — they can be found by serial either way.
+  for (const l of lines) {
+    const serials = l.item.serials ?? [];
+    if (serials.length === 0) continue;
+    if (l.backToStock) await releaseSerials(restaurantId, serials);
+    else await db.update(serialNumbers).set({ status: "returned" }).where(and(eq(serialNumbers.restaurantId, restaurantId), inArray(serialNumbers.serial, serials)));
+  }
   const back = lines.filter((l) => l.backToStock).map((l) => ({ ...l.item, qty: l.qty }));
   if (back.length) {
     const usage = await stockUsageForItems(restaurantId, back);

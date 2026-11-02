@@ -10,7 +10,7 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { and, eq, gte, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
-import { dishes, loyaltyMembers, orders, tables } from "@/db/schema";
+import { dishes, inventoryItems, loyaltyMembers, orders, productVariants, tables } from "@/db/schema";
 import { getRestaurant, getRestaurantBySlug } from "@/lib/data/restaurants";
 import { resolveTableQrToken } from "@/lib/table-qr-token";
 import { findLoyaltyMemberByContact, findLoyaltyMemberById } from "@/lib/data/loyalty";
@@ -18,6 +18,7 @@ import { nextOrderNumber } from "@/lib/order-helpers";
 import { generateLoyaltyCode } from "@/lib/loyalty-code";
 import { LOYALTY_SESSION_COOKIE_NAME, verifyLoyaltySessionToken } from "@/lib/loyalty-session";
 import type { LoyaltyContactType, OrderItem } from "@/lib/types";
+import { priceItemsWithPromotions } from "@/lib/data/promotions";
 
 // Each submission mints a fresh lineId per item server-side (see the item-building loop below),
 // so two submissions of the same cart never share lineIds — compare everything else instead.
@@ -42,17 +43,21 @@ export interface PublicOrderItemInput {
   dishId: string;
   qty: number;
   note?: string;
+  // The size / colour chosen, for products with variants (step 5.1).
+  variantId?: string;
 }
 
 export interface PlacePublicOrderInput {
   restaurantSlug: string;
   placedVia: "online" | "kiosk";
-  channel: "Dine in" | "Take Away";
+  // Shops (no tables) take "Click & collect" or "Delivery" orders online (step 5.6).
+  channel: "Dine in" | "Take Away" | "Click & collect" | "Delivery";
   tableId?: string;
   guests?: number;
   items: PublicOrderItemInput[];
   customerName: string;
   customerPhone: string;
+  customerAddress?: string;
   // Only consulted for a "kiosk" order — resolved moments earlier by kioskLoyaltyLookupAction in
   // the same session, and re-validated against this restaurant below. An "online" order's
   // loyalty member always comes from the verified session cookie instead, never from client input.
@@ -62,6 +67,8 @@ export interface PlacePublicOrderInput {
 export interface PlacePublicOrderResult {
   error?: string;
   orderNumber?: string;
+  // Something in the cart was left out (ran out of stock while the customer was ordering).
+  notice?: string;
 }
 
 export async function placePublicOrderAction(input: PlacePublicOrderInput): Promise<PlacePublicOrderResult> {
@@ -78,8 +85,11 @@ export async function placePublicOrderAction(input: PlacePublicOrderInput): Prom
   if (!customerName) return { error: "Enter your name." };
   if (!customerPhone) return { error: "Enter your phone number." };
 
-  const items = await buildItemsFromLiveMenu(restaurant.id, input.items, input.channel);
-  if (items.length === 0) return { error: "None of the items in your cart are available anymore." };
+  if (input.channel === "Delivery" && !String(input.customerAddress ?? "").trim()) return { error: "Enter the delivery address." };
+  const built = await buildItemsFromLiveMenu(restaurant.id, input.items, input.channel);
+  if (built.items.length === 0) return { error: built.unavailable.length ? `${built.unavailable.join(", ")} ${built.unavailable.length === 1 ? "is" : "are"} out of stock.` : "None of the items in your cart are available anymore." };
+  // Promotions are priced here from the live promotions, same as the Till does.
+  const items = await priceItemsWithPromotions(restaurant.id, built.items, input.channel);
 
   let tableId: string | null = null;
   let tableNumber: number | null = null;
@@ -111,47 +121,76 @@ export async function placePublicOrderAction(input: PlacePublicOrderInput): Prom
     items,
     customerName,
     customerPhone,
+    customerAddress: input.channel === "Delivery" ? String(input.customerAddress).trim().slice(0, 300) : null,
     loyaltyMemberId,
   });
-  return { orderNumber };
+  return { orderNumber, ...(built.unavailable.length ? { notice: `${built.unavailable.join(", ")} ${built.unavailable.length === 1 ? "was" : "were"} left out — out of stock.` } : {}) };
 }
 
 // Re-derive every item server-side from the live menu — dishId and qty are the only client
 // input trusted at all, and qty is clamped to a sane range.
-async function buildItemsFromLiveMenu(restaurantId: string, rawItems: PublicOrderItemInput[], channel: "Dine in" | "Take Away") {
+async function buildItemsFromLiveMenu(restaurantId: string, rawItems: PublicOrderItemInput[], channel: PlacePublicOrderInput["channel"]) {
   const dishIds = [...new Set(rawItems.map((i) => String(i.dishId)))];
   const liveDishes = await db.select().from(dishes).where(and(eq(dishes.restaurantId, restaurantId), inArray(dishes.id, dishIds)));
+  const variantIds = [...new Set(rawItems.map((i) => i.variantId).filter((v): v is string => typeof v === "string"))];
+  const liveVariants = variantIds.length
+    ? await db.select().from(productVariants).where(and(eq(productVariants.restaurantId, restaurantId), inArray(productVariants.id, variantIds)))
+    : [];
+  // Stock a customer can be promised: only for products whose stock is tracked (own stock or a
+  // variant's) — restaurants' ingredient stock is never shown or checked here.
+  const stockIds = [...new Set([...liveDishes.filter((d) => d.trackStock && d.inventoryItemId).map((d) => d.inventoryItemId!), ...liveVariants.map((v) => v.inventoryItemId).filter((x): x is string => !!x)])];
+  const stock = new Map<string, number>();
+  if (stockIds.length) for (const r of await db.select({ id: inventoryItems.id, quantity: inventoryItems.quantity }).from(inventoryItems).where(inArray(inventoryItems.id, stockIds))) stock.set(r.id, r.quantity);
+  const taken = new Map<string, number>(); // what this cart already claims, per stock item
+
   const items: OrderItem[] = [];
+  const unavailable: string[] = [];
   for (const raw of rawItems) {
     const dish = liveDishes.find((d) => d.id === raw.dishId);
-    // Weighed products aren't on the customer menus, so one arriving here is skipped too.
-    if (!dish || dish.outOfStock || dish.sellBy !== "unit") continue;
-    const qty = Math.max(1, Math.min(50, Math.floor(Number(raw.qty) || 0)));
+    // Weighed products and serial-numbered ones aren't on the customer menus, so one arriving here is skipped too.
+    if (!dish || dish.outOfStock || dish.sellBy !== "unit" || dish.trackSerials) continue;
+    const hasVariants = !!dish.variantOptions?.length;
+    const variant = raw.variantId ? liveVariants.find((v) => v.id === raw.variantId && v.dishId === dish.id && v.active) : undefined;
+    if (hasVariants && !variant) continue;
+    let qty = Math.max(1, Math.min(50, Math.floor(Number(raw.qty) || 0)));
     if (qty <= 0) continue;
-    const price = dish.channelPrices?.[channel] ?? dish.price;
+    const stockId = variant ? variant.inventoryItemId : dish.trackStock ? dish.inventoryItemId : null;
+    const name = variant ? `${dish.name} — ${variant.name}` : dish.name;
+    if (stockId && stock.has(stockId)) {
+      const left = Math.floor((stock.get(stockId) ?? 0) - (taken.get(stockId) ?? 0) + 1e-9);
+      if (left <= 0) {
+        unavailable.push(name);
+        continue;
+      }
+      qty = Math.min(qty, left);
+      taken.set(stockId, (taken.get(stockId) ?? 0) + qty);
+    }
+    const price = variant?.price ?? dish.channelPrices?.[channel] ?? dish.price;
     items.push({
       dishId: dish.id,
-      name: dish.name,
+      name,
       price,
       qty,
+      ...(variant ? { variantId: variant.id } : {}),
       note: raw.note?.trim().slice(0, 200) || undefined,
       lineId: crypto.randomUUID(),
     });
   }
-  return items;
+  return { items, unavailable };
 }
 
 interface PublicOrderRow {
   restaurantId: string;
   placedVia: "online" | "kiosk";
   createdByName: string;
-  channel: "Dine in" | "Take Away";
+  channel: PlacePublicOrderInput["channel"];
   tableId: string | null;
   tableNumber: number | null;
   guests: number;
   items: OrderItem[];
   customerName: string;
   customerPhone: string;
+  customerAddress?: string | null;
   loyaltyMemberId: string | null;
 }
 
@@ -192,6 +231,7 @@ async function insertPublicOrder(row: PublicOrderRow) {
     paymentMethod: null,
     customerName: row.customerName,
     customerPhone: row.customerPhone,
+    customerAddress: row.customerAddress ?? null,
     loyaltyMemberId: row.loyaltyMemberId,
     placedVia: row.placedVia,
     createdByUserId: null,
@@ -247,7 +287,7 @@ export async function placeTableQrOrderAction(input: PlaceTableQrOrderInput): Pr
     return { error: isEmail ? "That email doesn't look right." : "That phone number doesn't look right." };
   }
 
-  const items = await buildItemsFromLiveMenu(restaurant.id, input.items, "Dine in");
+  const items = (await buildItemsFromLiveMenu(restaurant.id, input.items, "Dine in")).items;
   if (items.length === 0) return { error: "None of the items in your cart are available anymore." };
 
   const recentForTable = await db

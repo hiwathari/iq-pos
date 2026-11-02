@@ -3,7 +3,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
-import { dishes, inventoryItems, orders, purchaseOrderLines, purchaseOrders, stockCounts, suppliers } from "@/db/schema";
+import { dishes, inventoryItems, orders, purchaseOrderLines, purchaseOrders, serialNumbers, stockCounts, suppliers } from "@/db/schema";
 import { assertPermission, requireRestaurantContext } from "@/lib/scope";
 import { findInventoryItem, listLowStockItems } from "@/lib/data/inventory";
 import { listMovements, type MovementRow } from "@/lib/data/stock";
@@ -147,6 +147,8 @@ export interface GoodsInLine {
   itemId: string;
   qty: number;
   cost?: number | null;
+  // Products that track serial / IMEI numbers (step 5.2): one per unit received.
+  serials?: string[];
 }
 
 export interface GoodsInInput {
@@ -171,6 +173,31 @@ export async function receiveStockAction(input: GoodsInInput): Promise<Inventory
     .where(and(eq(inventoryItems.restaurantId, restaurantId), inArray(inventoryItems.id, [...new Set(lines.map((l) => l.itemId))])));
   const byId = new Map(items.map((i) => [i.id, i]));
   if (lines.some((l) => !byId.has(l.itemId))) return { error: "One of those items no longer exists." };
+
+  // Serial-tracked products need exactly one serial per unit, none already on record.
+  const dishIdsOfItems = [...new Set(items.map((i) => i.dishId).filter((d): d is string => !!d))];
+  const trackedDishes = new Set(
+    dishIdsOfItems.length
+      ? (await db.select({ id: dishes.id }).from(dishes).where(and(eq(dishes.restaurantId, restaurantId), inArray(dishes.id, dishIdsOfItems), eq(dishes.trackSerials, true)))).map((d) => d.id)
+      : []
+  );
+  const newSerials: { dishId: string; variantId: string | null; serial: string }[] = [];
+  for (const l of lines) {
+    const item = byId.get(l.itemId)!;
+    if (!item.dishId || !trackedDishes.has(item.dishId)) continue;
+    const serials = [...new Set((l.serials ?? []).map((s) => String(s).trim()).filter(Boolean))];
+    if (serials.length !== Math.round(Number(l.qty))) return { error: `${item.name}: enter one serial number for each of the ${Math.round(Number(l.qty))} received (${serials.length} given).` };
+    for (const serial of serials) newSerials.push({ dishId: item.dishId, variantId: item.variantId, serial });
+  }
+  if (newSerials.length) {
+    if (new Set(newSerials.map((s) => s.serial)).size !== newSerials.length) return { error: "The same serial number is on this delivery twice." };
+    const clash = await db
+      .select({ serial: serialNumbers.serial })
+      .from(serialNumbers)
+      .where(and(eq(serialNumbers.restaurantId, restaurantId), inArray(serialNumbers.serial, newSerials.map((s) => s.serial))))
+      .limit(1);
+    if (clash[0]) return { error: `Serial ${clash[0].serial} is already on record.` };
+  }
 
   let po: typeof purchaseOrders.$inferSelect | null = null;
   if (input.purchaseOrderId) {
@@ -202,6 +229,12 @@ export async function receiveStockAction(input: GoodsInInput): Promise<Inventory
     note,
     unitCosts: costByItem,
   });
+  if (newSerials.length) {
+    const receivedAt = Date.now();
+    for (let at = 0; at < newSerials.length; at += 100) {
+      await db.insert(serialNumbers).values(newSerials.slice(at, at + 100).map((s) => ({ restaurantId, ...s, status: "in_stock" as const, receivedAt })));
+    }
+  }
   for (const [itemId, cost] of costByItem) {
     const item = byId.get(itemId)!;
     await db.update(inventoryItems).set({ costPrice: cost }).where(eq(inventoryItems.id, itemId));

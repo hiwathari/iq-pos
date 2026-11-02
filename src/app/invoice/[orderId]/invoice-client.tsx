@@ -118,6 +118,8 @@ export function InvoiceClient({
               <div className="font-medium text-neutral-800">
                 {qtyPrefix(item)} {item.name}
               </div>
+              {item.serials && item.serials.length > 0 && <div className="font-mono text-xs text-neutral-400">S/N {item.serials.join(", ")}</div>}
+              {item.promo && <div className="text-xs font-medium text-emerald-600">{item.promo.name} · saved {formatMoney(item.promo.saving, currencySymbol)}</div>}
               {item.note && <div className="text-xs italic text-neutral-400">↳ {item.note}</div>}
             </div>
             <div className="font-semibold text-neutral-800">{formatMoney(lineTotal(item), currencySymbol)}</div>

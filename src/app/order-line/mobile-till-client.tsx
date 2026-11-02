@@ -97,6 +97,7 @@ export function MobileTillClient({
   barcodesByDish,
   embeddedFormats,
   promotions = [],
+  variantsByDish = {},
 }: {
   categories: Category[];
   dishes: Dish[];
@@ -114,6 +115,7 @@ export function MobileTillClient({
   barcodesByDish: Record<string, { code: string; packQty: number }[]>;
   embeddedFormats: EmbeddedFormat[];
   promotions?: PromotionDef[];
+  variantsByDish?: Record<string, unknown[]>;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -209,6 +211,11 @@ export function MobileTillClient({
   // weighing; counted products add up on one line.
   function addToCart(dish: Dish, opts: { qty?: number; packQty?: number; fixedTotal?: number; ageCheck?: OrderItem["ageCheck"] } = {}) {
     if (dish.outOfStock) return;
+    // Sizes / colours and serial numbers need the full Till's pickers.
+    if ((variantsByDish[dish.id]?.length ?? 0) > 0 || dish.trackSerials) {
+      alert(`${dish.name} comes in options or needs a serial number — sell it on the full Till (tap "Full Till").`);
+      return;
+    }
     const approved = opts.ageCheck ?? cart.items.find((i) => i.ageCheck && i.ageCheck.minAge >= (dish.minAge ?? 0))?.ageCheck;
     if (dish.minAge && !approved) {
       setAgeFor({ dish, opts });

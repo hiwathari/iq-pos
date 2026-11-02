@@ -9,6 +9,8 @@ import type {
   paymentTerminals,
   pettyCashEntries,
   productBarcodes,
+  productVariants,
+  serialNumbers,
   refunds,
   printers,
   reservations,
@@ -62,6 +64,8 @@ export type InventoryItem = typeof inventoryItems.$inferSelect;
 export type StockMovement = typeof stockMovements.$inferSelect;
 export type ProductBarcode = typeof productBarcodes.$inferSelect;
 export type Refund = typeof refunds.$inferSelect;
+export type ProductVariant = typeof productVariants.$inferSelect;
+export type SerialNumber = typeof serialNumbers.$inferSelect;
 export type Supplier = typeof suppliers.$inferSelect;
 export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
 export type PurchaseOrderLine = typeof purchaseOrderLines.$inferSelect;
@@ -114,6 +118,11 @@ export interface OrderItem {
   // A promotion (step 5.3) priced this line: `fixedTotal` holds the promotional total and `saving`
   // what it took off. Always recomputed by the server, never trusted from the client.
   promo?: { id: string; name: string; saving: number };
+  // A size / colour of the product (step 5.1): `dishId` stays the product, `name` already reads
+  // "Oxford shirt — M / Blue". Stock comes off that variant's own stock item.
+  variantId?: string;
+  // Serial / IMEI numbers sold on this line (step 5.2), one per unit.
+  serials?: string[];
 }
 
 export interface PaymentLine {

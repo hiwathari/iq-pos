@@ -126,6 +126,7 @@ export interface SunmiTicketItem {
   fixedTotal?: number;
   // A promotion priced this line (step 5.3) — printed under it.
   promo?: { name: string; saving: number };
+  serials?: string[];
 }
 
 // Items grouped by their menu category, in the order they should print — built by the caller
@@ -232,6 +233,7 @@ export async function buildEscPosTicket(t: SunmiTicketData): Promise<{ hex: stri
       } else {
         bytes.push(...moneyRow(first, money(lineTotal(item))));
       }
+      if (item.serials?.length) bytes.push(...textBytes(`  S/N ${item.serials.join(", ")}`), ...feed());
       if (item.promo) bytes.push(...moneyRow(`  ${item.promo.name}`, `-${money(item.promo.saving)}`));
       if (item.note) bytes.push(...textBytes(`  > ${item.note}`), ...feed());
     }

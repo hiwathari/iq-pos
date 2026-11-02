@@ -10,7 +10,7 @@ export interface TicketData {
   createdAt: number;
   tableNumber: number | null;
   channel: string;
-  items: { name: string; qty: number; price: number; note?: string; sellBy?: string; unit?: string; fixedTotal?: number; promo?: { name: string; saving: number } }[];
+  items: { name: string; qty: number; price: number; note?: string; sellBy?: string; unit?: string; fixedTotal?: number; promo?: { name: string; saving: number }; serials?: string[] }[];
   subtotal: number;
   extraDiscount?: number;
   couponCode?: string;
@@ -51,7 +51,7 @@ export async function printTicket(ticket: TicketData) {
   const rows = ticket.items
     .map(
       (i) =>
-        `<tr><td>${escapeHtml(receiptLine(i, ticket.currencySymbol)[0])}${!ticket.gift && receiptLine(i, ticket.currencySymbol)[1] ? `<div class="note">${escapeHtml(receiptLine(i, ticket.currencySymbol)[1]!)}</div>` : ""}${!ticket.gift && i.promo ? `<div class="note">${escapeHtml(i.promo.name)} −${money(i.promo.saving)}</div>` : ""}${i.note ? `<div class="note">↳ ${escapeHtml(i.note)}</div>` : ""}</td>${ticket.gift ? "" : `<td class="right">${money(lineTotal(i))}</td>`}</tr>`
+        `<tr><td>${escapeHtml(receiptLine(i, ticket.currencySymbol)[0])}${!ticket.gift && receiptLine(i, ticket.currencySymbol)[1] ? `<div class="note">${escapeHtml(receiptLine(i, ticket.currencySymbol)[1]!)}</div>` : ""}${i.serials?.length ? `<div class="note">S/N ${escapeHtml(i.serials.join(", "))}</div>` : ""}${!ticket.gift && i.promo ? `<div class="note">${escapeHtml(i.promo.name)} −${money(i.promo.saving)}</div>` : ""}${i.note ? `<div class="note">↳ ${escapeHtml(i.note)}</div>` : ""}</td>${ticket.gift ? "" : `<td class="right">${money(lineTotal(i))}</td>`}</tr>`
     )
     .join("");
 
@@ -142,7 +142,7 @@ export async function printTicket(ticket: TicketData) {
       : ""
   }
   ${
-    qrDataUrl
+    qrDataUrl && !ticket.gift
       ? `<div class="qr-wrap"><img src="${qrDataUrl}" alt="QR code" />${
           ticket.invoiceUrl ? `<div class="qr-caption">Scan for a digital copy</div>` : ""
         }</div>`

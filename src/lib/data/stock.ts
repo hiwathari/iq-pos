@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db/client";
-import { categories, dishes, inventoryItems, productBarcodes, purchaseOrderLines, purchaseOrders, stockMovements, suppliers } from "@/db/schema";
+import { categories, dishes, inventoryItems, productBarcodes, productVariants, purchaseOrderLines, purchaseOrders, stockMovements, suppliers } from "@/db/schema";
 
 // Stock screen data (docs/retail-plan step 4.1): every stock item with the product it belongs to
 // (SKU, barcodes, category), its supplier, value at cost and when it last changed.
@@ -17,6 +17,7 @@ export interface StockRow {
   supplierId: string | null;
   supplierName: string | null;
   dishId: string | null;
+  trackSerials: boolean;
   sku: string | null;
   categoryId: string | null;
   categoryName: string | null;
@@ -27,15 +28,15 @@ export interface StockRow {
 }
 
 export async function listStockRows(restaurantId: string): Promise<StockRow[]> {
-  const [items, dishRows, bcRows, supplierRows, lastRows] = await Promise.all([
+  const [items, dishRows, bcRows, supplierRows, lastRows, variantRows] = await Promise.all([
     db.select().from(inventoryItems).where(eq(inventoryItems.restaurantId, restaurantId)).orderBy(asc(inventoryItems.name)),
     db
-      .select({ id: dishes.id, sku: dishes.sku, categoryId: dishes.categoryId, categoryName: categories.name, supplierId: dishes.supplierId })
+      .select({ id: dishes.id, sku: dishes.sku, categoryId: dishes.categoryId, categoryName: categories.name, supplierId: dishes.supplierId, trackSerials: dishes.trackSerials })
       .from(dishes)
       .leftJoin(categories, eq(categories.id, dishes.categoryId))
       .where(eq(dishes.restaurantId, restaurantId)),
     db
-      .select({ dishId: productBarcodes.dishId, code: productBarcodes.code, packQty: productBarcodes.packQty })
+      .select({ dishId: productBarcodes.dishId, variantId: productBarcodes.variantId, code: productBarcodes.code, packQty: productBarcodes.packQty })
       .from(productBarcodes)
       .where(eq(productBarcodes.restaurantId, restaurantId)),
     db.select({ id: suppliers.id, name: suppliers.name }).from(suppliers).where(eq(suppliers.restaurantId, restaurantId)),
@@ -44,17 +45,23 @@ export async function listStockRows(restaurantId: string): Promise<StockRow[]> {
       .from(stockMovements)
       .where(eq(stockMovements.restaurantId, restaurantId))
       .groupBy(stockMovements.inventoryItemId),
+    db.select({ id: productVariants.id, sku: productVariants.sku }).from(productVariants).where(eq(productVariants.restaurantId, restaurantId)),
   ]);
+  const variantSku = new Map(variantRows.map((v) => [v.id, v.sku]));
   const dishById = new Map(dishRows.map((d) => [d.id, d]));
   const supplierName = new Map(supplierRows.map((s) => [s.id, s.name]));
   const lastBy = new Map(lastRows.map((r) => [r.itemId, Number(r.last)]));
+  // Barcodes by owner: a variant's stock item gets its variant's codes, a plain product its own.
   const codesByDish = new Map<string, { code: string; packQty: number }[]>();
-  for (const b of bcRows) codesByDish.set(b.dishId, [...(codesByDish.get(b.dishId) ?? []), { code: b.code, packQty: b.packQty }]);
+  for (const b of bcRows) {
+    const key = b.variantId ?? b.dishId;
+    codesByDish.set(key, [...(codesByDish.get(key) ?? []), { code: b.code, packQty: b.packQty }]);
+  }
 
   return items.map((i) => {
     const dish = i.dishId ? dishById.get(i.dishId) : undefined;
     const supplierId = i.supplierId ?? dish?.supplierId ?? null;
-    const codes = i.dishId ? (codesByDish.get(i.dishId) ?? []) : [];
+    const codes = i.variantId ? (codesByDish.get(i.variantId) ?? []) : i.dishId ? (codesByDish.get(i.dishId) ?? []) : [];
     return {
       id: i.id,
       name: i.name,
@@ -67,7 +74,8 @@ export async function listStockRows(restaurantId: string): Promise<StockRow[]> {
       supplierId,
       supplierName: supplierId ? (supplierName.get(supplierId) ?? null) : null,
       dishId: i.dishId,
-      sku: dish?.sku ?? null,
+      trackSerials: !!dish?.trackSerials,
+      sku: (i.variantId ? variantSku.get(i.variantId) : null) ?? dish?.sku ?? null,
       categoryId: dish?.categoryId ?? null,
       categoryName: dish?.categoryName ?? null,
       barcodes: codes.map((c) => c.code),

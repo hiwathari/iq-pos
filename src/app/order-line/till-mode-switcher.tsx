@@ -6,6 +6,7 @@ import { MobileTillClient } from "./mobile-till-client";
 import type { Category, Dish, Order, OrderChannel, PaymentTerminal, RestaurantTable } from "@/lib/types";
 import type { EmbeddedFormat } from "@/lib/barcode";
 import type { PromotionDef } from "@/lib/promotions";
+import type { VariantLite } from "@/lib/variants";
 
 // A handheld runner's phone/mobile POS gets the simplified order-only Till; a counter tablet
 // or desktop gets the full one. Auto-detected from screen width on first load. Going back to
@@ -47,6 +48,7 @@ export function TillModeSwitcher({
   canAddProducts,
   canRefund,
   promotions = [],
+  variantsByDish = {},
 }: {
   categories: Category[];
   dishes: Dish[];
@@ -86,6 +88,7 @@ export function TillModeSwitcher({
   canAddProducts: boolean;
   canRefund: boolean;
   promotions?: PromotionDef[];
+  variantsByDish?: Record<string, VariantLite[]>;
 }) {
   const [mode, setMode] = useState<Mode | null>(null);
 
@@ -131,6 +134,7 @@ export function TillModeSwitcher({
         barcodesByDish={barcodesByDish}
         embeddedFormats={embeddedFormats}
         promotions={promotions}
+        variantsByDish={variantsByDish}
       />
     );
   }
@@ -167,6 +171,7 @@ export function TillModeSwitcher({
       canAddProducts={canAddProducts}
       canRefund={canRefund}
       promotions={promotions}
+      variantsByDish={variantsByDish}
     />
   );
 }

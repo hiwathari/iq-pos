@@ -17,6 +17,7 @@ import { businessDayStart } from "@/lib/business-day";
 import { TodaySales } from "@/components/today-sales";
 import { TillModeSwitcher } from "./till-mode-switcher";
 import { listActivePromotionDefs } from "@/lib/data/promotions";
+import { listVariantsByDish } from "@/lib/data/menu";
 
 export const metadata: Metadata = {
   title: "Till",
@@ -36,7 +37,7 @@ function currentBusinessDayStart(openTime: string | null, timezone: string) {
 export default async function OrderLinePage() {
   const { session, restaurantId } = await requirePermission("order-line");
 
-  const [categories, dishes, tables, orders, paymentTerminals, printers, restaurant, permissions, barcodesByDish, stockItems, promotions] = await Promise.all([
+  const [categories, dishes, tables, orders, paymentTerminals, printers, restaurant, permissions, barcodesByDish, stockItems, promotions, variantDetails] = await Promise.all([
     listCategories(restaurantId),
     listDishes(restaurantId),
     listTables(restaurantId),
@@ -48,7 +49,13 @@ export default async function OrderLinePage() {
     listBarcodesByDish(restaurantId),
     listInventoryItems(restaurantId),
     listActivePromotionDefs(restaurantId),
+    listVariantsByDish(restaurantId),
   ]);
+  const variantsByDish: Record<string, { id: string; name: string; price: number | null; qty: number | null; low: number }[]> = {};
+  for (const [dishId, list] of Object.entries(variantDetails)) {
+    const active = list.filter((v) => v.active).map((v) => ({ id: v.id, name: v.name, price: v.price, qty: v.qty, low: v.low }));
+    if (active.length) variantsByDish[dishId] = active;
+  }
   // "12 left" on Till tiles (docs/retail-plan step 3.8): only for products with their own stock.
   const stockByDish: Record<string, { qty: number; low: number; unit: string }> = {};
   for (const item of stockItems) {
@@ -113,6 +120,7 @@ export default async function OrderLinePage() {
         canAddProducts={hasPermission(session.role, permissions, "manage-dishes")}
         canRefund={hasPermission(session.role, permissions, "till-refund")}
         promotions={promotions}
+        variantsByDish={variantsByDish}
       />
     </AppShell>
   );

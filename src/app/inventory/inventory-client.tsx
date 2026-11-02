@@ -108,6 +108,9 @@ export function InventoryClient({
               <Link href="/inventory/reorder" className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50">
                 <Truck className="h-4 w-4" /> Reorder
               </Link>
+              <Link href="/inventory/serials" className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50">
+                <Search className="h-4 w-4" /> Serials
+              </Link>
               <Link href="/stocktake" className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50">
                 <ClipboardCheck className="h-4 w-4" /> Stocktake
               </Link>

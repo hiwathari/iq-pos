@@ -7,6 +7,7 @@ import { orders, restaurants, shifts } from "@/db/schema";
 import { summarizeShiftWindow } from "@/lib/data/shifts";
 import { adjustStockForEdit, returnStockForOrder } from "@/lib/stock";
 import { restoreStoreCredits } from "@/lib/data/store-credit";
+import { releaseSerials, serialsOf } from "@/lib/data/serials";
 import { assertPermission, requireRestaurantContext } from "@/lib/scope";
 import { ALL_CHANNELS, type OrderChannel, type OrderItem, type PaymentLine } from "@/lib/types";
 
@@ -224,6 +225,7 @@ export async function deleteOrderRecordAction(orderId: string): Promise<RecordAc
   if (order.status !== "Voided") {
     const used = (order.payments ?? []).filter((p) => p.creditCode).map((p) => ({ code: p.creditCode!, amount: p.amount }));
     if (used.length) await restoreStoreCredits(restaurantId, used);
+    await releaseSerials(restaurantId, serialsOf(order.items));
   }
   await db.delete(orders).where(eq(orders.id, orderId));
   await returnStockForOrder(restaurantId, order, { byName: session.name, note: `Order ${order.orderNumber} deleted in Sales Records` });

@@ -1,7 +1,10 @@
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { getRestaurantBySlug } from "@/lib/data/restaurants";
-import { listCategories, listOrderableDishes } from "@/lib/data/menu";
+import { listCategories, listOrderableDishes, listVariantsByDish } from "@/lib/data/menu";
+import { listInventoryItems } from "@/lib/data/inventory";
+import { listActivePromotionDefs } from "@/lib/data/promotions";
+import { businessProfile } from "@/lib/business-profile";
 import { listTables } from "@/lib/data/tables";
 import { findLoyaltyMemberById } from "@/lib/data/loyalty";
 import type { RestaurantTable } from "@/lib/types";
@@ -68,7 +71,23 @@ export default async function OnlineOrderPage({
     );
   }
 
-  const [categories, dishes] = await Promise.all([listCategories(restaurant.id), listOrderableDishes(restaurant.id)]);
+  // A shop (no tables): click & collect / delivery, variants, "x left" and promotions (step 5.6).
+  const profile = businessProfile(restaurant.businessType, restaurant.features);
+  const shopChannels = profile.channels.filter((c): c is "Click & collect" | "Delivery" => c === "Click & collect" || c === "Delivery");
+  const isShop = !profile.features.tables && shopChannels.length > 0;
+  const [categories, dishes] = await Promise.all([listCategories(restaurant.id), listOrderableDishes(restaurant.id, { withVariants: isShop })]);
+  let shop: React.ComponentProps<typeof OnlineOrderClient>["shop"];
+  if (isShop) {
+    const [variantDetails, stockItems, promotions] = await Promise.all([listVariantsByDish(restaurant.id), listInventoryItems(restaurant.id), listActivePromotionDefs(restaurant.id)]);
+    const variantsByDish: Record<string, { id: string; name: string; price: number | null; qty: number | null; low: number }[]> = {};
+    for (const [dishId, list] of Object.entries(variantDetails)) {
+      const active = list.filter((v) => v.active).map((v) => ({ id: v.id, name: v.name, price: v.price, qty: v.qty, low: v.low }));
+      if (active.length) variantsByDish[dishId] = active;
+    }
+    const stockByDish: Record<string, number> = {};
+    for (const it of stockItems) if (it.dishId && !it.variantId) stockByDish[it.dishId] = it.quantity;
+    shop = { channels: shopChannels, variantsByDish, stockByDish, promotions };
+  }
 
   let tables: RestaurantTable[] = [];
   let initialTableNumber: number | null = null;
@@ -91,6 +110,7 @@ export default async function OnlineOrderPage({
         tables={tables}
         initialTableNumber={initialTableNumber}
         loyaltyMember={{ code: loyaltyMember.code, name: loyaltyMember.name }}
+        shop={shop}
       />
     </div>
   );

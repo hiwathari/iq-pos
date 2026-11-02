@@ -15,6 +15,7 @@ export interface PickItem {
   sku?: string | null;
   costPrice?: number | null;
   supplierId?: string | null;
+  trackSerials?: boolean;
   barcodes?: { code: string; packQty: number }[];
 }
 

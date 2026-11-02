@@ -54,6 +54,9 @@ import { CameraScanner } from "./camera-scanner";
 import { RefundModal } from "./refund-modal";
 import { applyPromotions, stripPromo, type PromotionDef } from "@/lib/promotions";
 import { lookupStoreCreditAction } from "@/lib/actions/store-credit";
+import { VariantPicker } from "./variant-picker";
+import { SerialPicker } from "./serial-picker";
+import type { VariantLite } from "@/lib/variants";
 import {
   Minus,
   Plus,
@@ -279,6 +282,7 @@ export function OrderLineClient({
   canAddProducts,
   canRefund,
   promotions = [],
+  variantsByDish = {},
 }: {
   categories: Category[];
   dishes: Dish[];
@@ -305,7 +309,7 @@ export function OrderLineClient({
   channels: OrderChannel[];
   showTables: boolean;
   // Retail selling (docs/retail-plan Phase 3).
-  barcodesByDish: Record<string, { code: string; packQty: number }[]>;
+  barcodesByDish: Record<string, { code: string; packQty: number; variantId?: string }[]>;
   embeddedFormats: EmbeddedFormat[];
   stockByDish: Record<string, { qty: number; low: number; unit: string }>;
   stockMode: "allow" | "warn" | "block";
@@ -313,6 +317,8 @@ export function OrderLineClient({
   canAddProducts: boolean;
   canRefund: boolean;
   promotions?: PromotionDef[];
+  // Active variants (size / colour…) per product, with their own stock (step 5.1).
+  variantsByDish?: Record<string, VariantLite[]>;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -327,6 +333,8 @@ export function OrderLineClient({
   // lineId set when changing a line already in the basket), the Challenge 25 prompt, the
   // price-change popup, the camera scanner and the last scan's result.
   const [padFor, setPadFor] = useState<{ dish: Dish; mode: "weight" | "quantity"; lineId?: string; initialQty?: number; ageCheck?: OrderItem["ageCheck"] } | null>(null);
+  const [variantPick, setVariantPick] = useState<{ dish: Dish; opts: Parameters<typeof addToCart>[1] } | null>(null);
+  const [serialPick, setSerialPick] = useState<{ dish: Dish; variant?: VariantLite; ageCheck?: OrderItem["ageCheck"] } | null>(null);
   const [pendingAge, setPendingAge] = useState<{ dish: Dish; proceed: (check: NonNullable<OrderItem["ageCheck"]>) => void } | null>(null);
   const [priceOverrideFor, setPriceOverrideFor] = useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -618,15 +626,27 @@ export function OrderLineClient({
   // measured ones are always a line of their own.
   // Returns false when the product was refused (switched off, or out of stock in Block mode) —
   // a scan then shows that message instead of "Added".
-  function addToCart(dish: Dish, opts: { qty?: number; packQty?: number; fixedTotal?: number; fromScan?: boolean } = {}): boolean {
+  function addToCart(dish: Dish, opts: { qty?: number; packQty?: number; fixedTotal?: number; fromScan?: boolean; variantId?: string; serial?: string } = {}): boolean {
     if (dish.outOfStock) {
       if (opts.fromScan) setScanNotice({ kind: "error", text: `${dish.name} is marked as sold out.` });
       return false;
     }
     const measured = dish.sellBy !== "unit";
-    const stock = stockByDish[dish.id];
+    // Products with variants (step 5.1): the size / colour must be chosen first — by the picker,
+    // or already known from a scanned variant barcode.
+    const variants = variantsByDish[dish.id];
+    let variant: VariantLite | undefined;
+    if (variants && variants.length > 0) {
+      variant = opts.variantId ? variants.find((v) => v.id === opts.variantId) : undefined;
+      if (!variant) {
+        setVariantPick({ dish, opts });
+        return true;
+      }
+    }
+    const stock = variant ? (variant.qty != null ? { qty: variant.qty, low: variant.low, unit: "pcs" } : undefined) : stockByDish[dish.id];
+    const inBasketNow = variant ? cart.items.filter((i) => i.variantId === variant.id).reduce((s, i) => s + i.qty, 0) : qtyFor(dish.id);
     const wanted = opts.qty ?? opts.packQty ?? 1;
-    if (stock && stockMode === "block" && stock.qty - qtyFor(dish.id) - (measured ? 0 : wanted) < -1e-9) {
+    if (stock && stockMode === "block" && stock.qty - inBasketNow - (measured ? 0 : wanted) < -1e-9) {
       const left = formatQty(Math.max(0, stock.qty), stock.unit, measured ? dish.sellBy : "unit");
       const text = stock.qty <= 1e-9 ? `${dish.name} is out of stock.` : `${dish.name}: only ${left} in stock.`;
       if (opts.fromScan) setScanNotice({ kind: "error", text });
@@ -639,7 +659,12 @@ export function OrderLineClient({
         setPadFor({ dish, mode: "weight", ageCheck });
         return;
       }
-      addLine(dish, { qty: opts.qty, packQty: opts.packQty, fixedTotal: opts.fixedTotal, ageCheck });
+      // Serial / IMEI products (step 5.2) need the unit being sold chosen first.
+      if (dish.trackSerials && opts.serial == null) {
+        setSerialPick({ dish, variant, ageCheck });
+        return;
+      }
+      addLine(dish, { qty: opts.qty, packQty: opts.packQty, fixedTotal: opts.fixedTotal, ageCheck, variant, serial: opts.serial });
     };
     const alreadyApproved = cart.items.find((i) => i.ageCheck && i.ageCheck.minAge >= (dish.minAge ?? 0));
     if (dish.minAge && !alreadyApproved) {
@@ -650,14 +675,14 @@ export function OrderLineClient({
     return true;
   }
 
-  function addLine(dish: Dish, opts: { qty?: number; packQty?: number; fixedTotal?: number; ageCheck?: OrderItem["ageCheck"] }) {
+  function addLine(dish: Dish, opts: { qty?: number; packQty?: number; fixedTotal?: number; ageCheck?: OrderItem["ageCheck"]; variant?: VariantLite; serial?: string }) {
     const measured = dish.sellBy !== "unit";
     setCart((prev) => {
       // Only merges into an existing line for this dish if that line has no note — a line that
       // already carries a comment (e.g. "no onions") never silently absorbs another tap and becomes
       // "2x" with one shared note. A second, distinctly-commented order of the same dish gets its
       // own line instead, each keeping its own note. Weighed and price-labelled lines never merge.
-      const existing = !measured && opts.fixedTotal == null ? prev.items.find((i) => i.dishId === dish.id && !i.note && i.fixedTotal == null && !i.priceOverride) : undefined;
+      const existing = !measured && opts.fixedTotal == null && !opts.serial ? prev.items.find((i) => i.dishId === dish.id && i.variantId === opts.variant?.id && !i.note && i.fixedTotal == null && !i.priceOverride && !i.serials?.length) : undefined;
       const add = opts.qty ?? opts.packQty ?? 1;
       if (existing) {
         return { ...prev, items: prev.items.map((i) => (i.lineId === existing.lineId ? { ...i, qty: i.qty + add } : i)) };
@@ -668,9 +693,11 @@ export function OrderLineClient({
           ...prev.items,
           {
             dishId: dish.id,
-            name: dish.name,
-            price: priceFor(dish),
-            qty: add,
+            name: opts.variant ? `${dish.name} — ${opts.variant.name}` : dish.name,
+            price: opts.variant?.price ?? priceFor(dish),
+            qty: opts.serial ? 1 : add,
+            ...(opts.variant ? { variantId: opts.variant.id } : {}),
+            ...(opts.serial ? { serials: [opts.serial] } : {}),
             lineId: crypto.randomUUID(),
             taxRate: taxRateFor(dish),
             ...(measured ? { sellBy: dish.sellBy, unit: dish.unit } : dish.unit !== "each" ? { unit: dish.unit } : {}),
@@ -685,8 +712,8 @@ export function OrderLineClient({
   // A scanned code (hardware scanner, camera, or typed into the search box): product barcode →
   // scale label (price / weight inside the code) → SKU. docs/retail-plan steps 3.1–3.2.
   const barcodeIndex = useMemo(() => {
-    const m = new Map<string, { dish: Dish; packQty: number }>();
-    for (const d of dishes) for (const b of barcodesByDish[d.id] ?? []) m.set(b.code, { dish: d, packQty: b.packQty });
+    const m = new Map<string, { dish: Dish; packQty: number; variantId?: string }>();
+    for (const d of dishes) for (const b of barcodesByDish[d.id] ?? []) m.set(b.code, { dish: d, packQty: b.packQty, variantId: b.variantId });
     return m;
   }, [dishes, barcodesByDish]);
 
@@ -695,7 +722,7 @@ export function OrderLineClient({
     const hit = barcodeIndex.get(code);
     if (hit) {
       setView("order");
-      if (addToCart(hit.dish, { packQty: hit.packQty, fromScan: true })) {
+      if (addToCart(hit.dish, { packQty: hit.packQty, fromScan: true, variantId: hit.variantId })) {
         setScanNotice({ kind: "ok", text: `Added — ${hit.dish.name}${hit.packQty !== 1 ? ` × ${hit.packQty}` : ""}` });
         beep(true);
       } else beep(false);
@@ -1620,6 +1647,36 @@ export function OrderLineClient({
           onClose={() => setPadFor(null)}
         />
       )}
+      {variantPick && (
+        <VariantPicker
+          name={variantPick.dish.name}
+          variants={variantsByDish[variantPick.dish.id] ?? []}
+          basePrice={priceFor(variantPick.dish)}
+          currencySymbol={currencySymbol}
+          blockEmpty={stockMode === "block"}
+          inBasket={(vid) => cart.items.filter((i) => i.variantId === vid).reduce((s, i) => s + i.qty, 0)}
+          onClose={() => setVariantPick(null)}
+          onPick={(v) => {
+            const pick = variantPick;
+            setVariantPick(null);
+            addToCart(pick.dish, { ...pick.opts, variantId: v.id });
+          }}
+        />
+      )}
+      {serialPick && (
+        <SerialPicker
+          name={serialPick.variant ? `${serialPick.dish.name} — ${serialPick.variant.name}` : serialPick.dish.name}
+          dishId={serialPick.dish.id}
+          variantId={serialPick.variant?.id}
+          taken={cart.items.flatMap((i) => i.serials ?? [])}
+          onClose={() => setSerialPick(null)}
+          onPick={(serial) => {
+            const pick = serialPick;
+            setSerialPick(null);
+            addLine(pick.dish, { ageCheck: pick.ageCheck, variant: pick.variant, serial });
+          }}
+        />
+      )}
       {pendingAge && (
         <AgeCheckModal
           productName={pendingAge.dish.name}
@@ -2248,6 +2305,7 @@ function CartPanel({
                       {item.name}
                       {item.ageCheck && <span className="ml-1.5 rounded bg-amber-100 px-1 text-[10px] font-bold text-amber-800">{item.ageCheck.minAge}+ ✓</span>}
                     </span>
+                    {item.serials && item.serials.length > 0 && <span className="block truncate font-mono text-xs text-neutral-400">S/N {item.serials.join(", ")}</span>}
                     {item.promo && (
                       <span className="block truncate text-xs font-medium text-emerald-600">
                         {item.promo.name} · saves {formatMoney(item.promo.saving, currencySymbol)}
