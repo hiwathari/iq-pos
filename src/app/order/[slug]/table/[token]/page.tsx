@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { getRestaurantBySlug } from "@/lib/data/restaurants";
-import { listCategories, listDishes } from "@/lib/data/menu";
+import { listCategories, listOrderableDishes } from "@/lib/data/menu";
 import { resolveTableQrToken } from "@/lib/table-qr-token";
 import { brandCssVars } from "@/lib/color";
 import { Logo } from "@/components/logo";
@@ -38,7 +38,7 @@ export default async function TableQrOrderPage({ params }: { params: Promise<{ s
     );
   }
 
-  const [categories, dishes] = await Promise.all([listCategories(restaurant.id), listDishes(restaurant.id)]);
+  const [categories, dishes] = await Promise.all([listCategories(restaurant.id), listOrderableDishes(restaurant.id)]);
 
   return (
     <div style={brandStyle}>

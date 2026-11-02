@@ -30,6 +30,9 @@ export interface StockChangeOptions {
   referenceId?: string | null;
   byName?: string | null;
   note?: string | null;
+  // Cost per unit for each item, recorded on the movement (goods in, stocktake) so stock history
+  // and loss reports can value it.
+  unitCosts?: Map<string, number>;
 }
 
 // changes: inventory item id → signed amount (+ in, − out). Zero entries are skipped.
@@ -52,6 +55,7 @@ export async function applyStockChanges(restaurantId: string, changes: Map<strin
       reason: opts.reason,
       referenceId: opts.referenceId ?? null,
       note: opts.note ?? null,
+      unitCost: opts.unitCosts?.get(inventoryItemId) ?? null,
       createdByName: opts.byName ?? null,
     });
   }

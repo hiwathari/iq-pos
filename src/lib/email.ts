@@ -67,3 +67,60 @@ export async function sendLoyaltyMagicLinkEmail(input: { to: string; restaurantN
     console.error(`[magic-link] Resend failed to send to ${input.to} from ${from}:`, error);
   }
 }
+
+// A purchase order to a supplier (docs/retail-plan step 4.5). Sent as the business, like the
+// loyalty emails. Returns false when nothing was sent (no email provider configured or Resend
+// refused it), so the screen can say so instead of marking the order as emailed.
+export async function sendPurchaseOrderEmail(input: {
+  to: string;
+  businessName: string;
+  number: string;
+  supplierName: string;
+  expected?: string | null;
+  notes?: string | null;
+  currencySymbol: string;
+  lines: { name: string; supplierCode?: string | null; qty: number; unit: string; unitCost?: number | null }[];
+  total?: number | null;
+}): Promise<boolean> {
+  if (!resend) {
+    console.log(`[purchase-order] RESEND_API_KEY not set — ${input.number} for ${input.to} not emailed`);
+    return false;
+  }
+  const from = `${sanitizeDisplayName(input.businessName)} <${emailLocalPart(input.businessName)}@${SENDING_DOMAIN}>`;
+  const money = (n: number) => `${input.currencySymbol}${n.toFixed(2)}`;
+  const rows = input.lines
+    .map(
+      (l) => `<tr>
+        <td style="padding:6px 10px;border-bottom:1px solid #eee">${escapeHtml(l.name)}${l.supplierCode ? ` <span style="color:#888">(${escapeHtml(l.supplierCode)})</span>` : ""}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right">${Math.round(l.qty * 1000) / 1000} ${escapeHtml(l.unit)}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right">${l.unitCost != null ? money(l.unitCost) : ""}</td>
+      </tr>`
+    )
+    .join("");
+  const { error } = await resend.emails.send({
+    from,
+    to: input.to,
+    subject: `Purchase order ${input.number} from ${input.businessName}`,
+    html: `
+      <p>Hello ${escapeHtml(input.supplierName)},</p>
+      <p>Please supply the following — purchase order <strong>${escapeHtml(input.number)}</strong> from ${escapeHtml(input.businessName)}${
+        input.expected ? `, wanted by <strong>${escapeHtml(input.expected)}</strong>` : ""
+      }.</p>
+      <table style="border-collapse:collapse;font-size:14px;min-width:360px">
+        <thead><tr style="text-align:left;color:#666"><th style="padding:6px 10px">Item</th><th style="padding:6px 10px;text-align:right">Quantity</th><th style="padding:6px 10px;text-align:right">Cost each</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      ${input.total != null ? `<p style="font-size:14px"><strong>Order total:</strong> ${money(input.total)}</p>` : ""}
+      ${input.notes ? `<p style="font-size:14px"><strong>Notes:</strong> ${escapeHtml(input.notes)}</p>` : ""}
+      <p style="margin-top:24px">
+        <img src="${APP_URL}/brand/iq-pos-logo.png" alt="IQ POS" width="20" height="20" style="vertical-align:middle;border:0" />
+        <span style="color:#aaa;font-size:11px;vertical-align:middle;margin-left:6px">Powered by IQ POS</span>
+      </p>
+    `,
+  });
+  if (error) {
+    console.error(`[purchase-order] Resend failed to send ${input.number} to ${input.to}:`, error);
+    return false;
+  }
+  return true;
+}

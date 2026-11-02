@@ -13,6 +13,7 @@ import {
 } from "@/lib/actions/sales-records";
 import { shiftDateKey } from "@/lib/business-day";
 import { ALL_CHANNELS, type Order, type OrderChannel, type Shift } from "@/lib/types";
+import { qtyPrefix } from "@/lib/units";
 import { formatMoney, formatOrderTimestamp, orderSequence, orderTotal, salesByTender, shiftTotals } from "@/lib/types";
 
 const CHANNELS: OrderChannel[] = ALL_CHANNELS;
@@ -238,8 +239,8 @@ export function SalesRecordsClient({
                         {o.tableNumber ? ` · T${String(o.tableNumber).padStart(2, "0")}` : ""}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3">{o.createdByName ?? "—"}</td>
-                      <td className="max-w-[180px] truncate px-4 py-3" title={o.items.map((i) => `${i.qty}x ${i.name}`).join(", ")}>
-                        {o.items.map((i) => `${i.qty}x ${i.name}`).join(", ")}
+                      <td className="max-w-[180px] truncate px-4 py-3" title={o.items.map((i) => `${qtyPrefix(i)} ${i.name}`).join(", ")}>
+                        {o.items.map((i) => `${qtyPrefix(i)} ${i.name}`).join(", ")}
                       </td>
                       <td className={`whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums ${voided ? "line-through" : "text-neutral-900"}`}>
                         {formatMoney(orderTotal(o), currencySymbol)}

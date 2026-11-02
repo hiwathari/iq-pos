@@ -3,7 +3,7 @@
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
-import { categories, dishes, inventoryItems, productBarcodes, restaurants } from "@/db/schema";
+import { categories, dishes, inventoryItems, productBarcodes, restaurants, suppliers } from "@/db/schema";
 import { assertPermission, requireRestaurantContext } from "@/lib/scope";
 import type { CategoryDisplayOverride } from "@/lib/types";
 import { checkBarcode, makeInternalEan13 } from "@/lib/barcode";
@@ -106,6 +106,11 @@ export interface DishInput {
   costPrice?: number | null;
   taxRateOverride?: number | null;
   minAge?: number | null;
+  // Item code a weighing scale prints inside its labels (step 3.2).
+  plu?: string;
+  // Who it's bought from, and their code for it (step 4.4).
+  supplierId?: string | null;
+  supplierCode?: string;
   barcodes?: { code: string; packQty: number }[];
   // Own stock (step 2.4): when on, the product gets its own stock item; stockQty sets how many
   // are in stock now (a change is logged as a count), lowStock its low-stock level.
@@ -135,6 +140,11 @@ async function normaliseDishInput(restaurantId: string, input: DishInput, dishId
   const unit = isUnitFor(sellBy, input.unit) ? input.unit : sellBy === "unit" ? "each" : sellBy === "weight" ? "kg" : sellBy === "volume" ? "l" : "m";
   const sku = String(input.sku ?? "").trim().slice(0, 64) || null;
   const taxRateOverride = optNum(input.taxRateOverride, 0, 100);
+  let supplierId: string | null = null;
+  if (input.supplierId) {
+    const [sup] = await db.select({ id: suppliers.id }).from(suppliers).where(and(eq(suppliers.id, input.supplierId), eq(suppliers.restaurantId, restaurantId))).limit(1);
+    supplierId = sup?.id ?? null;
+  }
   const minAge = input.minAge && MIN_AGES.includes(Number(input.minAge)) ? Number(input.minAge) : null;
 
   const seen = new Set<string>();
@@ -183,6 +193,9 @@ async function normaliseDishInput(restaurantId: string, input: DishInput, dishId
     costPrice: optNum(input.costPrice, 0, 1e6),
     taxRateOverride,
     minAge,
+    plu: String(input.plu ?? "").replace(/\D/g, "").slice(0, 6) || null,
+    supplierId,
+    supplierCode: String(input.supplierCode ?? "").trim().slice(0, 60) || null,
     trackStock: !!input.trackStock,
   };
   return { values, barcodes } as const;
@@ -198,7 +211,7 @@ async function saveBarcodes(restaurantId: string, dishId: string, barcodes: { co
 // tracking off unlinks it (the item and its history stay on the Inventory page).
 async function syncProductStock(
   restaurantId: string,
-  dish: { id: string; name: string; sellBy: SellBy; unit: string; costPrice: number | null; trackStock: boolean },
+  dish: { id: string; name: string; sellBy: SellBy; unit: string; costPrice: number | null; supplierId: string | null; trackStock: boolean },
   input: DishInput,
   byName: string
 ) {
@@ -217,12 +230,12 @@ async function syncProductStock(
   if (own) {
     await db
       .update(inventoryItems)
-      .set({ name: await freeItemName(restaurantId, dish.name, own.id), unit, lowStockThreshold: lowStock, costPrice: dish.costPrice })
+      .set({ name: await freeItemName(restaurantId, dish.name, own.id), unit, lowStockThreshold: lowStock, costPrice: dish.costPrice, supplierId: dish.supplierId })
       .where(eq(inventoryItems.id, own.id));
   } else {
     const [created] = await db
       .insert(inventoryItems)
-      .values({ restaurantId, name: await freeItemName(restaurantId, dish.name, null), unit, quantity: 0, lowStockThreshold: lowStock, dishId: dish.id, costPrice: dish.costPrice })
+      .values({ restaurantId, name: await freeItemName(restaurantId, dish.name, null), unit, quantity: 0, lowStockThreshold: lowStock, dishId: dish.id, costPrice: dish.costPrice, supplierId: dish.supplierId })
       .returning({ id: inventoryItems.id });
     itemId = created.id;
   }

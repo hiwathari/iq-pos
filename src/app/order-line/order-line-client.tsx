@@ -29,11 +29,11 @@ import { lookupLoyaltyMemberByCodeAction, lookupOrCreateLoyaltyMemberAction } fr
 import type { LoyaltyContactType } from "@/lib/types";
 import { freeTablesAction } from "@/lib/actions/tables";
 import { setDishStockAction } from "@/lib/actions/menu";
-import { printTicket } from "@/lib/print-ticket";
+import { printRefundSlip, printTicket } from "@/lib/print-ticket";
 import { buildTicketEscPosAction } from "@/lib/actions/local-print";
 import { printViaLocalBridge } from "@/lib/local-print-bridge";
 import { tableOrderQrDataUrl } from "@/lib/table-qr";
-import { unlockOrderAudio, playIncomingOrderAlert, playOrderReadyChime } from "@/lib/order-sounds";
+import { unlockOrderAudio, playIncomingOrderAlert, playOrderReadyChime, playScanBeep as beep } from "@/lib/order-sounds";
 import { SoundSettingsButton } from "@/components/sound-settings";
 import { useVisibleInterval } from "@/lib/use-visible-interval";
 import { startSumupChargeAction, pollSumupChargeAction, cancelSumupChargeAction } from "@/lib/actions/sumup";
@@ -42,6 +42,16 @@ import { businessDateKey, businessDayRange, businessDayStart, shiftDateKey } fro
 import { TableLayoutPicker } from "@/components/table-layout-picker";
 import { CategoryIconView } from "@/components/category-icon";
 import { FullscreenButton } from "@/components/fullscreen-button";
+import { canonicalCode, parseEmbedded, type EmbeddedFormat } from "@/lib/barcode";
+import { formatQty } from "@/lib/units";
+import { qtyPrefix } from "@/lib/units";
+import { useBarcodeScanner } from "@/lib/use-barcode-scanner";
+import { logAgeRefusalAction } from "@/lib/actions/age-checks";
+import { WeightPad } from "./weight-pad";
+import { AgeCheckModal } from "./age-check-modal";
+import { PriceOverrideModal } from "./price-override-modal";
+import { CameraScanner } from "./camera-scanner";
+import { RefundModal } from "./refund-modal";
 import {
   Minus,
   Plus,
@@ -79,6 +89,9 @@ import {
   ChevronDown,
   TicketPercent,
   Check,
+  Camera,
+  Tag,
+  RotateCcw,
 } from "lucide-react";
 
 // Ticket filter chips. Shops (no tables — see lib/business-profile.ts) get their own order types
@@ -151,7 +164,7 @@ function groupItemsByCategory(items: OrderItem[], dishes: Dish[], categories: Ca
   if (groups.has("Other")) ordered.push("Other");
   return ordered.map((categoryName) => ({
     categoryName,
-    items: groups.get(categoryName)!.map((i) => ({ name: i.name, qty: i.qty, price: i.price, note: i.note })),
+    items: groups.get(categoryName)!.map((i) => ({ name: i.name, qty: i.qty, price: i.price, note: i.note, sellBy: i.sellBy, unit: i.unit, fixedTotal: i.fixedTotal })),
   }));
 }
 
@@ -255,6 +268,13 @@ export function OrderLineClient({
   hasKitchen,
   channels,
   showTables,
+  barcodesByDish,
+  embeddedFormats,
+  stockByDish,
+  stockMode,
+  canOverridePrice,
+  canAddProducts,
+  canRefund,
 }: {
   categories: Category[];
   dishes: Dish[];
@@ -280,6 +300,14 @@ export function OrderLineClient({
   // business type (lib/business-profile.ts).
   channels: OrderChannel[];
   showTables: boolean;
+  // Retail selling (docs/retail-plan Phase 3).
+  barcodesByDish: Record<string, { code: string; packQty: number }[]>;
+  embeddedFormats: EmbeddedFormat[];
+  stockByDish: Record<string, { qty: number; low: number; unit: string }>;
+  stockMode: "allow" | "warn" | "block";
+  canOverridePrice: boolean;
+  canAddProducts: boolean;
+  canRefund: boolean;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -290,6 +318,15 @@ export function OrderLineClient({
   // Shown above the main button after placing: "block" stock errors (the sale didn't go
   // through, the cart is kept) or "warn" notices (it did). See the negative-stock setting.
   const [stockNotice, setStockNotice] = useState<{ kind: "error" | "warn"; text: string } | null>(null);
+  // Retail selling: the number pad (weight for measured products, quantity for counted ones —
+  // lineId set when changing a line already in the basket), the Challenge 25 prompt, the
+  // price-change popup, the camera scanner and the last scan's result.
+  const [padFor, setPadFor] = useState<{ dish: Dish; mode: "weight" | "quantity"; lineId?: string; initialQty?: number; ageCheck?: OrderItem["ageCheck"] } | null>(null);
+  const [pendingAge, setPendingAge] = useState<{ dish: Dish; proceed: (check: NonNullable<OrderItem["ageCheck"]>) => void } | null>(null);
+  const [priceOverrideFor, setPriceOverrideFor] = useState<string | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [refundOpen, setRefundOpen] = useState(false);
+  const [scanNotice, setScanNotice] = useState<{ kind: "ok" | "error"; text: string; code?: string } | null>(null);
 
   const [cart, setCart] = useState<CartState>(() => {
     const tableId = searchParams.get("tableId");
@@ -443,10 +480,15 @@ export function OrderLineClient({
   const menuDishes = useMemo(() => {
     const query = menuSearch.trim().toLowerCase();
     return dishes.filter((d) => {
-      if (query) return d.name.toLowerCase().includes(query);
+      if (query)
+        return (
+          d.name.toLowerCase().includes(query) ||
+          (d.sku ?? "").toLowerCase() === query ||
+          (barcodesByDish[d.id] ?? []).some((b) => b.code === query)
+        );
       return menuCategory === "all" || d.categoryId === menuCategory;
     });
-  }, [dishes, menuCategory, menuSearch]);
+  }, [dishes, menuCategory, menuSearch, barcodesByDish]);
 
   // Fully wrapped-up orders (served+paid) and voided ones from the selected business day, most
   // recent first — reviewing and reprinting past tickets without cluttering active views, or
@@ -549,28 +591,165 @@ export function OrderLineClient({
   const editingOrder = cart.editingOrderId ? orders.find((o) => o.id === cart.editingOrderId) : null;
   const paymentLocked = !!editingOrder && isOrderClosedOut(editingOrder) && !forcePaymentEdit;
 
-  // Only merges into an existing line for this dish if that line has no note — a line that
-  // already carries a comment (e.g. "no onions") never silently absorbs another tap and becomes
-  // "2x" with one shared note. A second, distinctly-commented order of the same dish gets its own
-  // line instead, each keeping its own note.
-  function addToCart(dish: Dish) {
-    if (dish.outOfStock) return;
+  // Adding a product goes through the checks a shop needs (docs/retail-plan Phase 3): stock
+  // ("block" mode stops at zero), the Challenge 25 prompt for age-restricted products (once per
+  // sale per age), then the weight pad for products sold by weight / volume / length — unless a
+  // quantity is already known (a scale label). Counted products merge into their plain line;
+  // measured ones are always a line of their own.
+  // Returns false when the product was refused (switched off, or out of stock in Block mode) —
+  // a scan then shows that message instead of "Added".
+  function addToCart(dish: Dish, opts: { qty?: number; packQty?: number; fixedTotal?: number; fromScan?: boolean } = {}): boolean {
+    if (dish.outOfStock) {
+      if (opts.fromScan) setScanNotice({ kind: "error", text: `${dish.name} is marked as sold out.` });
+      return false;
+    }
+    const measured = dish.sellBy !== "unit";
+    const stock = stockByDish[dish.id];
+    const wanted = opts.qty ?? opts.packQty ?? 1;
+    if (stock && stockMode === "block" && stock.qty - qtyFor(dish.id) - (measured ? 0 : wanted) < -1e-9) {
+      const left = formatQty(Math.max(0, stock.qty), stock.unit, measured ? dish.sellBy : "unit");
+      const text = stock.qty <= 1e-9 ? `${dish.name} is out of stock.` : `${dish.name}: only ${left} in stock.`;
+      if (opts.fromScan) setScanNotice({ kind: "error", text });
+      else setStockNotice({ kind: "error", text });
+      return false;
+    }
+    const continueAdd = (ageCheck?: OrderItem["ageCheck"]) => {
+      if (measured && opts.qty == null) {
+        // The age approval (if any) rides along to the line the pad adds.
+        setPadFor({ dish, mode: "weight", ageCheck });
+        return;
+      }
+      addLine(dish, { qty: opts.qty, packQty: opts.packQty, fixedTotal: opts.fixedTotal, ageCheck });
+    };
+    const alreadyApproved = cart.items.find((i) => i.ageCheck && i.ageCheck.minAge >= (dish.minAge ?? 0));
+    if (dish.minAge && !alreadyApproved) {
+      setPendingAge({ dish, proceed: (check) => continueAdd(check) });
+      return true;
+    }
+    continueAdd(dish.minAge ? alreadyApproved?.ageCheck : undefined);
+    return true;
+  }
+
+  function addLine(dish: Dish, opts: { qty?: number; packQty?: number; fixedTotal?: number; ageCheck?: OrderItem["ageCheck"] }) {
+    const measured = dish.sellBy !== "unit";
     setCart((prev) => {
-      const existing = prev.items.find((i) => i.dishId === dish.id && !i.note);
+      // Only merges into an existing line for this dish if that line has no note — a line that
+      // already carries a comment (e.g. "no onions") never silently absorbs another tap and becomes
+      // "2x" with one shared note. A second, distinctly-commented order of the same dish gets its
+      // own line instead, each keeping its own note. Weighed and price-labelled lines never merge.
+      const existing = !measured && opts.fixedTotal == null ? prev.items.find((i) => i.dishId === dish.id && !i.note && i.fixedTotal == null && !i.priceOverride) : undefined;
+      const add = opts.qty ?? opts.packQty ?? 1;
       if (existing) {
-        return {
-          ...prev,
-          items: prev.items.map((i) => (i.lineId === existing.lineId ? { ...i, qty: i.qty + 1 } : i)),
-        };
+        return { ...prev, items: prev.items.map((i) => (i.lineId === existing.lineId ? { ...i, qty: i.qty + add } : i)) };
       }
       return {
         ...prev,
         items: [
           ...prev.items,
-          { dishId: dish.id, name: dish.name, price: priceFor(dish), qty: 1, lineId: crypto.randomUUID(), taxRate: taxRateFor(dish) },
+          {
+            dishId: dish.id,
+            name: dish.name,
+            price: priceFor(dish),
+            qty: add,
+            lineId: crypto.randomUUID(),
+            taxRate: taxRateFor(dish),
+            ...(measured ? { sellBy: dish.sellBy, unit: dish.unit } : dish.unit !== "each" ? { unit: dish.unit } : {}),
+            ...(opts.fixedTotal != null ? { fixedTotal: opts.fixedTotal } : {}),
+            ...(opts.ageCheck ? { ageCheck: opts.ageCheck } : {}),
+          },
         ],
       };
     });
+  }
+
+  // A scanned code (hardware scanner, camera, or typed into the search box): product barcode →
+  // scale label (price / weight inside the code) → SKU. docs/retail-plan steps 3.1–3.2.
+  const barcodeIndex = useMemo(() => {
+    const m = new Map<string, { dish: Dish; packQty: number }>();
+    for (const d of dishes) for (const b of barcodesByDish[d.id] ?? []) m.set(b.code, { dish: d, packQty: b.packQty });
+    return m;
+  }, [dishes, barcodesByDish]);
+
+  function handleScan(raw: string) {
+    const code = canonicalCode(raw);
+    const hit = barcodeIndex.get(code);
+    if (hit) {
+      setView("order");
+      if (addToCart(hit.dish, { packQty: hit.packQty, fromScan: true })) {
+        setScanNotice({ kind: "ok", text: `Added — ${hit.dish.name}${hit.packQty !== 1 ? ` × ${hit.packQty}` : ""}` });
+        beep(true);
+      } else beep(false);
+      return;
+    }
+    const embedded = parseEmbedded(code, embeddedFormats);
+    const pluDish = embedded ? dishes.find((d) => d.plu && d.plu.replace(/^0+/, "") === embedded.plu.replace(/^0+/, "")) : undefined;
+    if (embedded && pluDish) {
+      setView("order");
+      let added = false;
+      if (embedded.weight != null) added = addToCart(pluDish, { qty: embedded.weight, fromScan: true });
+      else if (embedded.price != null) {
+        const qty = pluDish.sellBy !== "unit" && pluDish.price > 0 ? Math.round((embedded.price / pluDish.price) * 1000) / 1000 : 1;
+        added = addToCart(pluDish, { qty, fixedTotal: embedded.price, fromScan: true });
+      }
+      if (added) {
+        setScanNotice({ kind: "ok", text: `Added — ${pluDish.name}` });
+        beep(true);
+      } else beep(false);
+      return;
+    }
+    const bySku = dishes.find((d) => d.sku && d.sku.toLowerCase() === raw.trim().toLowerCase());
+    if (bySku) {
+      setView("order");
+      if (addToCart(bySku, { fromScan: true })) {
+        setScanNotice({ kind: "ok", text: `Added — ${bySku.name}` });
+        beep(true);
+      } else beep(false);
+      return;
+    }
+    setScanNotice({ kind: "error", text: `Barcode ${code} isn't on any product.`, code });
+    beep(false);
+  }
+  useBarcodeScanner(handleScan, !padFor && !pendingAge && !priceOverrideFor);
+  useEffect(() => {
+    if (!scanNotice || scanNotice.kind === "error") return;
+    const t = setTimeout(() => setScanNotice(null), 2500);
+    return () => clearTimeout(t);
+  }, [scanNotice]);
+
+  // Tap a line's quantity: the weight pad for a weighed line, the quantity pad otherwise.
+  function openLinePad(lineId: string) {
+    const item = cart.items.find((i) => (i.lineId ?? i.dishId) === lineId);
+    const dish = item ? dishes.find((d) => d.id === item.dishId) : undefined;
+    if (!item || item.fixedTotal != null) return;
+    const base = dish ?? ({ id: item.dishId, name: item.name, price: item.price, sellBy: item.sellBy ?? "unit", unit: item.unit ?? "each" } as Dish);
+    setPadFor({ dish: base, mode: item.sellBy && item.sellBy !== "unit" ? "weight" : "quantity", lineId, initialQty: item.qty });
+  }
+
+  function confirmPad(qty: number) {
+    if (!padFor) return;
+    if (padFor.lineId) {
+      setCart((prev) => ({ ...prev, items: prev.items.map((i) => ((i.lineId ?? i.dishId) === padFor.lineId ? { ...i, qty } : i)) }));
+    } else {
+      addLine(padFor.dish, { qty, ageCheck: padFor.ageCheck });
+    }
+    setPadFor(null);
+  }
+
+  function applyPriceOverride(lineId: string, price: number | null, reason?: string) {
+    setCart((prev) => ({
+      ...prev,
+      items: prev.items.map((i) => {
+        if ((i.lineId ?? i.dishId) !== lineId) return i;
+        const original = i.priceOverride?.original ?? i.price;
+        if (price === null) {
+          const rest = { ...i, price: original };
+          delete rest.priceOverride;
+          return rest;
+        }
+        return { ...i, price, priceOverride: { original, reason: reason ?? "", by: staffName } };
+      }),
+    }));
+    setPriceOverrideFor(null);
   }
 
   // Mirrors addToCart's targeting: shrinks the plain (note-less) line for this dish first, since
@@ -584,7 +763,7 @@ export function OrderLineClient({
       return {
         ...prev,
         items: prev.items
-          .map((i) => (i.lineId === target.lineId ? { ...i, qty: i.qty - 1 } : i))
+          .map((i) => (i.lineId === target.lineId ? { ...i, qty: i.sellBy && i.sellBy !== "unit" ? 0 : i.qty - 1 } : i))
           .filter((i) => i.qty > 0),
       };
     });
@@ -946,6 +1125,9 @@ export function OrderLineClient({
     hasKitchen,
     channels,
     emptyCart,
+    onEditLineQty: openLinePad,
+    onRefundClick: canRefund ? () => setRefundOpen(true) : undefined,
+    onPriceOverride: canOverridePrice ? (lineId: string) => setPriceOverrideFor(lineId) : undefined,
   };
 
   return (
@@ -1055,7 +1237,15 @@ export function OrderLineClient({
                     autoFocus
                     value={menuSearch}
                     onChange={(e) => setMenuSearch(e.target.value)}
-                    placeholder="Search dishes…"
+                    onKeyDown={(e) => {
+                      // Enter on a typed barcode / SKU adds it straight away.
+                      if (e.key === "Enter" && /^[\w-]{6,}$/.test(menuSearch.trim())) {
+                        handleScan(menuSearch.trim());
+                        setMenuSearch("");
+                      }
+                    }}
+                    data-scan-target="true"
+                    placeholder={channels.includes("Dine in") ? "Search dishes…" : "Search, or type a barcode…"}
                     className="w-full rounded-2xl border border-[var(--brand)] bg-white py-4 pl-12 pr-4 text-lg outline-none"
                   />
                 </div>
@@ -1084,6 +1274,16 @@ export function OrderLineClient({
                   <Search className="h-5 w-5" />
                   <span className="text-xs font-semibold">Search</span>
                 </button>
+                {!channels.includes("Dine in") && (
+                  <button
+                    onClick={() => setCameraOpen(true)}
+                    title="Scan a barcode with the camera"
+                    className="flex min-h-[76px] w-[76px] shrink-0 flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-neutral-300 bg-white text-neutral-500 hover:bg-neutral-50 active:scale-[0.97] 2xl:min-h-[92px] 2xl:w-[92px] [&>svg]:size-6"
+                  >
+                    <Camera className="h-5 w-5" />
+                    <span className="text-xs font-semibold">Camera</span>
+                  </button>
+                )}
                 <div className="-mr-1 flex min-w-0 flex-1 snap-x gap-2.5 overflow-x-auto pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [mask-image:linear-gradient(to_right,black_88%,transparent)]">
                   <CategoryBox active={menuCategory === "all"} label={channels.includes("Dine in") ? "All Menu" : "All Products"} icon="all" onClick={() => setMenuCategory("all")} />
                   {categories.map((c) => (
@@ -1158,6 +1358,9 @@ export function OrderLineClient({
                         {dish.sellBy !== "unit" && <span className="text-xs font-normal text-neutral-500"> / {dish.unit}</span>}
                         {price !== dish.price && <span className="ml-1 text-[10px] font-normal text-teal-600">({cart.channel})</span>}
                       </div>
+                      {stockByDish[dish.id] && !dish.outOfStock && (
+                        <StockLeft stock={stockByDish[dish.id]} sellBy={dish.sellBy} inBasket={qtyFor(dish.id)} />
+                      )}
                       {dish.outOfStock ? (
                         <span className="inline-block rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">Sold Out</span>
                       ) : (
@@ -1354,6 +1557,113 @@ export function OrderLineClient({
       {shareInvoiceOpen && cart.editingOrderId && (
         <ShareInvoiceModal orderId={cart.editingOrderId} onClose={() => setShareInvoiceOpen(false)} />
       )}
+      {padFor && (
+        <WeightPad
+          mode={padFor.mode}
+          name={padFor.dish.name}
+          unit={padFor.dish.unit}
+          price={padFor.lineId ? (cart.items.find((i) => (i.lineId ?? i.dishId) === padFor.lineId)?.price ?? priceFor(padFor.dish)) : priceFor(padFor.dish)}
+          initialQty={padFor.initialQty}
+          minQty={padFor.dish.minQty}
+          qtyStep={padFor.dish.qtyStep}
+          tare={padFor.dish.tare}
+          currencySymbol={currencySymbol}
+          onConfirm={confirmPad}
+          onClose={() => setPadFor(null)}
+        />
+      )}
+      {pendingAge && (
+        <AgeCheckModal
+          productName={pendingAge.dish.name}
+          minAge={pendingAge.dish.minAge ?? 18}
+          onApprove={(method) => {
+            const check = { minAge: pendingAge.dish.minAge ?? 18, method, by: staffName };
+            const proceed = pendingAge.proceed;
+            setPendingAge(null);
+            proceed(check);
+          }}
+          onRefuse={() => {
+            const dish = pendingAge.dish;
+            setPendingAge(null);
+            logAgeRefusalAction({ dishId: dish.id, productName: dish.name, minAge: dish.minAge ?? 18 }).catch(() => {});
+            setScanNotice({ kind: "error", text: `Sale of ${dish.name} refused — logged.` });
+          }}
+        />
+      )}
+      {priceOverrideFor &&
+        (() => {
+          const item = cart.items.find((i) => (i.lineId ?? i.dishId) === priceOverrideFor);
+          if (!item) return null;
+          return (
+            <PriceOverrideModal
+              name={item.name}
+              unitLabel={item.sellBy && item.sellBy !== "unit" ? `per ${item.unit}` : "each"}
+              original={item.priceOverride?.original ?? item.price}
+              current={item.price}
+              currencySymbol={currencySymbol}
+              onSave={(price, reason) => applyPriceOverride(priceOverrideFor, price, reason)}
+              onReset={() => applyPriceOverride(priceOverrideFor, null)}
+              onClose={() => setPriceOverrideFor(null)}
+            />
+          );
+        })()}
+      {cameraOpen && <CameraScanner onScan={handleScan} onClose={() => setCameraOpen(false)} />}
+      {refundOpen && editingOrder && (
+        <RefundModal
+          order={editingOrder}
+          paymentTerminals={paymentTerminals}
+          currencySymbol={currencySymbol}
+          onClose={() => setRefundOpen(false)}
+          onDone={(refund, reason) => {
+            setRefundOpen(false);
+            setScanNotice({ kind: "ok", text: `Refund ${refund.number}: ${formatMoney(refund.amount, currencySymbol)} to ${refund.method}` });
+            printRefundSlip({
+              restaurantName,
+              number: refund.number,
+              orderNumber: editingOrder.orderNumber,
+              createdAt: Date.now(),
+              method: refund.method,
+              amount: refund.amount,
+              reason,
+              staffName,
+              lines: refund.lines,
+              currencySymbol,
+            });
+            setCart(emptyCart);
+            router.refresh();
+          }}
+        />
+      )}
+      {scanNotice && (
+        <div
+          role="status"
+          className={`fixed left-1/2 top-4 z-[60] flex max-w-[92vw] -translate-x-1/2 items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold shadow-lg ${
+            scanNotice.kind === "ok" ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"
+          }`}
+        >
+          <span>{scanNotice.text}</span>
+          {scanNotice.code && canAddProducts && (
+            <a href={`/manage-dishes?newBarcode=${encodeURIComponent(scanNotice.code)}`} className="rounded-lg bg-white/20 px-2.5 py-1 hover:bg-white/30">
+              Add product
+            </a>
+          )}
+          {scanNotice.code && (
+            <button
+              type="button"
+              onClick={() => {
+                setScanNotice(null);
+                setCustomItemModalOpen(true);
+              }}
+              className="rounded-lg bg-white/20 px-2.5 py-1 hover:bg-white/30"
+            >
+              Sell as custom item
+            </button>
+          )}
+          <button type="button" onClick={() => setScanNotice(null)} aria-label="Dismiss" className="opacity-80 hover:opacity-100">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
       {customItemModalOpen && (
         <CustomItemModal
           onClose={() => setCustomItemModalOpen(false)}
@@ -1439,6 +1749,11 @@ interface CartPanelProps {
   hasKitchen: boolean;
   channels: OrderChannel[];
   emptyCart: CartState;
+  // Tap a line's quantity (weight pad / quantity pad), and change its price (managers).
+  onEditLineQty: (lineId: string) => void;
+  onPriceOverride?: (lineId: string) => void;
+  // Shown on a paid sale for staff allowed to refund (docs/retail-plan step 3.7).
+  onRefundClick?: () => void;
 }
 
 function CartPanel({
@@ -1490,6 +1805,9 @@ function CartPanel({
   hasKitchen,
   channels,
   emptyCart,
+  onEditLineQty,
+  onPriceOverride,
+  onRefundClick,
 }: CartPanelProps) {
   const canManageTable = !!cart.editingOrderId && !!cart.tableId && editingOrder?.status !== "Voided";
   // onPaid is set when the charge was started from the Split popup, so it can mark that share paid.
@@ -1855,11 +2173,42 @@ function CartPanel({
             <div key={lineId}>
               <div className="flex min-h-10 items-center justify-between gap-2 text-[15px] 2xl:text-base">
                 <div className="flex min-w-0 items-center gap-2">
-                  <span className="shrink-0 font-semibold text-teal-600">{item.qty}x</span>
-                  <span className="truncate text-neutral-700">{item.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => onEditLineQty(lineId)}
+                    disabled={item.fixedTotal != null}
+                    title={item.sellBy && item.sellBy !== "unit" ? "Change the weight" : "Type a quantity"}
+                    className="shrink-0 rounded-md px-1 font-semibold text-teal-600 hover:bg-teal-50 disabled:hover:bg-transparent"
+                  >
+                    {item.sellBy && item.sellBy !== "unit" ? formatQty(item.qty, item.unit, item.sellBy) : `${item.qty}x`}
+                  </button>
+                  <span className="min-w-0">
+                    <span className="block truncate text-neutral-700">
+                      {item.name}
+                      {item.ageCheck && <span className="ml-1.5 rounded bg-amber-100 px-1 text-[10px] font-bold text-amber-800">{item.ageCheck.minAge}+ ✓</span>}
+                    </span>
+                    {(item.sellBy && item.sellBy !== "unit") || item.priceOverride ? (
+                      <span className="block truncate text-xs text-neutral-400">
+                        {item.priceOverride && <s className="mr-1">{formatMoney(item.priceOverride.original, currencySymbol)}</s>}
+                        {item.sellBy && item.sellBy !== "unit" ? `@ ${formatMoney(item.price, currencySymbol)}/${item.unit}` : formatMoney(item.price, currencySymbol)}
+                        {item.priceOverride && <span className="ml-1 text-amber-600">{item.priceOverride.reason}</span>}
+                        {item.fixedTotal != null && <span className="ml-1">· label price</span>}
+                      </span>
+                    ) : null}
+                  </span>
                 </div>
                 <div className="flex shrink-0 items-center">
                   <span className="mr-0.5 font-semibold text-neutral-800">{formatMoney(lineTotal(item), currencySymbol)}</span>
+                  {onPriceOverride && item.fixedTotal == null && (
+                    <button
+                      onClick={() => onPriceOverride(lineId)}
+                      title="Change price"
+                      aria-label={`Change price of ${item.name}`}
+                      className={`flex h-10 w-9 items-center justify-center rounded-lg hover:bg-neutral-50 [&>svg]:size-[18px] ${item.priceOverride ? "text-amber-500" : "text-neutral-300 hover:text-teal-600"}`}
+                    >
+                      <Tag className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                   <button
                     onClick={() => setNoteEditorFor(noteEditorFor === lineId ? null : lineId)}
                     title="Add note for kitchen"
@@ -2088,6 +2437,16 @@ function CartPanel({
                     : "Park Sale"}{" "}
             · {formatMoney(total, currencySymbol)}
           </button>
+          {onRefundClick && editingOrder && editingOrder.status !== "Voided" && editingOrder.paymentMethod && (
+            <button
+              onClick={onRefundClick}
+              title="Refund or return"
+              aria-label="Refund or return"
+              className="flex min-w-14 items-center justify-center rounded-xl border border-amber-200 bg-amber-50 px-4 text-amber-700 hover:bg-amber-100 [&>svg]:size-5"
+            >
+              <RotateCcw className="h-4 w-4" />
+            </button>
+          )}
           {editingOrder && editingOrder.status !== "Voided" && editingOrder.status !== "Served" && (
             <button
               onClick={onVoidClick}
@@ -2965,7 +3324,7 @@ function IncomingOrdersView({
               <ul className="mb-3 space-y-0.5 text-[15px] text-neutral-800">
                 {order.items.map((i, idx) => (
                   <li key={i.lineId ?? `${i.dishId}-${idx}`}>
-                    <span className="font-semibold text-[var(--brand-dark)]">{i.qty}×</span> {i.name}
+                    <span className="font-semibold text-[var(--brand-dark)]">{qtyPrefix(i, "×")}</span> {i.name}
                     {i.note ? <span className="text-sm text-neutral-400"> — {i.note}</span> : null}
                   </li>
                 ))}
@@ -3428,5 +3787,17 @@ function StatusStepper({
     >
       {label}
     </button>
+  );
+}
+
+// "12 left" / "3.4 kg left" on a product tile (docs/retail-plan step 3.8), counting what's
+// already in this basket: amber at or under the low-stock level, red at or below zero.
+function StockLeft({ stock, sellBy, inBasket }: { stock: { qty: number; low: number; unit: string }; sellBy: string; inBasket: number }) {
+  const left = Math.round((stock.qty - inBasket) * 1000) / 1000;
+  const tone = left <= 0 ? "bg-rose-100 text-rose-700" : left <= stock.low ? "bg-amber-100 text-amber-800" : "bg-neutral-100 text-neutral-500";
+  return (
+    <span className={`mb-1.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${tone}`} data-testid="stock-left">
+      {sellBy === "unit" ? `${left} left` : `${left} ${stock.unit} left`}
+    </span>
   );
 }

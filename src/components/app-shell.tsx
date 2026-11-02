@@ -66,6 +66,7 @@ export async function AppShell({
         showKitchenDisplay={showKitchenDisplay}
         showTables={profile.features.tables}
         productsLabel={profile.words.manageProducts}
+        showPurchasing={profile.features.purchasing}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         {isImpersonating && restaurant && (

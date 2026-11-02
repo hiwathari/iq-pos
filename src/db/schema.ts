@@ -57,6 +57,11 @@ export const restaurants = sqliteTable("restaurants", {
   negativeStock: text("negative_stock", { enum: ["allow", "warn", "block"] }).notNull().default("allow"),
   // Last number used for the business's own "Make a barcode" codes (lib/barcode.ts makeInternalEan13).
   barcodeSeq: int("barcode_seq").notNull().default(0),
+  // Scale-label barcode layouts this business's scales print (lib/barcode.ts EmbeddedFormat[]);
+  // null = the defaults (21 = price, 22 = weight, 5-digit PLU).
+  embeddedBarcodes: text("embedded_barcodes", { mode: "json" }).$type<
+    { prefix: string; itemDigits: number; value: "price" | "weight"; decimals: number }[]
+  >(),
   // Shop hours, as "HH:MM" 24-hour clock times in the restaurant's own timezone (below).
   // openTime anchors the "business day" boundary used by autoVoidStaleOrders, Kitchen Display's
   // Completed panel, and Reports' daily/weekly buckets, so a shift running past midnight still
@@ -220,10 +225,14 @@ export const dishes = sqliteTable("dishes", {
   // Age-restricted product (16 / 18 / 21 / 25); the Till's age check comes in step 3.5.
   minAge: int("min_age"),
   supplierId: text("supplier_id"),
+  // The supplier's own code for it, printed on purchase orders.
+  supplierCode: text("supplier_code"),
   // On: the product has its own stock item (inventory_items.dish_id = this dish, used 1 per unit
   // sold), created and kept in step by the product form — see syncProductStock in lib/actions/menu.ts.
   trackStock: int("track_stock", { mode: "boolean" }).notNull().default(false),
   labelPrintedAt: int("label_printed_at"),
+  // The item code a labelling scale prints inside its barcodes (step 3.2).
+  plu: text("plu"),
 });
 
 // A product's barcodes — several per product (single item, multipack, outer case: pack_qty is
@@ -317,6 +326,11 @@ export const orders = sqliteTable("orders", {
       taxRate?: number;
       changed?: "added" | "updated";
       prevQty?: number;
+      sellBy?: "unit" | "weight" | "volume" | "length";
+      unit?: string;
+      fixedTotal?: number;
+      priceOverride?: { original: number; reason: string; by?: string };
+      ageCheck?: { minAge: number; method: "looks-over-25" | "id-checked"; by?: string };
     }[]
   >(),
   // "Cash", the name of a payment terminal, or "Split" when paid across multiple methods
@@ -348,6 +362,8 @@ export const orders = sqliteTable("orders", {
   // Extra table numbers folded into this order via a table merge (e.g. a party spanning two
   // physical tables billed as one ticket) — shown as "Table 03 + 04". Null for the normal case.
   mergedTableNumbers: text("merged_table_numbers", { mode: "json" }).$type<number[]>(),
+  // Total refunded so far (refunds table) — a sale can be refunded in parts, never beyond its total.
+  refundedAmount: real("refunded_amount").notNull().default(0),
   // Lines taken off the order by a Till edit after it was placed — shown crossed out in red on
   // the Kitchen Display so the kitchen knows to stop making them. Accumulates across edits until
   // the order is done; a line added back is dropped from here. Null when nothing was removed.
@@ -724,6 +740,9 @@ export const inventoryItems = sqliteTable(
     costPrice: real("cost_price"),
     reorderLevel: real("reorder_level"),
     reorderQty: real("reorder_qty"),
+    // Who it's bought from (Reorder and purchase orders group by this); a product's own stock
+    // item follows the product's supplier.
+    supplierId: text("supplier_id"),
     createdAt: timestamp("created_at"),
   },
   (table) => [uniqueIndex("inventory_items_restaurant_name_idx").on(table.restaurantId, table.name)]
@@ -757,6 +776,158 @@ export const stockMovements = sqliteTable(
     index("stock_movements_item_idx").on(table.restaurantId, table.inventoryItemId, table.createdAt),
     index("stock_movements_ref_idx").on(table.restaurantId, table.referenceId),
   ]
+);
+
+// Challenge 25 log (step 3.5): every age-restricted sale approved on the Till (written with the
+// order) and every refusal (written the moment staff refuse). Licensing officers ask for this.
+export const ageChecks = sqliteTable(
+  "age_checks",
+  {
+    id: id(),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    orderId: text("order_id"),
+    dishId: text("dish_id"),
+    productName: text("product_name").notNull(),
+    minAge: int("min_age").notNull(),
+    result: text("result", { enum: ["approved", "refused"] }).notNull(),
+    method: text("method"),
+    staffName: text("staff_name"),
+    createdAt: timestamp("created_at"),
+  },
+  (table) => [index("age_checks_restaurant_idx").on(table.restaurantId, table.createdAt)]
+);
+
+// Refunds against a sale (step 3.7). `items` are the refunded lines: which line, how much of it
+// and for how much, and whether it went back into stock. Counted against takings on the day the
+// refund happens (End Day, Reports), not the day of the sale.
+export const refunds = sqliteTable(
+  "refunds",
+  {
+    id: id(),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    orderId: text("order_id").notNull(),
+    number: text("number").notNull(),
+    items: text("items", { mode: "json" })
+      .notNull()
+      .$type<{ lineId: string; name: string; qty: number; amount: number; backToStock: boolean }[]>(),
+    amount: real("amount").notNull(),
+    tax: real("tax").notNull().default(0),
+    method: text("method").notNull(),
+    reason: text("reason"),
+    createdByName: text("created_by_name"),
+    createdAt: timestamp("created_at"),
+  },
+  (table) => [index("refunds_restaurant_idx").on(table.restaurantId, table.createdAt), index("refunds_order_idx").on(table.orderId)]
+);
+
+// Who stock is bought from (step 4.4).
+export const suppliers = sqliteTable(
+  "suppliers",
+  {
+    id: id(),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    contactName: text("contact_name"),
+    email: text("email"),
+    phone: text("phone"),
+    address: text("address"),
+    accountRef: text("account_ref"),
+    leadTimeDays: int("lead_time_days"),
+    minOrder: real("min_order"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at"),
+  },
+  (table) => [index("suppliers_restaurant_idx").on(table.restaurantId)]
+);
+
+// An order placed with a supplier (step 4.5). Receiving it books stock in through Goods in and
+// ticks off the lines; status follows the lines: sent → part_received → received.
+export const purchaseOrders = sqliteTable(
+  "purchase_orders",
+  {
+    id: id(),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    supplierId: text("supplier_id").notNull(),
+    number: text("number").notNull(),
+    status: text("status", { enum: ["draft", "sent", "part_received", "received", "cancelled"] })
+      .notNull()
+      .default("draft"),
+    expectedAt: int("expected_at"),
+    notes: text("notes"),
+    total: real("total"),
+    createdByName: text("created_by_name"),
+    createdAt: timestamp("created_at"),
+    sentAt: int("sent_at"),
+    receivedAt: int("received_at"),
+  },
+  (table) => [index("purchase_orders_restaurant_idx").on(table.restaurantId, table.createdAt)]
+);
+
+export const purchaseOrderLines = sqliteTable(
+  "purchase_order_lines",
+  {
+    id: id(),
+    purchaseOrderId: text("purchase_order_id")
+      .notNull()
+      .references(() => purchaseOrders.id, { onDelete: "cascade" }),
+    inventoryItemId: text("inventory_item_id").notNull(),
+    // Name and unit as they were when ordered, so the order still reads right if the item changes.
+    name: text("name").notNull(),
+    unit: text("unit").notNull().default("pcs"),
+    supplierCode: text("supplier_code"),
+    qtyOrdered: real("qty_ordered").notNull(),
+    qtyReceived: real("qty_received").notNull().default(0),
+    unitCost: real("unit_cost"),
+  },
+  (table) => [index("purchase_order_lines_po_idx").on(table.purchaseOrderId)]
+);
+
+// A stocktake (step 4.6): expected quantities are snapshotted when it starts; counting happens
+// against the lines; posting writes "count" movements that set stock to what was counted.
+export const stockCounts = sqliteTable(
+  "stock_counts",
+  {
+    id: id(),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    name: text("name"),
+    scope: text("scope").notNull().default("all"),
+    status: text("status", { enum: ["open", "posted", "cancelled"] })
+      .notNull()
+      .default("open"),
+    startedByName: text("started_by_name"),
+    createdAt: timestamp("created_at"),
+    postedAt: int("posted_at"),
+  },
+  (table) => [index("stock_counts_restaurant_idx").on(table.restaurantId, table.createdAt)]
+);
+
+export const stockCountLines = sqliteTable(
+  "stock_count_lines",
+  {
+    id: id(),
+    stockCountId: text("stock_count_id")
+      .notNull()
+      .references(() => stockCounts.id, { onDelete: "cascade" }),
+    inventoryItemId: text("inventory_item_id").notNull(),
+    name: text("name").notNull(),
+    unit: text("unit").notNull().default("pcs"),
+    costPrice: real("cost_price"),
+    expected: real("expected").notNull(),
+    counted: real("counted"),
+    countedByName: text("counted_by_name"),
+    countedAt: int("counted_at"),
+  },
+  (table) => [index("stock_count_lines_count_idx").on(table.stockCountId)]
 );
 
 // Ad-hoc cash movements outside of order payments (e.g. "Bought cleaning supplies — £15 out",

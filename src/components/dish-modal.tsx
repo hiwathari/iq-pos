@@ -27,6 +27,7 @@ interface DishModalProps {
   categories: Category[];
   printers: Printer[];
   inventoryItems?: InventoryItem[];
+  suppliers?: { id: string; name: string }[];
   defaultCategoryId: string;
   initial?: Dish | null;
   initialBarcodes?: { code: string; packQty: number }[];
@@ -47,6 +48,7 @@ export function DishModal({
   categories,
   printers,
   inventoryItems = [],
+  suppliers = [],
   defaultCategoryId,
   initial,
   initialBarcodes = [],
@@ -87,6 +89,9 @@ export function DishModal({
   const [minAge, setMinAge] = useState(initial?.minAge ? String(initial.minAge) : "");
   const [minQty, setMinQty] = useState(initial?.minQty != null ? String(initial.minQty) : "");
   const [tare, setTare] = useState(initial?.tare != null ? String(initial.tare) : "");
+  const [plu, setPlu] = useState(initial?.plu ?? "");
+  const [supplierId, setSupplierId] = useState(initial?.supplierId ?? "");
+  const [supplierCode, setSupplierCode] = useState(initial?.supplierCode ?? "");
   const [moreOpen, setMoreOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -158,6 +163,9 @@ export function DishModal({
       costPrice: costPrice !== "" ? Number(costPrice) : null,
       taxRateOverride: vat !== "" ? Number(vat) : null,
       minAge: minAge ? Number(minAge) : null,
+      plu: plu.trim(),
+      supplierId: supplierId || null,
+      supplierCode: supplierCode.trim(),
       barcodes: allBarcodes.map((b) => ({ code: b.code, packQty: Number(b.packQty) || 1 })),
       trackStock,
       stockQty: trackStock && stockQty !== "" ? Number(stockQty) : null,
@@ -388,6 +396,25 @@ export function DishModal({
                   <label className={LABEL}>Brand</label>
                   <input value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="Optional" className={INPUT} />
                 </div>
+                {suppliers.length > 0 && (
+                  <>
+                    <div>
+                      <label className={LABEL}>Supplier</label>
+                      <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} className={INPUT}>
+                        <option value="">No supplier</option>
+                        {suppliers.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={LABEL}>Supplier&apos;s code</label>
+                      <input value={supplierCode} onChange={(e) => setSupplierCode(e.target.value)} placeholder="Optional" className={INPUT} />
+                    </div>
+                  </>
+                )}
                 <div>
                   <label className={LABEL}>
                     Cost price ({currencySymbol}){measured ? ` per ${unit}` : ""}
@@ -422,6 +449,11 @@ export function DishModal({
                     <option value="21">21+</option>
                     <option value="25">25+</option>
                   </select>
+                </div>
+                <div>
+                  <label className={LABEL}>Scale PLU</label>
+                  <input value={plu} onChange={(e) => setPlu(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="e.g. 01234" inputMode="numeric" className={INPUT} />
+                  <p className="mt-1 text-xs text-neutral-400">The item number your weighing scale prints in its labels.</p>
                 </div>
                 {measured && (
                   <div className="grid grid-cols-2 gap-2">

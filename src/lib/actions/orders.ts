@@ -3,7 +3,7 @@
 import { and, eq, gte } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
-import { orders, restaurants, tables } from "@/db/schema";
+import { ageChecks, orders, restaurants, tables } from "@/db/schema";
 import type { Order, OrderChannel, OrderItem, OrderStatus, PaymentLine, ThirdPartyProvider } from "@/lib/types";
 import { itemsSubtotal, orderBreakdown, resolveCouponDiscount } from "@/lib/types";
 import { getUserPermissions, requireRestaurantContext } from "@/lib/scope";
@@ -299,6 +299,24 @@ export async function placeOrderAction(input: PlaceOrderInput): Promise<PlaceOrd
     }
 
     await takeStockForOrder(restaurantId, newOrderId, input.items, session.name);
+  }
+
+  // Challenge 25 log: an age-restricted line the Till approved, recorded once against the order.
+  const priorLines = new Set((existing?.items ?? []).filter((i) => i.ageCheck).map((i) => i.lineId ?? i.dishId));
+  const approved = input.items.filter((i) => i.ageCheck && !priorLines.has(i.lineId ?? i.dishId));
+  if (approved.length) {
+    await db.insert(ageChecks).values(
+      approved.map((i) => ({
+        restaurantId,
+        orderId: input.editingOrderId ?? newOrderId!,
+        dishId: i.dishId,
+        productName: i.name,
+        minAge: i.ageCheck!.minAge,
+        result: "approved" as const,
+        method: i.ageCheck!.method,
+        staffName: session.name,
+      }))
+    );
   }
 
   revalidatePath("/order-line");

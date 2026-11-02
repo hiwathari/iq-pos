@@ -32,6 +32,7 @@ export function ManageDishesClient({
   currencySymbol,
   words,
   barcodesByDish,
+  suppliers = [],
   isShop,
 }: {
   categories: Category[];
@@ -43,6 +44,7 @@ export function ManageDishesClient({
   words: { product: string; products: string; manageProducts: string };
   // dishId → its barcodes (product_barcodes), for the form and for searching by barcode.
   barcodesByDish: Record<string, { code: string; packQty: number }[]>;
+  suppliers?: { id: string; name: string }[];
   isShop: boolean;
 }) {
   const router = useRouter();
@@ -370,6 +372,7 @@ export function ManageDishesClient({
           categories={categories}
           printers={printers}
           inventoryItems={inventoryItems}
+          suppliers={suppliers}
           defaultCategoryId={selectedCategory}
           initial={editingDish}
           currencySymbol={currencySymbol}

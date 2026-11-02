@@ -60,7 +60,8 @@ function kpisFor(list: Order[]): Kpis {
     tax += b.tax;
     discounts += Math.min(b.subtotal, (o.extraDiscount ?? 0) + (o.couponDiscount ?? 0));
     guests += o.guests ?? 0;
-    itemsSold += o.items.reduce((s, i) => s + i.qty, 0);
+    // A weighed line counts as one item (one bag of bananas), not its kilograms.
+    itemsSold += o.items.reduce((s, i) => s + (i.sellBy && i.sellBy !== "unit" ? 1 : i.qty), 0);
     const paid = paymentLines(o).reduce((s, p) => s + p.amount, 0);
     moneyTaken += paid;
     if (!o.paymentMethod) {
@@ -150,12 +151,20 @@ export async function getReportInsights(
   // ---- Items ----
   const categoryName = new Map(allCategories.map((c) => [c.id, c.name]));
   const dishById = new Map(allDishes.map((d) => [d.id, d]));
-  const itemMap = new Map<string, { name: string; category: string; qty: number; revenue: number; orderIds: Set<string> }>();
+  const itemMap = new Map<string, { name: string; category: string; qty: number; unit: string | null; revenue: number; orderIds: Set<string> }>();
   for (const o of live) {
     for (const it of o.items) {
       const dish = dishById.get(it.dishId);
       const key = dish ? dish.id : `name:${it.name.toLowerCase()}`;
-      const row = itemMap.get(key) ?? { name: it.name, category: dish ? (categoryName.get(dish.categoryId) ?? "Other") : "Custom / Other", qty: 0, revenue: 0, orderIds: new Set<string>() };
+      const row = itemMap.get(key) ?? {
+        name: it.name,
+        category: dish ? (categoryName.get(dish.categoryId) ?? "Other") : "Custom / Other",
+        qty: 0,
+        // Measured products report kg / l / m sold, not a count.
+        unit: it.sellBy && it.sellBy !== "unit" ? (it.unit ?? null) : null,
+        revenue: 0,
+        orderIds: new Set<string>(),
+      };
       row.qty += it.qty;
       row.revenue += lineTotal(it);
       row.orderIds.add(o.id);
@@ -168,7 +177,8 @@ export async function getReportInsights(
       key,
       name: r.name,
       category: r.category,
-      qty: r.qty,
+      qty: Math.round(r.qty * 1000) / 1000,
+      unit: r.unit,
       revenue: r.revenue,
       orders: r.orderIds.size,
       avgPrice: r.qty ? r.revenue / r.qty : 0,

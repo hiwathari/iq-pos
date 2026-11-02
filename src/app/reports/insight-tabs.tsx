@@ -17,6 +17,7 @@ import {
 import type { ReportInsights } from "@/lib/data/report-insights";
 import type { Order } from "@/lib/types";
 import { formatMoney, formatOrderTimestamp, orderBreakdown, orderSequence } from "@/lib/types";
+import { qtyPrefix } from "@/lib/units";
 import { RevenueCompareChart } from "@/components/charts";
 import { SortableTable } from "./sortable-table";
 
@@ -270,7 +271,7 @@ export function DashboardTab({ insights, currencySymbol, tabHref }: { insights: 
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card title="Top items" sub="By revenue before discounts" action={<Link href={tabHref("items")} className="text-xs font-semibold text-teal-700 hover:underline">All items</Link>}>
-          <BarList rows={insights.items.slice(0, 8).map((i) => ({ label: i.name, value: i.revenue, extra: `${i.qty} sold` }))} money={money} />
+          <BarList rows={insights.items.slice(0, 8).map((i) => ({ label: i.name, value: i.revenue, extra: `${i.qty}${i.unit ? ` ${i.unit}` : ""} sold` }))} money={money} />
         </Card>
         <Card title="Categories" sub="By revenue before discounts" action={<Link href={tabHref("category")} className="text-xs font-semibold text-teal-700 hover:underline">Category report</Link>}>
           <BarList rows={insights.byCategory.slice(0, 8)} money={money} />
@@ -308,7 +309,7 @@ export function ItemsTab({ insights, currencySymbol }: { insights: ReportInsight
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Different items sold" value={String(insights.items.length)} />
-        <Stat label="Items sold" value={String(insights.items.reduce((s, i) => s + i.qty, 0))} />
+        <Stat label="Items sold" value={String(insights.items.filter((i) => !i.unit).reduce((s, i) => s + i.qty, 0))} />
         <Stat label="Best seller" value={insights.items[0]?.name ?? "—"} sub={insights.items[0] ? money(insights.items[0].revenue) : undefined} />
         <Stat label="Not sold this period" value={String(insights.slowMovers.length)} sub="menu items with no sales" />
       </div>
@@ -321,7 +322,7 @@ export function ItemsTab({ insights, currencySymbol }: { insights: ReportInsight
           columns={[
             { key: "name", label: "Item", render: (i) => i.name },
             { key: "category", label: "Category", render: (i) => i.category, sortValue: (i) => i.category },
-            { key: "qty", label: "Sold", align: "right", render: (i) => i.qty, sortValue: (i) => i.qty },
+            { key: "qty", label: "Sold", align: "right", render: (i) => `${i.qty}${i.unit ? ` ${i.unit}` : ""}`, sortValue: (i) => i.qty },
             { key: "orders", label: "Orders", align: "right", render: (i) => i.orders, sortValue: (i) => i.orders },
             { key: "avg", label: "Avg price", align: "right", render: (i) => money(i.avgPrice), sortValue: (i) => i.avgPrice },
             { key: "revenue", label: "Revenue", align: "right", render: (i) => money(i.revenue), sortValue: (i) => i.revenue },
@@ -698,7 +699,7 @@ export function downloadOrdersCsv(orders: Order[], restaurantName: string, fromS
         o.guests,
         o.createdByName ?? "",
         o.customerName ?? "",
-        o.items.map((i) => `${i.qty}x ${i.name}`).join("; "),
+        o.items.map((i) => `${qtyPrefix(i)} ${i.name}`).join("; "),
         b.subtotal.toFixed(2),
         b.discount.toFixed(2),
         b.tax.toFixed(2),

@@ -11,6 +11,7 @@ import { isValidHexColor } from "@/lib/color";
 import { generatePin } from "@/lib/pin";
 import type { BusinessType } from "@/lib/types";
 import { businessProfile, featureOverridesFor, isBusinessType, type FeatureKey } from "@/lib/business-profile";
+import { isEmbeddedFormat } from "@/lib/barcode";
 
 // The default Test Staff PIN — easy to remember for training — but tillPin is unique across the
 // whole platform (PIN-login looks a code up with no restaurant context first), so only one
@@ -200,6 +201,19 @@ export async function updateBusinessProfileAction(businessType: BusinessType, fe
     .where(eq(restaurants.id, restaurantId));
   // Sidebar, wording and the Till all change with the type.
   revalidatePath("/", "layout");
+}
+
+// Settings → Scale labels: the barcode layouts this business's weighing scales print
+// (lib/barcode.ts parseEmbedded). Invalid rows are dropped; an empty list means "none".
+export async function updateEmbeddedBarcodesAction(formats: unknown[]): Promise<{ error?: string }> {
+  const { session, restaurantId } = await requireRestaurantContext();
+  await assertPermission(session, "settings");
+  const clean = (Array.isArray(formats) ? formats : []).slice(0, 6).filter(isEmbeddedFormat);
+  if (clean.length !== (Array.isArray(formats) ? formats.length : 0)) return { error: "Check each format: prefix starting with 2, 3–6 item digits, 0–3 decimals." };
+  await db.update(restaurants).set({ embeddedBarcodes: clean }).where(eq(restaurants.id, restaurantId));
+  revalidatePath("/settings");
+  revalidatePath("/order-line");
+  return {};
 }
 
 export async function updateNegativeStockAction(mode: "allow" | "warn" | "block") {

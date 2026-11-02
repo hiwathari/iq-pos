@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { formatMoney, formatOrderTimestamp, lineTotal, orderBreakdown, type Order } from "@/lib/types";
+import { qtyPrefix } from "@/lib/units";
 import { Printer, Share2, ChefHat } from "lucide-react";
 
 type InvoiceOrder = Pick<
@@ -115,7 +116,7 @@ export function InvoiceClient({
           <div key={item.lineId ?? i} className="flex items-start justify-between border-t border-neutral-100 px-4 py-3 text-sm first:border-t-0">
             <div>
               <div className="font-medium text-neutral-800">
-                {item.qty}x {item.name}
+                {qtyPrefix(item)} {item.name}
               </div>
               {item.note && <div className="text-xs italic text-neutral-400">↳ {item.note}</div>}
             </div>

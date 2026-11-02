@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { getRestaurantBySlug } from "@/lib/data/restaurants";
-import { listCategories, listDishes } from "@/lib/data/menu";
+import { listCategories, listOrderableDishes } from "@/lib/data/menu";
 import { listTables } from "@/lib/data/tables";
 import { brandCssVars } from "@/lib/color";
 import { Logo } from "@/components/logo";
@@ -29,7 +29,7 @@ export default async function KioskPage({ params }: { params: Promise<{ slug: st
 
   const [categories, dishes, tables] = await Promise.all([
     listCategories(restaurant.id),
-    listDishes(restaurant.id),
+    listOrderableDishes(restaurant.id),
     restaurant.qrTableOrderingEnabled ? listTables(restaurant.id) : Promise.resolve([]),
   ]);
 

@@ -9,11 +9,17 @@ import type {
   paymentTerminals,
   pettyCashEntries,
   productBarcodes,
+  refunds,
   printers,
   reservations,
   restaurants,
+  purchaseOrderLines,
+  purchaseOrders,
   shifts,
+  stockCountLines,
+  stockCounts,
   stockMovements,
+  suppliers,
   sumupCheckouts,
   sunmiPrintJobs,
   tables,
@@ -55,6 +61,12 @@ export type LoyaltyContactType = "phone" | "email";
 export type InventoryItem = typeof inventoryItems.$inferSelect;
 export type StockMovement = typeof stockMovements.$inferSelect;
 export type ProductBarcode = typeof productBarcodes.$inferSelect;
+export type Refund = typeof refunds.$inferSelect;
+export type Supplier = typeof suppliers.$inferSelect;
+export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
+export type PurchaseOrderLine = typeof purchaseOrderLines.$inferSelect;
+export type StockCount = typeof stockCounts.$inferSelect;
+export type StockCountLine = typeof stockCountLines.$inferSelect;
 export type PettyCashEntry = typeof pettyCashEntries.$inferSelect;
 export type TerminalPayout = typeof terminalPayouts.$inferSelect;
 export type TerminalExpense = typeof terminalExpenses.$inferSelect;
@@ -88,6 +100,17 @@ export interface OrderItem {
   // ticket is done. Never trusted from the client — the server recomputes it on every edit.
   changed?: "added" | "updated";
   prevQty?: number;
+  // Measured products (docs/retail-plan step 3.3): qty is in `unit` (0.734 kg) and `price` is per
+  // unit. Absent / "unit" = counted items, as every order before this.
+  sellBy?: "unit" | "weight" | "volume" | "length";
+  unit?: string;
+  // The line's total is this exact amount instead of price × qty — a pack scanned from a
+  // scale's price label (step 3.2), so the Till charges what's printed on it.
+  fixedTotal?: number;
+  // A manager changed the price on the Till (step 3.6); `price` is the new one.
+  priceOverride?: { original: number; reason: string; by?: string };
+  // Age-restricted product sold after the Challenge 25 check (step 3.5).
+  ageCheck?: { minAge: number; method: "looks-over-25" | "id-checked"; by?: string };
 }
 
 export interface PaymentLine {
@@ -195,16 +218,16 @@ export function roundMoney(n: number) {
   return (n < 0 ? -pence : pence) / 100;
 }
 
-export function lineTotal(item: Pick<OrderItem, "price" | "qty">) {
-  return roundMoney(item.price * item.qty);
+export function lineTotal(item: Pick<OrderItem, "price" | "qty" | "fixedTotal">) {
+  return item.fixedTotal != null ? roundMoney(item.fixedTotal) : roundMoney(item.price * item.qty);
 }
 
-export function itemsSubtotal(items: Pick<OrderItem, "price" | "qty">[]) {
+export function itemsSubtotal(items: Pick<OrderItem, "price" | "qty" | "fixedTotal">[]) {
   return roundMoney(items.reduce((sum, i) => sum + lineTotal(i), 0));
 }
 
 // Tax before any discount and before rounding — callers apply the discount factor, then round.
-export function itemsRawTax(items: Pick<OrderItem, "price" | "qty" | "taxRate">[]) {
+export function itemsRawTax(items: Pick<OrderItem, "price" | "qty" | "taxRate" | "fixedTotal">[]) {
   return items.reduce((sum, i) => sum + lineTotal(i) * ((i.taxRate ?? 0) / 100), 0);
 }
 

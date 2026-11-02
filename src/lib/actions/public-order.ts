@@ -124,7 +124,8 @@ async function buildItemsFromLiveMenu(restaurantId: string, rawItems: PublicOrde
   const items: OrderItem[] = [];
   for (const raw of rawItems) {
     const dish = liveDishes.find((d) => d.id === raw.dishId);
-    if (!dish || dish.outOfStock) continue;
+    // Weighed products aren't on the customer menus, so one arriving here is skipped too.
+    if (!dish || dish.outOfStock || dish.sellBy !== "unit") continue;
     const qty = Math.max(1, Math.min(50, Math.floor(Number(raw.qty) || 0)));
     if (qty <= 0) continue;
     const price = dish.channelPrices?.[channel] ?? dish.price;

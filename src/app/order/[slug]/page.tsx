@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { getRestaurantBySlug } from "@/lib/data/restaurants";
-import { listCategories, listDishes } from "@/lib/data/menu";
+import { listCategories, listOrderableDishes } from "@/lib/data/menu";
 import { listTables } from "@/lib/data/tables";
 import { findLoyaltyMemberById } from "@/lib/data/loyalty";
 import type { RestaurantTable } from "@/lib/types";
@@ -68,7 +68,7 @@ export default async function OnlineOrderPage({
     );
   }
 
-  const [categories, dishes] = await Promise.all([listCategories(restaurant.id), listDishes(restaurant.id)]);
+  const [categories, dishes] = await Promise.all([listCategories(restaurant.id), listOrderableDishes(restaurant.id)]);
 
   let tables: RestaurantTable[] = [];
   let initialTableNumber: number | null = null;

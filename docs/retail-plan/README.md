@@ -3,7 +3,7 @@
 How to turn IQ POS from a restaurant system into one that also runs **grocery shops, general
 retail shops and warehouses** — step by step, in the order to build it.
 
-Status: **planned, nothing built yet** (2026-11-01). Tick steps off in the status table as they
+Status: **Phases 0–4 built** (2026-11-02); 5–7 planned. Tick steps off in the status table as they
 ship; each shipped step also gets its dated entry in `docs/DEVELOPER_GUIDE.md` §14.
 
 ## The files
@@ -73,17 +73,24 @@ Every step has the same parts so it can be picked up on its own:
 | 2.4 | Automatic stock item per product | **done** 2026-11-01 |
 | 2.5 | CSV import / export | **done** 2026-11-01 |
 | 2.6 | Shelf-edge & barcode labels | **done** 2026-11-01 |
-| 3.1 | Scanner input on the Till | planned |
-| 3.2 | Price- / weight-embedded barcodes | planned |
-| 3.3 | Weighed sales (typed weight) | planned |
-| 3.4 | Quantities & units everywhere | planned |
-| 3.5 | Age check | planned |
-| 3.6 | Price override / reduced to clear | planned |
-| 3.7 | Refunds, returns & exchanges | planned |
-| 3.8 | Stock left on tiles | planned |
-| 3.9 | Camera scanning | planned |
-| 3.10 | Scales | planned |
-| 4.1–4.8 | Stock page, goods in, waste, suppliers, POs, stocktake, reorder, alerts | planned |
+| 3.1 | Scanner input on the Till | **done** 2026-11-02 |
+| 3.2 | Price- / weight-embedded barcodes | **done** 2026-11-02 |
+| 3.3 | Weighed sales (typed weight) | **done** 2026-11-02 |
+| 3.4 | Quantities & units everywhere | **done** 2026-11-02 |
+| 3.5 | Age check | **done** 2026-11-02 |
+| 3.6 | Price override / reduced to clear | **done** 2026-11-02 |
+| 3.7 | Refunds, returns & exchanges | **done** 2026-11-02 |
+| 3.8 | Stock left on tiles | **done** 2026-11-02 |
+| 3.9 | Camera scanning | **done** 2026-11-02 |
+| 3.10 | Scales | **done** 2026-11-02 |
+| 4.1 | Stock page and movement history | **done** 2026-11-02 |
+| 4.2 | Goods in (scan, case barcodes, cost) | **done** 2026-11-02 |
+| 4.3 | Adjustments and waste with a reason | **done** 2026-11-02 |
+| 4.4 | Suppliers | **done** 2026-11-02 |
+| 4.5 | Purchase orders (email, part receive) | **done** 2026-11-02 |
+| 4.6 | Stocktake | **done** 2026-11-02 |
+| 4.7 | Reorder suggestions | **done** 2026-11-02 |
+| 4.8 | Alerts (dashboard low / below-zero) | **done** 2026-11-02 — email alerts not built |
 | 5.1–5.6 | Variants, serials, promotions, gift receipts, store credit, retail online shop | planned |
 | 6.1–6.8 | Locations, batches/expiry, picking, delivery notes, transfers, trade accounts, central catalogue, till licences | planned |
 | 7.1–7.4 | Retail reports, receipts, labels on label printers, online shop | planned |

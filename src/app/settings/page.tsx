@@ -1,5 +1,7 @@
 import { AppShell } from "@/components/app-shell";
 import { businessProfile } from "@/lib/business-profile";
+import { DEFAULT_EMBEDDED_FORMATS } from "@/lib/barcode";
+import { ScaleSettingsClient } from "./scale-settings-client";
 import { requirePermission } from "@/lib/scope";
 import { getAccountsLogin, listStaff } from "@/lib/data/staff";
 import { getRestaurant } from "@/lib/data/restaurants";
@@ -44,6 +46,11 @@ export default async function SettingsPage() {
           closeTime={restaurant?.closeTime ?? null}
           timezone={restaurant?.timezone ?? "UTC"}
         />
+        {!businessProfile(restaurant?.businessType, restaurant?.features).features.tables && (
+          <div className="border-t border-neutral-100 pt-8">
+            <ScaleSettingsClient formats={restaurant?.embeddedBarcodes ?? DEFAULT_EMBEDDED_FORMATS} />
+          </div>
+        )}
         <div className="border-t border-neutral-100 pt-8">
           <InvoiceDetailsClient
             invoiceAddress={restaurant?.invoiceAddress ?? ""}

@@ -105,3 +105,57 @@ export function eanModules(code: string): string | null {
   }
   return null;
 }
+
+// ---- Scale labels: price- or weight-embedded EAN-13s (step 3.2) ----
+// A labelling scale prints EAN-13s starting with 2: prefix, the product's PLU (item code), then
+// either the price or the weight, then a check digit. Layouts differ between scales, so each
+// business sets its own formats (Settings → Barcodes; restaurants.embedded_barcodes).
+
+export interface EmbeddedFormat {
+  prefix: string; // e.g. "21"
+  itemDigits: number; // length of the PLU after the prefix
+  value: "price" | "weight";
+  decimals: number; // 2 for pounds.pence, 3 for kg with grams
+}
+
+export const DEFAULT_EMBEDDED_FORMATS: EmbeddedFormat[] = [
+  { prefix: "21", itemDigits: 5, value: "price", decimals: 2 },
+  { prefix: "22", itemDigits: 5, value: "weight", decimals: 3 },
+];
+
+export interface EmbeddedRead {
+  plu: string;
+  price?: number;
+  weight?: number;
+}
+
+export function parseEmbedded(raw: string, formats: EmbeddedFormat[]): EmbeddedRead | null {
+  const code = canonicalCode(raw);
+  if (code.length !== 13 || !code.startsWith("2") || !isValidGtin(code)) return null;
+  for (const f of formats) {
+    if (!f.prefix || !code.startsWith(f.prefix)) continue;
+    const start = f.prefix.length;
+    const plu = code.slice(start, start + f.itemDigits);
+    const valueDigits = code.slice(start + f.itemDigits, 12);
+    if (!plu || !valueDigits || !/^\d+$/.test(valueDigits)) continue;
+    const value = Number(valueDigits) / 10 ** f.decimals;
+    return f.value === "price" ? { plu, price: value } : { plu, weight: value };
+  }
+  return null;
+}
+
+export function isEmbeddedFormat(v: unknown): v is EmbeddedFormat {
+  const f = v as EmbeddedFormat;
+  return (
+    !!f &&
+    /^2\d{0,2}$/.test(f.prefix) &&
+    Number.isInteger(f.itemDigits) &&
+    f.itemDigits >= 3 &&
+    f.itemDigits <= 6 &&
+    (f.value === "price" || f.value === "weight") &&
+    Number.isInteger(f.decimals) &&
+    f.decimals >= 0 &&
+    f.decimals <= 3 &&
+    f.prefix.length + f.itemDigits <= 9
+  );
+}

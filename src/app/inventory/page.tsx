@@ -1,18 +1,32 @@
 import { AppShell } from "@/components/app-shell";
 import { requirePermission } from "@/lib/scope";
-import { listInventoryItems } from "@/lib/data/inventory";
+import { listStockRows } from "@/lib/data/stock";
+import { listSuppliers } from "@/lib/data/suppliers";
+import { listCategories } from "@/lib/data/menu";
 import { InventoryClient } from "./inventory-client";
 import { getRestaurant } from "@/lib/data/restaurants";
 import { businessProfile } from "@/lib/business-profile";
 
 export default async function InventoryPage() {
   const { restaurantId } = await requirePermission("inventory");
-  const [items, restaurant] = await Promise.all([listInventoryItems(restaurantId), getRestaurant(restaurantId)]);
-  const { words } = businessProfile(restaurant?.businessType, restaurant?.features);
+  const [items, restaurant, suppliers, categories] = await Promise.all([
+    listStockRows(restaurantId),
+    getRestaurant(restaurantId),
+    listSuppliers(restaurantId),
+    listCategories(restaurantId),
+  ]);
+  const profile = businessProfile(restaurant?.businessType, restaurant?.features);
 
   return (
-    <AppShell title="Inventory">
-      <InventoryClient items={items} productWord={words.product.toLowerCase()} />
+    <AppShell title={profile.features.purchasing ? "Stock" : "Inventory"}>
+      <InventoryClient
+        items={items}
+        suppliers={suppliers.map((s) => ({ id: s.id, name: s.name }))}
+        categories={categories.map((c) => ({ id: c.id, name: c.name }))}
+        productWord={profile.words.product.toLowerCase()}
+        purchasing={profile.features.purchasing}
+        currencySymbol={restaurant?.currencySymbol ?? "£"}
+      />
     </AppShell>
   );
 }

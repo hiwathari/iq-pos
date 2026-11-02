@@ -1,4 +1,5 @@
 import { and, desc, eq, gt, lte } from "drizzle-orm";
+import { listRefundsBetween, refundsByTender } from "@/lib/data/refunds";
 import { db } from "@/db/client";
 import { orders, shifts } from "@/db/schema";
 import { orderTotal, salesByTender } from "@/lib/types";
@@ -27,7 +28,15 @@ export async function summarizeShiftWindow(restaurantId: string, sinceTs: number
   const liveOrders = windowOrders.filter((o) => o.status !== "Voided");
   const voidedOrders = windowOrders.filter((o) => o.status === "Voided");
 
-  const { cash: cashSales, card: cardSales, other: otherSales, byMethod } = salesByTender(liveOrders);
+  const sales = salesByTender(liveOrders);
+  // Refunds given during this shift come off what's expected in the drawer / on each card machine.
+  const shiftRefunds = await listRefundsBetween(restaurantId, sinceTs, uptoTs, { fromExclusive: true, toInclusive: true });
+  const refunded = refundsByTender(shiftRefunds);
+  const cashSales = sales.cash - refunded.cash;
+  const cardSales = sales.card - refunded.card;
+  const otherSales = sales.other;
+  const byMethod = new Map(sales.byMethod);
+  for (const [method, amount] of refunded.byMethod) byMethod.set(method, (byMethod.get(method) ?? 0) - amount);
 
   const totalSales = cashSales + cardSales + otherSales;
   const voidAmount = voidedOrders.reduce((sum, o) => sum + orderTotal(o), 0);

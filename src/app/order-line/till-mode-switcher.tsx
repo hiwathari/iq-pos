@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { OrderLineClient } from "./order-line-client";
 import { MobileTillClient } from "./mobile-till-client";
 import type { Category, Dish, Order, OrderChannel, PaymentTerminal, RestaurantTable } from "@/lib/types";
+import type { EmbeddedFormat } from "@/lib/barcode";
 
 // A handheld runner's phone/mobile POS gets the simplified order-only Till; a counter tablet
 // or desktop gets the full one. Auto-detected from screen width on first load. Going back to
@@ -37,6 +38,13 @@ export function TillModeSwitcher({
   hasKitchen,
   channels,
   showTables,
+  barcodesByDish,
+  embeddedFormats,
+  stockByDish,
+  stockMode,
+  canOverridePrice,
+  canAddProducts,
+  canRefund,
 }: {
   categories: Category[];
   dishes: Dish[];
@@ -67,6 +75,14 @@ export function TillModeSwitcher({
   // default) and whether tables/guests exist at all — shops have neither tables nor Dine in.
   channels: OrderChannel[];
   showTables: boolean;
+  // Retail selling (docs/retail-plan Phase 3): barcode lookup, scale-label formats, stock on tiles.
+  barcodesByDish: Record<string, { code: string; packQty: number }[]>;
+  embeddedFormats: EmbeddedFormat[];
+  stockByDish: Record<string, { qty: number; low: number; unit: string }>;
+  stockMode: "allow" | "warn" | "block";
+  canOverridePrice: boolean;
+  canAddProducts: boolean;
+  canRefund: boolean;
 }) {
   const [mode, setMode] = useState<Mode | null>(null);
 
@@ -109,6 +125,8 @@ export function TillModeSwitcher({
         onSwitchToFull={switchToFull}
         hasKitchen={hasKitchen}
         channels={channels}
+        barcodesByDish={barcodesByDish}
+        embeddedFormats={embeddedFormats}
       />
     );
   }
@@ -137,6 +155,13 @@ export function TillModeSwitcher({
       hasKitchen={hasKitchen}
       channels={channels}
       showTables={showTables}
+      barcodesByDish={barcodesByDish}
+      embeddedFormats={embeddedFormats}
+      stockByDish={stockByDish}
+      stockMode={stockMode}
+      canOverridePrice={canOverridePrice}
+      canAddProducts={canAddProducts}
+      canRefund={canRefund}
     />
   );
 }

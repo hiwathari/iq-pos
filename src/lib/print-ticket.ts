@@ -2,13 +2,14 @@
 
 import QRCode from "qrcode";
 import { lineTotal } from "@/lib/types";
+import { receiptLine } from "@/lib/units";
 
 export interface TicketData {
   orderNumber: string;
   createdAt: number;
   tableNumber: number | null;
   channel: string;
-  items: { name: string; qty: number; price: number; note?: string }[];
+  items: { name: string; qty: number; price: number; note?: string; sellBy?: string; unit?: string; fixedTotal?: number }[];
   subtotal: number;
   extraDiscount?: number;
   couponCode?: string;
@@ -47,7 +48,7 @@ export async function printTicket(ticket: TicketData) {
   const rows = ticket.items
     .map(
       (i) =>
-        `<tr><td>${i.qty}x ${escapeHtml(i.name)}${i.note ? `<div class="note">↳ ${escapeHtml(i.note)}</div>` : ""}</td><td class="right">${money(lineTotal(i))}</td></tr>`
+        `<tr><td>${escapeHtml(receiptLine(i, ticket.currencySymbol)[0])}${receiptLine(i, ticket.currencySymbol)[1] ? `<div class="note">${escapeHtml(receiptLine(i, ticket.currencySymbol)[1]!)}</div>` : ""}${i.note ? `<div class="note">↳ ${escapeHtml(i.note)}</div>` : ""}</td><td class="right">${money(lineTotal(i))}</td></tr>`
     )
     .join("");
 
@@ -153,4 +154,43 @@ export async function printTicket(ticket: TicketData) {
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
+}
+
+// A refund slip (docs/retail-plan step 3.7): what was refunded, how, and against which sale —
+// printed through the browser like the receipt above.
+export function printRefundSlip(r: {
+  restaurantName: string;
+  number: string;
+  orderNumber: string;
+  createdAt: number;
+  method: string;
+  amount: number;
+  reason?: string;
+  staffName?: string;
+  lines: { name: string; qty: number; amount: number; sellBy?: string; unit?: string }[];
+  currencySymbol: string;
+}) {
+  const win = window.open("", "_blank", "width=380,height=600");
+  if (!win) return;
+  const money = (n: number) => `${r.currencySymbol}${n.toFixed(2)}`;
+  const rows = r.lines
+    .map((l) => `<tr><td>${escapeHtml(receiptLine({ ...l, price: 0 }, r.currencySymbol)[0])}${l.sellBy && l.sellBy !== "unit" ? ` <span class="note">${l.qty} ${escapeHtml(l.unit ?? "")}</span>` : ""}</td><td class="right">-${money(l.amount)}</td></tr>`)
+    .join("");
+  win.document.write(`<!doctype html><html><head><title>Refund ${escapeHtml(r.number)}</title><style>
+    body{font-family:ui-monospace,Menlo,monospace;font-size:12px;width:72mm;margin:0 auto;padding:8px;color:#000}
+    h1{font-size:15px;text-align:center;margin:4px 0} .c{text-align:center} table{width:100%;border-collapse:collapse}
+    td{padding:2px 0;vertical-align:top} .right{text-align:right;white-space:nowrap} .note{font-size:11px}
+    hr{border:0;border-top:1px dashed #000;margin:6px 0} .tot td{font-weight:bold;font-size:14px}
+  </style></head><body>
+    <h1>${escapeHtml(r.restaurantName)}</h1>
+    <div class="c"><b>REFUND ${escapeHtml(r.number)}</b><br/>for sale #${escapeHtml(r.orderNumber)}<br/>${new Date(r.createdAt).toLocaleString("en-GB")}</div>
+    <hr/><table>${rows}</table><hr/>
+    <table><tr class="tot"><td>Refunded</td><td class="right">-${money(r.amount)}</td></tr>
+    <tr><td>To</td><td class="right">${escapeHtml(r.method)}</td></tr></table>
+    ${r.reason ? `<div class="note">Reason: ${escapeHtml(r.reason)}</div>` : ""}
+    ${r.staffName ? `<div class="note">Served by ${escapeHtml(r.staffName)}</div>` : ""}
+    <hr/><div class="c note">Keep this slip with your receipt.</div>
+    <script>window.onload=()=>{window.print();setTimeout(()=>window.close(),300)}</script>
+  </body></html>`);
+  win.document.close();
 }

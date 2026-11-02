@@ -13,6 +13,9 @@ export const PERMISSION_KEYS = [
   "coupons",
   "loyalty",
   "inventory",
+  "suppliers",
+  "purchase-orders",
+  "stocktake",
   "customers",
   "reports",
   "settings",
@@ -20,6 +23,8 @@ export const PERMISSION_KEYS = [
   "end-day",
   "till-discount",
   "sales-records",
+  "till-price-override",
+  "till-refund",
 ] as const;
 
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];
@@ -33,7 +38,10 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
   pricing: "Channel Pricing",
   coupons: "Coupons",
   loyalty: "Loyalty Cards",
-  inventory: "Inventory",
+  inventory: "Stock / Inventory",
+  suppliers: "Suppliers",
+  "purchase-orders": "Purchase orders",
+  stocktake: "Stocktake",
   customers: "Customers",
   reports: "Reports",
   settings: "Settings",
@@ -41,6 +49,8 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
   "end-day": "End Day Closing",
   "till-discount": "Give Discounts on Till",
   "sales-records": "Sales Records (edit/delete orders & End Day reports)",
+  "till-price-override": "Change a price on the Till (reduced, damaged…)",
+  "till-refund": "Refunds & exchanges on the Till",
 };
 
 // What a brand-new staff member can see/use before an admin customizes it — matches this app's

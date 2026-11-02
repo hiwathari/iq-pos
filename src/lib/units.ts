@@ -60,3 +60,22 @@ export function formatQty(qty: number, unit?: string | null, sellBy?: SellBy | s
   if (!sellBy || sellBy === "unit") return n;
   return `${n} ${unit ?? ""}`.trim();
 }
+
+// How a sold line reads on a receipt: "2x Milk 1L", or for a weighed line the name with
+// "0.734 kg @ £2.40/kg" underneath (returned as the second element).
+export function receiptLine(
+  item: { name: string; qty: number; price: number; sellBy?: string; unit?: string; fixedTotal?: number },
+  symbol: string
+): [string, string | null] {
+  if (item.sellBy && item.sellBy !== "unit") {
+    return [item.name, `${formatQty(item.qty, item.unit, item.sellBy)} @ ${symbol}${item.price.toFixed(2)}/${item.unit}`];
+  }
+  return [`${Number.isInteger(item.qty) ? item.qty : Math.round(item.qty * 1000) / 1000}x ${item.name}`, item.fixedTotal != null ? "label price" : null];
+}
+
+// The quantity in front of an item name anywhere it's listed: "2x" / "2×" for counted items,
+// "0.734 kg" for measured ones.
+export function qtyPrefix(item: { qty: number; sellBy?: string; unit?: string }, times = "x") {
+  if (item.sellBy && item.sellBy !== "unit") return formatQty(item.qty, item.unit, item.sellBy);
+  return `${Number.isInteger(item.qty) ? item.qty : Math.round(item.qty * 1000) / 1000}${times}`;
+}

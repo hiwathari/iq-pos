@@ -8,6 +8,10 @@ import { listOrders } from "@/lib/data/orders";
 import { listPaymentTerminals, listPrinters } from "@/lib/data/printers";
 import { getRestaurant } from "@/lib/data/restaurants";
 import { businessProfile } from "@/lib/business-profile";
+import { listBarcodesByDish } from "@/lib/data/menu";
+import { listRefundsBetween, refundsByTender } from "@/lib/data/refunds";
+import { listInventoryItems } from "@/lib/data/inventory";
+import { DEFAULT_EMBEDDED_FORMATS } from "@/lib/barcode";
 import { hasKitchen, salesByTender } from "@/lib/types";
 import { businessDayStart } from "@/lib/business-day";
 import { TodaySales } from "@/components/today-sales";
@@ -31,7 +35,7 @@ function currentBusinessDayStart(openTime: string | null, timezone: string) {
 export default async function OrderLinePage() {
   const { session, restaurantId } = await requirePermission("order-line");
 
-  const [categories, dishes, tables, orders, paymentTerminals, printers, restaurant, permissions] = await Promise.all([
+  const [categories, dishes, tables, orders, paymentTerminals, printers, restaurant, permissions, barcodesByDish, stockItems] = await Promise.all([
     listCategories(restaurantId),
     listDishes(restaurantId),
     listTables(restaurantId),
@@ -40,7 +44,14 @@ export default async function OrderLinePage() {
     listPrinters(restaurantId),
     getRestaurant(restaurantId),
     session.role === "staff" ? getUserPermissions(session.userId) : Promise.resolve(null),
+    listBarcodesByDish(restaurantId),
+    listInventoryItems(restaurantId),
   ]);
+  // "12 left" on Till tiles (docs/retail-plan step 3.8): only for products with their own stock.
+  const stockByDish: Record<string, { qty: number; low: number; unit: string }> = {};
+  for (const item of stockItems) {
+    if (item.dishId) stockByDish[item.dishId] = { qty: item.quantity, low: item.lowStockThreshold, unit: item.unit };
+  }
 
   const currencySymbol = restaurant?.currencySymbol ?? "£";
   const restaurantName = restaurant?.name ?? "IQ POS";
@@ -62,7 +73,10 @@ export default async function OrderLinePage() {
   // Today's takings so far — orders placed since this business day began. The Till refreshes
   // every 20s (router.refresh), which re-renders this, so the figures keep up during service.
   const dayStart = currentBusinessDayStart(restaurant?.openTime ?? null, restaurant?.timezone ?? "UTC");
-  const today = salesByTender(orders.filter((o) => o.createdAt >= dayStart));
+  const todaySales = salesByTender(orders.filter((o) => o.createdAt >= dayStart));
+  // Refunds given today come off today's figures (docs/retail-plan step 3.7).
+  const todayRefunds = refundsByTender(await listRefundsBetween(restaurantId, dayStart, Number.MAX_SAFE_INTEGER));
+  const today = { cash: todaySales.cash - todayRefunds.cash, card: todaySales.card - todayRefunds.card };
 
   return (
     <AppShell title="Till" headerExtra={<TodaySales cash={today.cash} card={today.card} currencySymbol={currencySymbol} />}>
@@ -89,6 +103,13 @@ export default async function OrderLinePage() {
         hasKitchen={profile.features.kitchenDisplay && hasKitchen(printers)}
         channels={profile.channels}
         showTables={profile.features.tables}
+        barcodesByDish={barcodesByDish}
+        embeddedFormats={restaurant?.embeddedBarcodes ?? DEFAULT_EMBEDDED_FORMATS}
+        stockByDish={stockByDish}
+        stockMode={restaurant?.negativeStock ?? "allow"}
+        canOverridePrice={hasPermission(session.role, permissions, "till-price-override")}
+        canAddProducts={hasPermission(session.role, permissions, "manage-dishes")}
+        canRefund={hasPermission(session.role, permissions, "till-refund")}
       />
     </AppShell>
   );

@@ -4,6 +4,13 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { placeOrderAction } from "@/lib/actions/orders";
 import { formatMoney, itemsRawTax, itemsSubtotal, roundMoney } from "@/lib/types";
+import { canonicalCode, parseEmbedded, type EmbeddedFormat } from "@/lib/barcode";
+import { formatQty } from "@/lib/units";
+import { useBarcodeScanner } from "@/lib/use-barcode-scanner";
+import { playScanBeep } from "@/lib/order-sounds";
+import { logAgeRefusalAction } from "@/lib/actions/age-checks";
+import { WeightPad } from "./weight-pad";
+import { AgeCheckModal } from "./age-check-modal";
 import type { Category, Dish, Order, OrderChannel, OrderItem, RestaurantTable, ThirdPartyProvider } from "@/lib/types";
 import {
   ArrowLeft,
@@ -86,6 +93,8 @@ export function MobileTillClient({
   onSwitchToFull,
   hasKitchen,
   channels,
+  barcodesByDish,
+  embeddedFormats,
 }: {
   categories: Category[];
   dishes: Dish[];
@@ -99,6 +108,9 @@ export function MobileTillClient({
   // Order types to offer (lib/business-profile.ts) — table seating is only reached via Dine in,
   // which shops don't have, so no separate tables switch is needed here.
   channels: OrderChannel[];
+  // Scanning (docs/retail-plan step 3.1): the Simple Till finds products by barcode too.
+  barcodesByDish: Record<string, { code: string; packQty: number }[]>;
+  embeddedFormats: EmbeddedFormat[];
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -176,26 +188,86 @@ export function MobileTillClient({
     setScreen("menu");
   }
 
-  function addToCart(dish: Dish) {
+  // Same rules as the full Till (docs/retail-plan Phase 3): Challenge 25 once per sale per age,
+  // the weight pad for products sold by weight / volume / length, and a line of its own for each
+  // weighing; counted products add up on one line.
+  function addToCart(dish: Dish, opts: { qty?: number; packQty?: number; fixedTotal?: number; ageCheck?: OrderItem["ageCheck"] } = {}) {
     if (dish.outOfStock) return;
+    const approved = opts.ageCheck ?? cart.items.find((i) => i.ageCheck && i.ageCheck.minAge >= (dish.minAge ?? 0))?.ageCheck;
+    if (dish.minAge && !approved) {
+      setAgeFor({ dish, opts });
+      return;
+    }
+    const measured = dish.sellBy !== "unit";
+    if (measured && opts.qty == null) {
+      setPadDish({ dish, ageCheck: approved });
+      return;
+    }
+    const add = opts.qty ?? opts.packQty ?? 1;
     setCart((prev) => {
-      const existing = prev.items.find((i) => i.dishId === dish.id);
+      const existing = !measured && opts.fixedTotal == null ? prev.items.find((i) => i.dishId === dish.id && !i.lineId) : undefined;
       if (existing) {
-        return { ...prev, items: prev.items.map((i) => (i.dishId === dish.id ? { ...i, qty: i.qty + 1 } : i)) };
+        return { ...prev, items: prev.items.map((i) => (i === existing ? { ...i, qty: i.qty + add } : i)) };
       }
       return {
         ...prev,
-        items: [...prev.items, { dishId: dish.id, name: dish.name, price: priceFor(dish), qty: 1, taxRate: taxRateFor(dish) }],
+        items: [
+          ...prev.items,
+          {
+            dishId: dish.id,
+            name: dish.name,
+            price: priceFor(dish),
+            qty: add,
+            taxRate: taxRateFor(dish),
+            ...(measured || opts.fixedTotal != null ? { lineId: crypto.randomUUID() } : {}),
+            ...(measured ? { sellBy: dish.sellBy, unit: dish.unit } : {}),
+            ...(opts.fixedTotal != null ? { fixedTotal: opts.fixedTotal } : {}),
+            ...(dish.minAge && approved ? { ageCheck: approved } : {}),
+          },
+        ],
       };
     });
   }
 
-  function decrementCartItem(dishId: string) {
+  // A weighed line comes off whole; a counted one goes down by one.
+  function decrementCartItem(dishId: string, lineId?: string) {
     setCart((prev) => ({
       ...prev,
-      items: prev.items.map((i) => (i.dishId === dishId ? { ...i, qty: i.qty - 1 } : i)).filter((i) => i.qty > 0),
+      items: prev.items
+        .map((i) => (lineId ? (i.lineId === lineId ? { ...i, qty: 0 } : i) : i.dishId === dishId && !i.lineId ? { ...i, qty: i.qty - 1 } : i))
+        .filter((i) => i.qty > 0),
     }));
   }
+
+  const [padDish, setPadDish] = useState<{ dish: Dish; ageCheck?: OrderItem["ageCheck"] } | null>(null);
+  const [ageFor, setAgeFor] = useState<{ dish: Dish; opts: { qty?: number; packQty?: number; fixedTotal?: number } } | null>(null);
+
+  // Scanning (hardware scanner): barcode → scale label → SKU, as on the full Till.
+  const barcodeIndex = useMemo(() => {
+    const m = new Map<string, { dish: Dish; packQty: number }>();
+    for (const d of dishes) for (const b of barcodesByDish[d.id] ?? []) m.set(b.code, { dish: d, packQty: b.packQty });
+    return m;
+  }, [dishes, barcodesByDish]);
+  useBarcodeScanner((raw) => {
+    const code = canonicalCode(raw);
+    const hit = barcodeIndex.get(code);
+    const emb = hit ? null : parseEmbedded(code, embeddedFormats);
+    const pluDish = emb ? dishes.find((d) => d.plu && d.plu.replace(/^0+/, "") === emb.plu.replace(/^0+/, "")) : undefined;
+    const skuDish = hit || pluDish ? undefined : dishes.find((d) => d.sku && d.sku.toLowerCase() === raw.trim().toLowerCase());
+    if (screen === "channel") setScreen("menu");
+    if (hit) addToCart(hit.dish, { packQty: hit.packQty });
+    else if (emb && pluDish) {
+      if (emb.weight != null) addToCart(pluDish, { qty: emb.weight });
+      else if (emb.price != null) addToCart(pluDish, { qty: pluDish.sellBy !== "unit" && pluDish.price > 0 ? Math.round((emb.price / pluDish.price) * 1000) / 1000 : 1, fixedTotal: emb.price });
+    } else if (skuDish) addToCart(skuDish);
+    else {
+      playScanBeep(false);
+      setToast(`Barcode ${code} isn't on any product`);
+      setTimeout(() => setToast(null), 3500);
+      return;
+    }
+    playScanBeep(true);
+  }, !padDish && !ageFor);
 
   function adjustGuests(delta: 1 | -1) {
     setCart((prev) => ({ ...prev, guests: Math.max(1, prev.guests + delta) }));
@@ -255,6 +327,42 @@ export function MobileTillClient({
         <div className="absolute left-1/2 top-3 z-50 -translate-x-1/2 rounded-full bg-neutral-900 px-4 py-2 text-sm font-semibold text-white shadow-lg">
           {toast}
         </div>
+      )}
+      {padDish && (
+        <WeightPad
+          mode="weight"
+          name={padDish.dish.name}
+          unit={padDish.dish.unit}
+          price={priceFor(padDish.dish)}
+          minQty={padDish.dish.minQty}
+          qtyStep={padDish.dish.qtyStep}
+          tare={padDish.dish.tare}
+          currencySymbol={currencySymbol}
+          onConfirm={(qty) => {
+            const { dish, ageCheck } = padDish;
+            setPadDish(null);
+            addToCart(dish, { qty, ageCheck });
+          }}
+          onClose={() => setPadDish(null)}
+        />
+      )}
+      {ageFor && (
+        <AgeCheckModal
+          productName={ageFor.dish.name}
+          minAge={ageFor.dish.minAge ?? 18}
+          onApprove={(method) => {
+            const { dish, opts } = ageFor;
+            setAgeFor(null);
+            addToCart(dish, { ...opts, ageCheck: { minAge: dish.minAge ?? 18, method } });
+          }}
+          onRefuse={() => {
+            const dish = ageFor.dish;
+            setAgeFor(null);
+            logAgeRefusalAction({ dishId: dish.id, productName: dish.name, minAge: dish.minAge ?? 18 }).catch(() => {});
+            setToast(`Sale of ${dish.name} refused — logged`);
+            setTimeout(() => setToast(null), 3500);
+          }}
+        />
       )}
 
       {screen === "channel" && (
@@ -446,16 +554,18 @@ export function MobileTillClient({
                   <div key={item.dishId} className="flex items-center justify-between rounded-xl border border-neutral-200 bg-white p-3">
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-semibold text-neutral-800">{item.name}</div>
-                      <div className="text-xs text-neutral-400">{formatMoney(item.price, currencySymbol)} each</div>
+                      <div className="text-xs text-neutral-400">
+                        {item.sellBy && item.sellBy !== "unit" ? `${formatQty(item.qty, item.unit, item.sellBy)} @ ${formatMoney(item.price, currencySymbol)}/${item.unit}` : `${formatMoney(item.price, currencySymbol)} each`}
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => decrementCartItem(item.dishId)}
+                        onClick={() => decrementCartItem(item.dishId, item.lineId)}
                         className="flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 text-neutral-500"
                       >
                         <Minus className="h-3.5 w-3.5" />
                       </button>
-                      <span className="w-5 text-center text-sm font-bold text-neutral-800">{item.qty}</span>
+                      <span className="min-w-5 text-center text-sm font-bold text-neutral-800">{item.sellBy && item.sellBy !== "unit" ? formatQty(item.qty, item.unit, item.sellBy) : item.qty}</span>
                       <button
                         onClick={() => {
                           const dish = dishes.find((d) => d.id === item.dishId);

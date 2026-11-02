@@ -226,6 +226,11 @@ commented definition of every column. Summary by table:
 | `inventory_items` | Tracked stock (ingredients, drinks, packaging — or a product's own stock when `dish_id` is set). Quantity can go below zero (see `restaurants.negativeStock`). Only ever changed through `applyStockChanges` (§7.11). |
 | `product_barcodes` | A product's barcodes (several per product; `pack_qty` = how many one scan adds), canonical (UPC-A stored as EAN-13), unique per business. |
 | `stock_movements` | One row per stock change: signed `change`, `quantity_after`, `reason` (sale / void / edit / received / adjust / opening, later refund, count, waste, transfers), `reference_id` (the order), who, when. The stock history. |
+| `age_checks` | Challenge 25 log: every age-restricted sale approved on the Till and every refusal — product, age, result (approved/refused), how checked, who. §7.14. |
+| `refunds` | Refunds against a sale (own number R0001…, lines refunded, amount, tax, method, reason). `orders.refunded_amount` is the running total. Counted against takings on the day they happen. §7.14. |
+| `suppliers` | Who stock is bought from (contact, email, lead time, minimum order). §7.15. |
+| `purchase_orders` / `purchase_order_lines` | Orders to suppliers: `draft → sent → part_received → received` (or `cancelled`); lines hold the name/unit as ordered, quantity ordered and received, cost. §7.15. |
+| `stock_counts` / `stock_count_lines` | A stocktake and its lines (expected snapshotted at the start, counted, who/when). §7.15. |
 | `petty_cash_entries` | Manual cash in/out, outside of order payments. |
 | `terminal_payouts` / `terminal_expenses` | Hand-entered, per-terminal-per-day bank payout and provider-fee figures, reconciled against the Till's own recorded card sales on the "Card Settlements" Reports tab. |
 
@@ -601,7 +606,9 @@ takings (same `accountsFilter` as everywhere else). Dates are inclusive business
     the sum of that order's own sale/edit movements (orders from before the log fall back to
     what their items use now). Skips Pending (never took stock) and already-voided orders.
   - Merged tables: the secondary order is voided but its items move, so no stock change.
-  - Inventory page: opening stock (`opening`), + (`received`), − (`adjust`, can't go below zero by hand).
+  - Stock / Inventory page (§7.15): opening stock (`opening`), Goods in (`received`, with unit cost), Adjust with a reason
+    (`waste` for Damaged / Out of date / Theft / Own use, `adjust` for Correction / Other; can't go below zero by hand),
+    stocktake posting (`count`), refunds back to stock (`refund`).
 - **When stock runs out** (`restaurants.negativeStock`, Settings): `allow` (default) sells and
   lets quantities go negative (red on Inventory); `warn` sells and returns `stockWarnings` to the
   Till; `block` makes `placeOrderAction` return `{ error }` naming the items — the Till keeps
@@ -612,7 +619,7 @@ takings (same `accountsFilter` as everywhere else). Dates are inclusive business
 `restaurants.businessType` ∈ restaurant / cafe / grocery / retail / warehouse ("Wholesale /
 warehouse" in the UI). `businessProfile(type, features)` returns, per type: label + hint, words
 (restaurants and cafes always say Dish, shops always say Product — "Manage Dishes"/"Products", Restaurant/Store), feature defaults (`tables`,
-`kitchenDisplay`), the Till's order types (`channels`, first = default), `counterService`,
+`kitchenDisplay`, `purchasing` — Suppliers, Purchase Orders, Stocktake and Reorder; on for shops and warehouses, off for restaurants and cafes), the Till's order types (`channels`, first = default), `counterService`,
 receipt footer, negative-stock default and starter categories with VAT. Screens read it instead
 of checking the type:
 
@@ -631,14 +638,15 @@ of checking the type:
   types or when the kitchen is off (was: cafe only); a parked sale paid later is finished too
   when the kitchen is off.
 - `OrderChannel` gained "In store" and "Click & collect" (`ALL_CHANNELS` lists every one).
-  Later phases add more feature keys (barcodes, weighed items…) to the same helper.
+  `purchasing` (Phase 4) gates the Suppliers / Purchase Orders / Stocktake sidebar items and the Reorder / Stocktake shortcuts
+  on the Stock page, and relabels Inventory as **Stock**. Later phases add more feature keys to the same helper.
 
 ### 7.13 Products: units, barcodes, own stock, import, labels
 
 - **Sold by** (`dishes.sell_by` unit / weight / volume / length, `dishes.unit`): price is per
   unit; helpers in `lib/units.ts` (`priceLabel` "£2.40 / kg", `unitPriceLabel` per 100 g/ml or
   per m, `formatQty`, `stockUnitFor`). Measured products may set `min_qty`, `qty_step`, `tare`.
-  Selling a measured quantity on the Till (weight pad) is Phase 3.
+  Selling a measured quantity on the Till is the weight pad (§7.14).
 - **Barcodes** (`lib/barcode.ts`, dependency-free): `checkBarcode` (GS1 mod-10 check digit for
   EAN-13/EAN-8/UPC-A/GTIN-14, anything else is Code 128), `canonicalCode` (UPC-A → EAN-13),
   `makeInternalEan13(seq)` — the business's own codes, prefix **20** + `restaurants.barcode_seq`
@@ -651,7 +659,7 @@ of checking the type:
   deleting the product keeps the stock item (its `dish_id` is cleared).
 - **VAT override** (`dishes.tax_rate_override`) wins over the category rate in both Tills'
   `taxRateFor`. Cost price, brand, SKU (unique when set) and `min_age` are stored (the age check
-  on the Till is step 3.5).
+  on the Till is §7.14).
 - **Import / export** (`/manage-dishes/import`, `lib/actions/product-import.ts`,
   `lib/product-columns.ts`, `lib/csv.ts`): CSV with `IMPORT_COLUMNS`; rows sent in chunks of 200,
   each chunk loads products/barcodes/categories/stock once and writes in one `db.batch`
@@ -660,6 +668,76 @@ of checking the type:
 - **Labels** (`/manage-dishes/labels`, `components/ean-barcode.tsx`): shelf labels (21 or 8 per
   A4) and stickers (65 per A4), printed with `window.print()`; barcodes are SVG (verified to
   decode with ZXing); `dishes.label_printed_at` set on print for "never printed only".
+
+### 7.14 The Till for shops (`order-line/`, `lib/use-barcode-scanner.ts`, `lib/scale.ts`, `lib/actions/refunds.ts`)
+
+- **Scanning** (`useBarcodeScanner`): keyboard-mode scanners type 6+ characters < 40 ms apart then Enter;
+  the hook listens page-wide (typing in a normal field is left alone, fields marked `data-scan-target`
+  treat a scan as a lookup). `handleScan` in `order-line-client.tsx` resolves a code in this order:
+  own barcode (`product_barcodes`, canonical, `packQty` = how many one scan adds) → price/weight-embedded
+  scale label → "not on any product" toast with *Add product* / *Sell as custom item*. Camera scanning
+  (`camera-scanner.tsx`) uses the browser `BarcodeDetector`, falling back to `@zxing/library` (lazy-loaded).
+- **Embedded barcodes** (`lib/barcode.ts` `parseEmbedded`): `restaurants.embedded_barcodes` is a JSON list
+  `{prefix, itemDigits, value: price|weight, decimals}`; defaults `21` + 5-digit PLU + price (2 dp) and
+  `22` + PLU + weight (3 dp). The PLU matches `dishes.plu`. A price label adds the line with `fixedTotal`
+  (`lineTotal` honours it); a weight label adds the weight at the product's price. Edited in Settings →
+  Scales & scale labels (`updateEmbeddedBarcodesAction`).
+- **Weighed lines**: tapping a measured product opens `weight-pad.tsx` (g ⇄ kg, min qty / step / tare
+  honoured, optional Web Serial scale via `lib/scale.ts`). The `OrderItem` carries `sellBy`, `unit`,
+  `fixedTotal`, `priceOverride`, `ageCheck`; `qtyPrefix` / `receiptLine` (`lib/units.ts`) print
+  "1.250 kg @ £0.90/kg" on the Till, receipts, ESC/POS tickets, invoices, Kitchen, Sales Records and
+  CSV. A weighed line counts as one item sold in reports. Measured products are left off the online
+  / kiosk / table-QR menus (no weighing there).
+- **Age check**: product `min_age` → `age-check-modal.tsx` once per sale (Challenge 25: *looks over 25* or
+  *ID checked*; or *Refuse*). Approved checks are stored on the line and written to `age_checks` when the
+  order is placed (`lib/actions/orders.ts`); refusals are written at once (`lib/actions/age-checks.ts`).
+- **Price override**: `till-price-override` permission (managers by default) → `price-override-modal.tsx`;
+  reason (Reduced to clear / Damaged / Price match / Other) and the original price stay on the line
+  (`priceOverride`). The product's own price is untouched.
+- **Refunds** (`refundOrderAction`, `refund-modal.tsx`, `lib/data/refunds.ts`): `till-refund` permission.
+  Per line and quantity; each line refunds `lineTotal × (1 − order discount share) + its tax`, capped so the
+  total never passes what the sale took (`orders.refunded_amount`). Method (cash / a terminal), reason,
+  optional *back to stock* per line (`applyStockChanges` reason `refund`, referencing the sale). A slip
+  prints (`printRefundSlip`). `listRefundsBetween` / `refundsByTender` subtract refunds from cash / card
+  totals in End Day (`lib/data/shifts.ts`, `summarizeShiftWindow`), the Dashboard "Today" figures and Reports.
+- **Stock on tiles**: `StockLeft` chip ("11.25 kg left", amber when low, red when out) from `stockByDish`;
+  with *When stock runs out = Block* the Till refuses an add that would go below zero.
+
+### 7.15 Stock control and purchasing (`app/inventory/`, `suppliers/`, `purchase-orders/`, `stocktake/`)
+
+- **Stock page** (`/inventory`, titled **Stock** when `purchasing` is on): `listStockRows` (`lib/data/stock.ts`)
+  joins each `inventory_items` row to its product (SKU, barcodes, category) and supplier, and works out value
+  (`max(qty,0) × cost`) and last change. Filters All / Low / Out / Below zero, category, supplier; search by
+  name, SKU or barcode. History drawer = `stockHistoryAction` → the item's `stock_movements`, each linked to
+  its order (`/invoice/<id>`), purchase order or stocktake. Adjust = `adjustInventoryStockAction(item, delta,
+  reason, note)` with the reasons in `lib/stock-reasons.ts`.
+- **Goods in** (`/inventory/goods-in`, `receiveStockAction`): `StockItemPicker` (shared component — scan or
+  search; a case barcode adds its `pack_qty`) → quantities and costs → `received` movements with `unit_cost`;
+  the latest cost is written to the item and its product. Optional supplier + delivery note number (note on the
+  movement). With `?po=<id>` it arrives pre-filled from a purchase order and ticks the order's lines off
+  (extra beyond the ordered amount stays on the last line), then sets the order `part_received` / `received`.
+- **Suppliers** (`/suppliers`, permission `suppliers`): CRUD; deleting is refused while the supplier has open orders
+  and otherwise clears the supplier from items and products. Product form gets Supplier + Supplier's code
+  (`dishes.supplier_id` / `supplier_code`); `syncProductStock` copies the supplier onto the product's own stock item
+  (`inventory_items.supplier_id`), and editing the item on the Stock page writes it back to the product.
+- **Purchase orders** (`/purchase-orders`, `/purchase-orders/<id|new>`, permission `purchase-orders`): numbers
+  PO0001…; only a draft can be edited. *Email to supplier* (`sendPurchaseOrderEmail` in `lib/email.ts`, Resend) —
+  the order is only marked sent if the email went; *Mark as sent* for phone / web orders; *Cancel*; *Close — no more
+  coming* for a part-received order. Lines keep name/unit/supplier code as ordered.
+- **Reorder** (`/inventory/reorder`, `listReorderSuggestions`): items with quantity ≤ reorder level (default the
+  low-stock level) and not covered by open order lines (`on order` = ordered − received); suggested = `reorder_qty`
+  or `level × 2 − qty` less what's on order; grouped by supplier; `createOrdersFromReorderAction` makes one draft
+  per supplier. Items without a supplier are listed but can't be ordered from there.
+- **Stocktake** (`/stocktake`, `/stocktake/<id>`, permission `stocktake`): `startStockCountAction` snapshots
+  `expected` for everything (or one category); counting is scan (+1 or pack size) or typed, saved per line
+  (`setCountedAction`, several people at once). `getStockCount` works out each line's **system quantity at the
+  moment it was counted** (expected + every movement after the snapshot up to `counted_at`, ignoring this count's
+  own) so selling during a count never looks like missing stock; variance = counted − that. `postStockCountAction`
+  applies each variance as a delta (`count` movement, reference = the stocktake, note = its name) — so sales after
+  the count stay taken off. Uncounted lines are left alone. Differences are hidden while counting ("blind count").
+- **Alerts**: the Dashboard low-stock card lists the 8 lowest, flags how many are below zero and links to Stock /
+  Reorder. Email alerts to the owner are not built.
+- **Permissions**: `suppliers`, `purchase-orders`, `stocktake` (staff default: none); Stock / Inventory keeps `inventory`.
 
 ## 8. Payment / Card-Machine Integrations
 
@@ -746,7 +824,11 @@ don't assume a change to one automatically applies to the other.
 | Loyalty (admin) | `app/loyalty/` | `lib/actions/loyalty.ts` | `lib/data/loyalty.ts` |
 | Loyalty (customer) | `app/my-card/` | `lib/actions/loyalty-auth.ts` | `lib/loyalty-session.ts` |
 | Public ordering | `app/order/[slug]/` | `lib/actions/public-order.ts` | — |
-| Inventory | `app/inventory/` | `lib/actions/inventory.ts` | `lib/data/inventory.ts` |
+| Stock / Inventory (history, adjust, goods in, reorder) | `app/inventory/` (`goods-in/`, `reorder/`), `components/stock-item-picker.tsx` | `lib/actions/inventory.ts` | `lib/data/inventory.ts`, `lib/data/stock.ts`, `lib/stock.ts` |
+| Suppliers | `app/suppliers/` | `lib/actions/suppliers.ts` | `lib/data/suppliers.ts` |
+| Purchase orders | `app/purchase-orders/` | `lib/actions/purchase-orders.ts` (+ `receiveStockAction`) | `lib/data/purchase-orders.ts`, `lib/email.ts` |
+| Stocktake | `app/stocktake/` | `lib/actions/stocktake.ts` | `lib/data/stock-counts.ts` |
+| Till for shops (scan, weigh, age check, price change, refunds) | `app/order-line/` (`weight-pad`, `age-check-modal`, `price-override-modal`, `refund-modal`, `camera-scanner`), `app/settings/scale-settings-client.tsx` | `lib/actions/refunds.ts`, `age-checks.ts` | `lib/data/refunds.ts`, `lib/barcode.ts`, `lib/scale.ts` |
 | Staff & permissions | `app/settings/staff-client.tsx` | `lib/actions/staff.ts` | `lib/data/staff.ts` |
 | Printers / Kitchen Displays | `app/settings/printers-client.tsx` | `lib/actions/printers.ts` | `lib/data/printers.ts` |
 | Local network print (§7.8 — the one actually in use) | `app/settings/printers-client.tsx` (`LocalNetworkPrintRow`), `app/super-admin/printers`, `components/printer-setup-guide.tsx`, `public/downloads/iq-print-bridge.js` + `install-print-bridge.{sh,ps1}` | `lib/actions/printers.ts` (`saveLocalPrinterAction`), `lib/actions/local-print.ts` | `lib/local-print-bridge.ts`, `lib/escpos-ticket.ts` |
@@ -932,13 +1014,13 @@ when something here gets built, move it to §14 and the section that describes i
 ### 13.3a Planned — grocery shops & warehouses
 
 Full plan set, step by step, with SQL, files, checks and docs per step: **`docs/retail-plan/`**
-(start at `README.md`; nothing built yet). Business types Grocery, Retail and Warehouse; products
-sold by unit or by weight (or volume/length); barcodes. In short: business types `grocery` and `warehouse` driven by one
-`lib/business-profile.ts`; product fields (barcode, SKU, cost, sell by weight, VAT override, min
-age); a `stock_movements` log behind every stock change; barcode scanning, weighed items, age
-check and refunds on the Till; suppliers, purchase orders, goods in and stocktakes; then
-locations, batches/expiry, picking and trade accounts for warehouses. The Pricing page already
-promises supplier ordering, central menus and till limits, which are part of this plan.
+(start at `README.md` — its status table says what is built). **Built so far: Phases 0–4** — rounding, stock
+log, business types, products by unit/weight, barcodes, import and labels, the shop Till (scanning, weighing, age
+check, price change, refunds), and stock control (history, goods in, waste, suppliers, purchase orders, stocktake,
+reorder). **Still planned:** general retail extras (variants, serial numbers, promotions, gift receipts, store
+credit), warehouse (locations, batches/expiry, picking, transfers, trade accounts, central catalogue, till
+licences), retail reports, label-printer output and the online shop. Not yet checked on real hardware: camera
+scanning, a connected scale, label printers.
 
 ### 13.4 Pending — design, content and testing
 
@@ -959,6 +1041,147 @@ promises supplier ordering, central menus and till limits, which are part of thi
 > `/faq` page), re-capturing the marked screenshot in `public/help/` when the screen changed. A
 > change without all three is not done. This guide plus that FAQ are the source for the final
 > project documentation, so both must always match the live system. (Also in `CLAUDE.md`.)
+
+### 2026-11-02 — Retail plan Phases 3 + 4: the Till for shops, then stock control and purchasing
+- **Schema** — run on Turso **before** this code is deployed (one file, runs once; ALTER TABLE can't be repeated):
+  ```sql
+  -- IQ POS Phases 3 + 4 (retail plan): the Till for shops, then stock control & purchasing.
+  -- Run on Turso BEFORE the code is pushed. Run once (ALTER TABLE ADD COLUMN can't be repeated).
+
+  -- Phase 3: the Till for shops — scale labels, age checks, refunds.
+  ALTER TABLE dishes ADD COLUMN plu text;
+  ALTER TABLE restaurants ADD COLUMN embedded_barcodes text;
+  ALTER TABLE orders ADD COLUMN refunded_amount real NOT NULL DEFAULT 0;
+  CREATE TABLE IF NOT EXISTS age_checks (
+    id text PRIMARY KEY NOT NULL,
+    restaurant_id text NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+    order_id text,
+    dish_id text,
+    product_name text NOT NULL,
+    min_age integer NOT NULL,
+    result text NOT NULL,
+    method text,
+    staff_name text,
+    created_at integer NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS age_checks_restaurant_idx ON age_checks (restaurant_id, created_at);
+  CREATE TABLE IF NOT EXISTS refunds (
+    id text PRIMARY KEY NOT NULL,
+    restaurant_id text NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+    order_id text NOT NULL,
+    number text NOT NULL,
+    items text NOT NULL,
+    amount real NOT NULL,
+    tax real NOT NULL DEFAULT 0,
+    method text NOT NULL,
+    reason text,
+    created_by_name text,
+    created_at integer NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS refunds_restaurant_idx ON refunds (restaurant_id, created_at);
+  CREATE INDEX IF NOT EXISTS refunds_order_idx ON refunds (order_id);
+
+  -- Phase 4: stock control and purchasing — suppliers, purchase orders, stocktake.
+  ALTER TABLE dishes ADD COLUMN supplier_code text;
+  ALTER TABLE inventory_items ADD COLUMN supplier_id text;
+
+  CREATE TABLE IF NOT EXISTS suppliers (
+    id text PRIMARY KEY NOT NULL,
+    restaurant_id text NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+    name text NOT NULL,
+    contact_name text,
+    email text,
+    phone text,
+    address text,
+    account_ref text,
+    lead_time_days integer,
+    min_order real,
+    notes text,
+    created_at integer NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS suppliers_restaurant_idx ON suppliers (restaurant_id);
+
+  CREATE TABLE IF NOT EXISTS purchase_orders (
+    id text PRIMARY KEY NOT NULL,
+    restaurant_id text NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+    supplier_id text NOT NULL,
+    number text NOT NULL,
+    status text NOT NULL DEFAULT 'draft',
+    expected_at integer,
+    notes text,
+    total real,
+    created_by_name text,
+    created_at integer NOT NULL,
+    sent_at integer,
+    received_at integer
+  );
+  CREATE INDEX IF NOT EXISTS purchase_orders_restaurant_idx ON purchase_orders (restaurant_id, created_at);
+
+  CREATE TABLE IF NOT EXISTS purchase_order_lines (
+    id text PRIMARY KEY NOT NULL,
+    purchase_order_id text NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+    inventory_item_id text NOT NULL,
+    name text NOT NULL,
+    unit text NOT NULL DEFAULT 'pcs',
+    supplier_code text,
+    qty_ordered real NOT NULL,
+    qty_received real NOT NULL DEFAULT 0,
+    unit_cost real
+  );
+  CREATE INDEX IF NOT EXISTS purchase_order_lines_po_idx ON purchase_order_lines (purchase_order_id);
+
+  CREATE TABLE IF NOT EXISTS stock_counts (
+    id text PRIMARY KEY NOT NULL,
+    restaurant_id text NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+    name text,
+    scope text NOT NULL DEFAULT 'all',
+    status text NOT NULL DEFAULT 'open',
+    started_by_name text,
+    created_at integer NOT NULL,
+    posted_at integer
+  );
+  CREATE INDEX IF NOT EXISTS stock_counts_restaurant_idx ON stock_counts (restaurant_id, created_at);
+
+  CREATE TABLE IF NOT EXISTS stock_count_lines (
+    id text PRIMARY KEY NOT NULL,
+    stock_count_id text NOT NULL REFERENCES stock_counts(id) ON DELETE CASCADE,
+    inventory_item_id text NOT NULL,
+    name text NOT NULL,
+    unit text NOT NULL DEFAULT 'pcs',
+    cost_price real,
+    expected real NOT NULL,
+    counted real,
+    counted_by_name text,
+    counted_at integer
+  );
+  CREATE INDEX IF NOT EXISTS stock_count_lines_count_idx ON stock_count_lines (stock_count_id);
+  ```
+- **Till for shops (Phase 3)** — barcode scanning (scanner anywhere on the Till, camera as an alternative),
+  price/weight-embedded scale labels with a Scale PLU per product and layouts in Settings → Scales & scale
+  labels, a weight pad for loose goods (g ⇄ kg, optional Web Serial scale), weighed lines on receipts,
+  invoices, Kitchen, Sales Records and reports, Challenge 25 age check with a log, price change with a reason,
+  refunds and returns (partial, back to stock, refund slip, off the day's takings), stock-left chips on tiles
+  and blocking when stock runs out is set to Block. New permissions `till-price-override`, `till-refund`. See §7.14.
+- **Stock control (Phase 4)** — Inventory becomes **Stock** for shops: totals, filters, search/scan, history
+  drawer with links to the order / purchase order / stocktake, Adjust with reasons (waste vs correction), Goods
+  in (scan, case barcodes, cost, delivery note), Suppliers, Purchase Orders (email, part receive, close, cancel),
+  Reorder suggestions grouped by supplier, Stocktake (blind count, differences at cost, post). Product form gets
+  Supplier and Supplier's code. New feature switch `purchasing` (Settings → Business) and permissions
+  `suppliers`, `purchase-orders`, `stocktake`. Dashboard low-stock card shows the worst 8, flags below-zero and links
+  to Reorder. See §7.15.
+- Restaurants and cafes are unchanged: no new sidebar items (`purchasing` is off), Inventory keeps its name, and the
+  café sell / edit / void / negative-stock flows were re-run after these changes.
+- Tested with Playwright against a local libSQL copy: scan, weigh, scale label, age check once per sale, price
+  change, cash sale, refund with back-to-stock; supplier → reorder → PO → email refused cleanly without a provider →
+  mark sent → receive 8 of 10 → part received → receive 2 → received; case barcode scanned twice = +24; stocktake with
+  a −2 variance and a sale during the count → post; history shows PO and delivery note. **Not yet checked on real
+  hardware:** camera scanning, a connected scale; **email delivery** needs `RESEND_API_KEY` (the same key the
+  loyalty emails use) — not yet tried against a live inbox.
+- FAQ: new section "Shops: scanning, weighing and stock" (scan to sell, weigh, age check, change price, refunds,
+  scale setup, why stock changed + history, goods in, suppliers, purchase orders, reorder, stocktake); Inventory,
+  product details and business type answers updated; screenshots `scan-sell`, `weigh-product`, `age-check`,
+  `change-price`, `refund-sale`, `scale-setup`, `stock-page`, `stock-history`, `goods-in`, `suppliers`,
+  `purchase-order`, `reorder`, `stocktake`, `inventory` (re-captured).
 
 ### 2026-10-30 — Reports dashboard and every report type
 - `/reports` now opens on a **Dashboard**: alerts (unbalanced End Days, unpaid orders, low stock,

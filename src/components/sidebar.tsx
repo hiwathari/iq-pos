@@ -19,6 +19,9 @@ import {
   TicketPercent,
   CreditCard,
   Package,
+  Truck,
+  ShoppingBasket,
+  ClipboardCheck,
   PanelLeftClose,
   PanelLeftOpen,
   Globe,
@@ -40,6 +43,9 @@ const NAV: { href: string; label: string; icon: typeof LayoutDashboard; key: Per
   { href: "/coupons", label: "Coupons", icon: TicketPercent, key: "coupons" },
   { href: "/loyalty", label: "Loyalty Cards", icon: CreditCard, key: "loyalty" },
   { href: "/inventory", label: "Inventory", icon: Package, key: "inventory" },
+  { href: "/suppliers", label: "Suppliers", icon: Truck, key: "suppliers" },
+  { href: "/purchase-orders", label: "Purchase Orders", icon: ShoppingBasket, key: "purchase-orders" },
+  { href: "/stocktake", label: "Stocktake", icon: ClipboardCheck, key: "stocktake" },
   { href: "/customers", label: "Customers", icon: Users, key: "customers" },
   { href: "/reports", label: "Reports", icon: BarChart3, key: "reports" },
   { href: "/sales-records", label: "Sales Records", icon: Table2, key: "sales-records" },
@@ -63,6 +69,7 @@ export function Sidebar({
   showKitchenDisplay = true,
   showTables = true,
   productsLabel = "Manage Dishes",
+  showPurchasing = false,
 }: {
   role: Role;
   name: string;
@@ -77,6 +84,8 @@ export function Sidebar({
   // and call their menu "Products".
   showTables?: boolean;
   productsLabel?: string;
+  // Suppliers, Purchase Orders and Stocktake (the "purchasing" feature); Inventory is called Stock with it.
+  showPurchasing?: boolean;
 }) {
   const pathname = usePathname();
   const isSuperOrRegional = role === "super_admin" || role === "regional_admin";
@@ -91,8 +100,11 @@ export function Sidebar({
           (item) =>
             hasPermission(effectiveRole, permissions, item.key) &&
             (item.key !== "kitchen" || showKitchenDisplay) &&
-            (item.key !== "manage-table" || showTables)
-        ).map((item) => (item.key === "manage-dishes" ? { ...item, label: productsLabel } : item));
+            (item.key !== "manage-table" || showTables) &&
+            (!["suppliers", "purchase-orders", "stocktake"].includes(item.key) || showPurchasing)
+        ).map((item) =>
+          item.key === "manage-dishes" ? { ...item, label: productsLabel } : item.key === "inventory" && showPurchasing ? { ...item, label: "Stock" } : item
+        );
 
   // Starts expanded (matches the server-rendered markup) and only collapses once mounted, so
   // there's never a server/client markup mismatch — just a brief flash open on page load for

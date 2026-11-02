@@ -101,3 +101,16 @@ export const PLAY_SOUND: Record<SoundKind, (volume?: number) => void> = {
   kitchenNew: playNewOrderChime,
   ready: playOrderReadyChime,
 };
+
+// Barcode scans on the Till (docs/retail-plan step 3.1): a short high beep when the product was
+// found, a low double buzz when it wasn't — so the cashier knows without looking up.
+export function playScanBeep(found: boolean) {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  if (found) tone(t, 1760, 0.08, "square", 0.08);
+  else {
+    tone(t, 220, 0.14, "sawtooth", 0.12);
+    tone(t + 0.18, 220, 0.14, "sawtooth", 0.12);
+  }
+}

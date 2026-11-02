@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
+import { qtyPrefix } from "@/lib/units";
 import { useRouter } from "next/navigation";
 import {
   formatOrderTimestamp,
@@ -627,7 +628,7 @@ function CompletedOrderRow({
         {visibleItems.map((item, idx) => (
           <div key={item.lineId ?? `${item.dishId}-${idx}`}>
             <span className={isVoided ? "line-through decoration-rose-300" : undefined}>
-              {item.qty}x {item.name}
+              {qtyPrefix(item)} {item.name}
             </span>
             {item.note && <div className="font-semibold italic text-amber-600">↳ {item.note}</div>}
           </div>
@@ -786,7 +787,7 @@ function OrderTicket({
                 }`}
               >
                 <span className="min-w-0">
-                  <span className={`font-extrabold ${item.ready ? "text-neutral-300" : "text-teal-600"}`}>{item.qty}× </span>
+                  <span className={`font-extrabold ${item.ready ? "text-neutral-300" : "text-teal-600"}`}>{qtyPrefix(item, "×")} </span>
                   <span className={item.ready ? "text-neutral-400 line-through" : "font-semibold text-neutral-800"}>{item.name}</span>
                   {changeTag}
                   {item.note && <div className="text-sm font-bold italic leading-tight text-amber-600">↳ {item.note}</div>}
@@ -805,7 +806,7 @@ function OrderTicket({
               key={itemKey}
               className={`text-lg leading-tight ${changed ? "-mx-1 rounded-md bg-orange-100 px-1 py-0.5 ring-1 ring-orange-300" : ""}`}
             >
-              <span className={`font-extrabold ${isVoided ? "text-rose-400" : "text-teal-600"}`}>{item.qty}× </span>
+              <span className={`font-extrabold ${isVoided ? "text-rose-400" : "text-teal-600"}`}>{qtyPrefix(item, "×")} </span>
               <span
                 className={
                   isVoided
@@ -827,7 +828,7 @@ function OrderTicket({
             key={`removed-${item.lineId ?? item.dishId}-${idx}`}
             className="-mx-1 rounded-md bg-rose-50 px-1 py-0.5 text-lg leading-tight text-rose-600 ring-1 ring-rose-200"
           >
-            <span className="font-extrabold line-through decoration-rose-500 decoration-2">{item.qty}× </span>
+            <span className="font-extrabold line-through decoration-rose-500 decoration-2">{qtyPrefix(item, "×")} </span>
             <span className="font-semibold line-through decoration-rose-500 decoration-2">{item.name}</span>
             <span className="ml-1.5 rounded bg-rose-600 px-1 py-0.5 align-middle text-[11px] font-bold text-white">REMOVED</span>
             {item.note && <div className="ml-4 text-sm italic leading-tight text-rose-400 line-through">↳ {item.note}</div>}

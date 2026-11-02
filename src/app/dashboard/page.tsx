@@ -9,6 +9,7 @@ import { listPaymentTerminals } from "@/lib/data/printers";
 import { getReportData } from "@/lib/data/reports";
 import { listShifts } from "@/lib/data/shifts";
 import { listLowStockItems } from "@/lib/data/inventory";
+import { businessProfile } from "@/lib/business-profile";
 import { filterOrdersForAccountsRole } from "@/lib/accounts-filter";
 import { businessDateKey, businessDayRange, shiftDateKey } from "@/lib/business-day";
 import { formatMoney, formatOrderTimestamp, orderTotal, shiftTotals, type Order, type Shift } from "@/lib/types";
@@ -64,6 +65,7 @@ export default async function DashboardPage() {
     session.role === "staff" ? getUserPermissions(session.userId) : Promise.resolve(null),
   ]);
   const currencySymbol = restaurant?.currencySymbol ?? "£";
+  const profile = businessProfile(restaurant?.businessType, restaurant?.features);
   const canEndDay = hasPermission(session.role, permissions, "end-day");
   const businessDay = { openTime: restaurant?.openTime ?? null, timezone: restaurant?.timezone ?? "UTC" };
 
@@ -331,21 +333,34 @@ export default async function DashboardPage() {
           <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
             <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-amber-800">
               <AlertTriangle className="h-4 w-4" /> Low Stock
+              {lowStockItems.some((i) => i.quantity < 0) && (
+                <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700">
+                  {lowStockItems.filter((i) => i.quantity < 0).length} below zero
+                </span>
+              )}
             </h2>
             <div className="space-y-2">
-              {lowStockItems.map((i) => (
+              {lowStockItems.slice(0, 8).map((i) => (
                 <div key={i.id} className="flex items-center justify-between text-sm">
                   <span className="text-amber-800">{i.name}</span>
-                  <span className="font-semibold text-amber-900">
-                    {i.quantity} {i.unit} left
+                  <span className={`font-semibold ${i.quantity < 0 ? "text-rose-700" : "text-amber-900"}`}>
+                    {Math.round(i.quantity * 1000) / 1000} {i.unit} left
                   </span>
                 </div>
               ))}
+              {lowStockItems.length > 8 && <p className="text-xs text-amber-700">+ {lowStockItems.length - 8} more</p>}
             </div>
             {session.role !== "staff" && (
-              <Link href="/inventory" className="mt-3 inline-block text-xs font-semibold text-amber-700 hover:underline">
-                Manage inventory →
-              </Link>
+              <div className="mt-3 flex gap-4">
+                <Link href="/inventory" className="text-xs font-semibold text-amber-700 hover:underline">
+                  {profile.features.purchasing ? "Open stock →" : "Manage inventory →"}
+                </Link>
+                {profile.features.purchasing && (
+                  <Link href="/inventory/reorder" className="text-xs font-semibold text-amber-700 hover:underline">
+                    Reorder →
+                  </Link>
+                )}
+              </div>
             )}
           </div>
         )}

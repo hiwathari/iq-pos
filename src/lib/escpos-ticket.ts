@@ -1,6 +1,7 @@
 import "server-only";
 import sharp from "sharp";
 import { lineTotal } from "@/lib/types";
+import { receiptLine } from "@/lib/units";
 
 // Builds the raw ESC/POS command bytes for a Sunmi/thermal receipt, hex-encoded exactly as the
 // local print bridge expects (see lib/local-print-bridge.ts, src/app/android-app and
@@ -119,6 +120,10 @@ export interface SunmiTicketItem {
   qty: number;
   price: number;
   note?: string;
+  // Weighed / measured lines (docs/retail-plan step 3.4) and scale-label totals.
+  sellBy?: string;
+  unit?: string;
+  fixedTotal?: number;
 }
 
 // Items grouped by their menu category, in the order they should print — built by the caller
@@ -210,7 +215,12 @@ export async function buildEscPosTicket(t: SunmiTicketData): Promise<{ hex: stri
     if (group.items.length === 0) continue;
     bytes.push(...setMode(0x08), ...textBytes(group.categoryName.toUpperCase()), ...setMode(0x00), ...feed());
     for (const item of group.items) {
-      bytes.push(...moneyRow(`${item.qty}x ${item.name}`, money(lineTotal(item))));
+      const [first, second] = receiptLine(item, t.currencySymbol);
+      if (second && item.sellBy && item.sellBy !== "unit") {
+        bytes.push(...textBytes(first), ...feed(), ...moneyRow(`  ${second}`, money(lineTotal(item))));
+      } else {
+        bytes.push(...moneyRow(first, money(lineTotal(item))));
+      }
       if (item.note) bytes.push(...textBytes(`  > ${item.note}`), ...feed());
     }
   }
