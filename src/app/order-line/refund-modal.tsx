@@ -53,7 +53,7 @@ export function RefundModal({
       return s + lineTotal(i) * factor * share * (1 + (i.taxRate ?? 0) / 100);
     }, 0)
   );
-  const methods = ["Cash", ...paymentTerminals.map((t) => t.name)];
+  const methods = ["Cash", ...paymentTerminals.map((t) => t.name), "Store credit"];
 
   async function confirm() {
     setSaving(true);

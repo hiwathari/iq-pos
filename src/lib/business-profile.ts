@@ -8,7 +8,7 @@ export const BUSINESS_TYPES: BusinessType[] = ["restaurant", "cafe", "grocery", 
 
 // Features a business can switch on or off in Settings (restaurants.features overrides the type's
 // default). Only ones that are built are listed in FEATURE_SETTINGS below; later phases add more.
-export type FeatureKey = "tables" | "kitchenDisplay" | "purchasing";
+export type FeatureKey = "tables" | "kitchenDisplay" | "purchasing" | "promotions";
 
 export type FeatureOverrides = Partial<Record<FeatureKey, boolean>>;
 
@@ -39,7 +39,7 @@ const PROFILES: Record<BusinessType, BusinessProfile> = {
     label: "Restaurant",
     hint: "Tables, kitchen and serving",
     words: FOOD_WORDS,
-    features: { tables: true, kitchenDisplay: true, purchasing: false },
+    features: { tables: true, kitchenDisplay: true, purchasing: false, promotions: false },
     channels: RESTAURANT_CHANNELS,
     counterService: false,
     receiptFooter: "Thank you for dining with us!",
@@ -51,7 +51,7 @@ const PROFILES: Record<BusinessType, BusinessProfile> = {
     label: "Cafe",
     hint: "Counter service — paid orders finish straight away",
     words: { ...FOOD_WORDS, place: "Cafe" },
-    features: { tables: true, kitchenDisplay: true, purchasing: false },
+    features: { tables: true, kitchenDisplay: true, purchasing: false, promotions: false },
     channels: RESTAURANT_CHANNELS,
     counterService: true,
     receiptFooter: "Thank you for visiting us!",
@@ -63,7 +63,7 @@ const PROFILES: Record<BusinessType, BusinessProfile> = {
     label: "Grocery shop",
     hint: "Barcodes, loose goods by weight, stock",
     words: SHOP_WORDS,
-    features: { tables: false, kitchenDisplay: false, purchasing: true },
+    features: { tables: false, kitchenDisplay: false, purchasing: true, promotions: true },
     channels: SHOP_CHANNELS,
     counterService: true,
     receiptFooter: "Thank you for shopping with us!",
@@ -88,7 +88,7 @@ const PROFILES: Record<BusinessType, BusinessProfile> = {
     label: "Retail shop",
     hint: "Clothing, gifts, phones, hardware…",
     words: SHOP_WORDS,
-    features: { tables: false, kitchenDisplay: false, purchasing: true },
+    features: { tables: false, kitchenDisplay: false, purchasing: true, promotions: true },
     channels: SHOP_CHANNELS,
     counterService: true,
     receiptFooter: "Thank you for shopping with us!",
@@ -100,7 +100,7 @@ const PROFILES: Record<BusinessType, BusinessProfile> = {
     label: "Wholesale / warehouse",
     hint: "Trade counter, stock held, goods out",
     words: { ...SHOP_WORDS, place: "Warehouse" },
-    features: { tables: false, kitchenDisplay: false, purchasing: true },
+    features: { tables: false, kitchenDisplay: false, purchasing: true, promotions: true },
     channels: ["In store", "Click & collect", "Delivery"],
     counterService: true,
     receiptFooter: "Thank you for your business.",
@@ -127,6 +127,7 @@ export function businessProfile(type: BusinessType | null | undefined, overrides
 export const FEATURE_SETTINGS: { key: FeatureKey; label: string; hint: string }[] = [
   { key: "tables", label: "Tables & guests", hint: "Table plan, guests, Wait List and table QR ordering on the Till." },
   { key: "kitchenDisplay", label: "Kitchen", hint: "Send to Kitchen and the Kitchen Display. Off: a paid sale finishes straight away." },
+  { key: "promotions", label: "Promotions", hint: "Multi-buy, buy-some-get-some-free, % off and meal deals applied automatically on the Till." },
   { key: "purchasing", label: "Suppliers, orders & stocktake", hint: "Suppliers, purchase orders, Reorder suggestions and Stocktake beside Stock." },
 ];
 

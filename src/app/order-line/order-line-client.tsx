@@ -52,6 +52,8 @@ import { AgeCheckModal } from "./age-check-modal";
 import { PriceOverrideModal } from "./price-override-modal";
 import { CameraScanner } from "./camera-scanner";
 import { RefundModal } from "./refund-modal";
+import { applyPromotions, stripPromo, type PromotionDef } from "@/lib/promotions";
+import { lookupStoreCreditAction } from "@/lib/actions/store-credit";
 import {
   Minus,
   Plus,
@@ -90,6 +92,7 @@ import {
   TicketPercent,
   Check,
   Camera,
+  Gift,
   Tag,
   RotateCcw,
 } from "lucide-react";
@@ -135,8 +138,8 @@ function isOrderClosedOut(o: Order) {
 // snapshot after the live `cart` state has already been reset (see handlePlaceOrder's auto-print
 // on payment, which fires after setCart(emptyCart)) — both call sites must agree exactly, since
 // this mirrors orderTotal()/orderBreakdown() in lib/types.ts for what actually gets saved.
-function computeCartTotals(cart: CartState) {
-  const subtotal = itemsSubtotal(cart.items);
+function computeCartTotals(cart: CartState, items: OrderItem[] = cart.items) {
+  const subtotal = itemsSubtotal(items);
   const extraDiscountRaw =
     cart.extraDiscountMode === "percent" ? subtotal * (Math.max(0, Number(cart.extraDiscount) || 0) / 100) : Number(cart.extraDiscount) || 0;
   const extraDiscountAmount = roundMoney(Math.max(0, Math.min(subtotal, extraDiscountRaw)));
@@ -145,7 +148,7 @@ function computeCartTotals(cart: CartState) {
     : 0;
   const discountedSubtotal = Math.max(0, subtotal - extraDiscountAmount - couponDiscountAmount);
   const discountFactor = subtotal > 0 ? discountedSubtotal / subtotal : 0;
-  const tax = roundMoney(itemsRawTax(cart.items) * discountFactor);
+  const tax = roundMoney(itemsRawTax(items) * discountFactor);
   const total = roundMoney(discountedSubtotal + tax);
   return { subtotal, extraDiscountAmount, couponDiscountAmount, tax, total };
 }
@@ -275,6 +278,7 @@ export function OrderLineClient({
   canOverridePrice,
   canAddProducts,
   canRefund,
+  promotions = [],
 }: {
   categories: Category[];
   dishes: Dish[];
@@ -308,6 +312,7 @@ export function OrderLineClient({
   canOverridePrice: boolean;
   canAddProducts: boolean;
   canRefund: boolean;
+  promotions?: PromotionDef[];
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -519,7 +524,22 @@ export function OrderLineClient({
   // line (see addToCart) once different lines carry different kitchen notes.
   const qtyFor = (dishId: string) => cart.items.filter((i) => i.dishId === dishId).reduce((sum, i) => sum + i.qty, 0);
 
-  const { subtotal, extraDiscountAmount, couponDiscountAmount, tax, total } = computeCartTotals(cart);
+  // Promotions (step 5.3): the basket priced with every live promotion. The cart itself stays plain
+  // (so removing an item un-applies a deal); everything shown, totalled or printed uses `priced`,
+  // and the server recomputes the same thing when the order is placed.
+  const [promoNow, setPromoNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (promotions.length === 0) return;
+    const t = setInterval(() => setPromoNow(Date.now()), 60000);
+    return () => clearInterval(t);
+  }, [promotions.length]);
+  const categoryByDish = useMemo(() => new Map(dishes.map((d) => [d.id, d.categoryId])), [dishes]);
+  const priced = useMemo(
+    () => applyPromotions(cart.items, promotions, { now: promoNow, channel: cart.channel, categoryOf: (id) => categoryByDish.get(id) ?? null }),
+    [cart.items, cart.channel, promotions, promoNow, categoryByDish]
+  );
+
+  const { subtotal, extraDiscountAmount, couponDiscountAmount, tax, total } = computeCartTotals(cart, priced.items);
 
   function applyCoupon() {
     const code = cart.couponCode.trim();
@@ -706,8 +726,33 @@ export function OrderLineClient({
       } else beep(false);
       return;
     }
+    // A store-credit slip (EAN-13 starting 29) pays for the sale, up to what's left to pay.
+    if (/^29\d{11}$/.test(code)) {
+      void applyCreditSlip(code);
+      return;
+    }
     setScanNotice({ kind: "error", text: `Barcode ${code} isn't on any product.`, code });
     beep(false);
+  }
+
+  async function applyCreditSlip(code: string) {
+    if (cart.payments.some((p) => p.method === "Store credit")) {
+      setScanNotice({ kind: "error", text: "A store credit is already on this sale — pay the rest another way." });
+      return beep(false);
+    }
+    if (paymentsRemaining <= 0.004) {
+      setScanNotice({ kind: "error", text: "There's nothing left to pay on this sale." });
+      return beep(false);
+    }
+    const res = await lookupStoreCreditAction(code);
+    if (res.error || !res.code || res.balance == null) {
+      setScanNotice({ kind: "error", text: res.error ?? "That store credit can't be used." });
+      return beep(false);
+    }
+    const use = Math.min(res.balance, Math.round(paymentsRemaining * 100) / 100);
+    setCart((prev) => ({ ...prev, payments: [...prev.payments, { method: "Store credit", amount: use, creditCode: res.code }] }));
+    setScanNotice({ kind: "ok", text: `Store credit ${formatMoney(use, currencySymbol)} applied${res.balance - use > 0.004 ? ` — ${formatMoney(res.balance - use, currencySymbol)} left on the slip` : ""}` });
+    beep(true);
   }
   useBarcodeScanner(handleScan, !padFor && !pendingAge && !priceOverrideFor);
   useEffect(() => {
@@ -806,7 +851,7 @@ export function OrderLineClient({
       thirdPartyProvider: order.thirdPartyProvider ?? "Uber Eats",
       // Backfills a lineId for items placed before this existed, so every line in the cart has a
       // stable identity to edit/remove/toggle by regardless of when the order was first placed.
-      items: order.items.map((i) => ({ ...i, lineId: i.lineId ?? crypto.randomUUID() })),
+      items: order.items.map((i) => ({ ...stripPromo(i), lineId: i.lineId ?? crypto.randomUUID() })),
       customerName: order.customerName ?? "",
       customerPhone: order.customerPhone ?? "",
       customerAddress: order.customerAddress ?? "",
@@ -901,7 +946,7 @@ export function OrderLineClient({
     // payment-included order auto-prints right after placement (see printReceiptLocally), and by
     // then React may already have cleared cart state.
     const wasPaid = cart.payments.length > 0;
-    const receiptCart = cart;
+    const receiptCart: CartState = { ...cart, items: priced.items };
     startTransition(async () => {
       try {
         const result = await placeOrderAction({
@@ -998,7 +1043,7 @@ export function OrderLineClient({
   // Android bridge from the APK, or the HTTP one — see lib/local-print-bridge.ts) — the one and
   // only print path once a restaurant has local printing configured. Used both by the manual
   // Print button below and by handlePlaceOrder's auto-print on payment.
-  async function printReceiptLocally(receiptCart: CartState, orderNumber: string, createdAt: number, orderId: string | null) {
+  async function printReceiptLocally(receiptCart: CartState, orderNumber: string, createdAt: number, orderId: string | null, gift = false) {
     if (!localPrintTarget) return;
     const totals = computeCartTotals(receiptCart);
     const { hex } = await buildTicketEscPosAction({
@@ -1027,6 +1072,7 @@ export function OrderLineClient({
       currencySymbol,
       payments: receiptCart.payments.length > 0 ? receiptCart.payments : undefined,
       footerText: invoiceFooterText,
+      gift,
       invoiceUrl: orderId ? `${window.location.origin}/invoice/${orderId}` : undefined,
     });
     await printViaLocalBridge({ printerIp: localPrintTarget.ip, printerPort: localPrintTarget.port, escposHex: hex });
@@ -1035,9 +1081,9 @@ export function OrderLineClient({
   // The web-print popup (lib/print-ticket.ts) is now only a fallback for a restaurant that
   // hasn't set up local printing at all — once localPrintTarget exists, this is the only path,
   // per the explicit instruction that staff shouldn't see the old browser print dialog anymore.
-  function handlePrint() {
+  function handlePrint(gift = false) {
     if (localPrintTarget) {
-      printReceiptLocally(cart, editingOrder?.orderNumber ?? "NEW", editingOrder?.createdAt ?? Date.now(), cart.editingOrderId).catch(
+      printReceiptLocally({ ...cart, items: priced.items }, editingOrder?.orderNumber ?? "NEW", editingOrder?.createdAt ?? Date.now(), cart.editingOrderId, gift).catch(
         (err) => console.warn("Local print failed.", err)
       );
       return;
@@ -1048,7 +1094,7 @@ export function OrderLineClient({
       invoiceUrl: cart.editingOrderId ? `${window.location.origin}/invoice/${cart.editingOrderId}` : undefined,
       tableNumber: cart.tableNumber,
       channel: cart.channel,
-      items: cart.items,
+      items: priced.items,
       subtotal,
       tax,
       extraDiscount: extraDiscountAmount || undefined,
@@ -1068,6 +1114,7 @@ export function OrderLineClient({
       invoiceWebsite,
       invoiceLogoUrl,
       invoiceFooterText,
+      gift,
     });
   }
 
@@ -1082,6 +1129,7 @@ export function OrderLineClient({
     tablePickerOpen,
     setTablePickerOpen,
     tables,
+    pricedItems: priced.items,
     subtotal,
     tax,
     canDiscount,
@@ -1628,6 +1676,7 @@ export function OrderLineClient({
               staffName,
               lines: refund.lines,
               currencySymbol,
+              credit: refund.credit,
             });
             setCart(emptyCart);
             router.refresh();
@@ -1711,6 +1760,7 @@ interface CartPanelProps {
   tablePickerOpen: boolean;
   setTablePickerOpen: (v: boolean) => void;
   tables: RestaurantTable[];
+  pricedItems: OrderItem[];
   subtotal: number;
   tax: number;
   canDiscount: boolean;
@@ -1739,7 +1789,7 @@ interface CartPanelProps {
   stockNotice: { kind: "error" | "warn"; text: string } | null;
   onDismissStockNotice: () => void;
   handleAdvanceStatus: (next: OrderStatus) => void;
-  handlePrint: () => void;
+  handlePrint: (gift?: boolean) => void;
   onSwapTableClick: () => void;
   onMergeTableClick: () => void;
   onVoidClick: () => void;
@@ -1767,6 +1817,7 @@ function CartPanel({
   tablePickerOpen,
   setTablePickerOpen,
   tables,
+  pricedItems,
   subtotal,
   tax,
   canDiscount,
@@ -1957,12 +2008,22 @@ function CartPanel({
             </>
           )}
           <button
-            onClick={handlePrint}
+            onClick={() => handlePrint()}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 xl:h-10 xl:w-10 2xl:h-11 2xl:w-11 [&>svg]:size-5 hover:bg-neutral-50 hover:text-teal-600"
             title="Print ticket"
           >
             <Printer className="h-4 w-4" />
           </button>
+          {editingOrder?.paymentMethod && editingOrder.status !== "Voided" && (
+            <button
+              onClick={() => handlePrint(true)}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 xl:h-10 xl:w-10 2xl:h-11 2xl:w-11 [&>svg]:size-5 hover:bg-neutral-50 hover:text-teal-600"
+              title="Gift receipt (no prices)"
+              aria-label="Gift receipt"
+            >
+              <Gift className="h-4 w-4" />
+            </button>
+          )}
           {cart.editingOrderId && (
             <button
               onClick={onShareInvoiceClick}
@@ -2167,7 +2228,7 @@ function CartPanel({
               Tap a dish to add it to the order.
             </div>
           )}
-          {cart.items.map((item) => {
+          {pricedItems.map((item) => {
             const lineId = item.lineId ?? item.dishId;
             return (
             <div key={lineId}>
@@ -2176,7 +2237,7 @@ function CartPanel({
                   <button
                     type="button"
                     onClick={() => onEditLineQty(lineId)}
-                    disabled={item.fixedTotal != null}
+                    disabled={item.fixedTotal != null && !item.promo}
                     title={item.sellBy && item.sellBy !== "unit" ? "Change the weight" : "Type a quantity"}
                     className="shrink-0 rounded-md px-1 font-semibold text-teal-600 hover:bg-teal-50 disabled:hover:bg-transparent"
                   >
@@ -2187,19 +2248,24 @@ function CartPanel({
                       {item.name}
                       {item.ageCheck && <span className="ml-1.5 rounded bg-amber-100 px-1 text-[10px] font-bold text-amber-800">{item.ageCheck.minAge}+ ✓</span>}
                     </span>
+                    {item.promo && (
+                      <span className="block truncate text-xs font-medium text-emerald-600">
+                        {item.promo.name} · saves {formatMoney(item.promo.saving, currencySymbol)}
+                      </span>
+                    )}
                     {(item.sellBy && item.sellBy !== "unit") || item.priceOverride ? (
                       <span className="block truncate text-xs text-neutral-400">
                         {item.priceOverride && <s className="mr-1">{formatMoney(item.priceOverride.original, currencySymbol)}</s>}
                         {item.sellBy && item.sellBy !== "unit" ? `@ ${formatMoney(item.price, currencySymbol)}/${item.unit}` : formatMoney(item.price, currencySymbol)}
                         {item.priceOverride && <span className="ml-1 text-amber-600">{item.priceOverride.reason}</span>}
-                        {item.fixedTotal != null && <span className="ml-1">· label price</span>}
+                        {item.fixedTotal != null && !item.promo && <span className="ml-1">· label price</span>}
                       </span>
                     ) : null}
                   </span>
                 </div>
                 <div className="flex shrink-0 items-center">
                   <span className="mr-0.5 font-semibold text-neutral-800">{formatMoney(lineTotal(item), currencySymbol)}</span>
-                  {onPriceOverride && item.fixedTotal == null && (
+                  {onPriceOverride && (item.fixedTotal == null || item.promo) && (
                     <button
                       onClick={() => onPriceOverride(lineId)}
                       title="Change price"

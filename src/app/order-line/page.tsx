@@ -16,6 +16,7 @@ import { hasKitchen, salesByTender } from "@/lib/types";
 import { businessDayStart } from "@/lib/business-day";
 import { TodaySales } from "@/components/today-sales";
 import { TillModeSwitcher } from "./till-mode-switcher";
+import { listActivePromotionDefs } from "@/lib/data/promotions";
 
 export const metadata: Metadata = {
   title: "Till",
@@ -35,7 +36,7 @@ function currentBusinessDayStart(openTime: string | null, timezone: string) {
 export default async function OrderLinePage() {
   const { session, restaurantId } = await requirePermission("order-line");
 
-  const [categories, dishes, tables, orders, paymentTerminals, printers, restaurant, permissions, barcodesByDish, stockItems] = await Promise.all([
+  const [categories, dishes, tables, orders, paymentTerminals, printers, restaurant, permissions, barcodesByDish, stockItems, promotions] = await Promise.all([
     listCategories(restaurantId),
     listDishes(restaurantId),
     listTables(restaurantId),
@@ -46,6 +47,7 @@ export default async function OrderLinePage() {
     session.role === "staff" ? getUserPermissions(session.userId) : Promise.resolve(null),
     listBarcodesByDish(restaurantId),
     listInventoryItems(restaurantId),
+    listActivePromotionDefs(restaurantId),
   ]);
   // "12 left" on Till tiles (docs/retail-plan step 3.8): only for products with their own stock.
   const stockByDish: Record<string, { qty: number; low: number; unit: string }> = {};
@@ -110,6 +112,7 @@ export default async function OrderLinePage() {
         canOverridePrice={hasPermission(session.role, permissions, "till-price-override")}
         canAddProducts={hasPermission(session.role, permissions, "manage-dishes")}
         canRefund={hasPermission(session.role, permissions, "till-refund")}
+        promotions={promotions}
       />
     </AppShell>
   );

@@ -111,11 +111,16 @@ export interface OrderItem {
   priceOverride?: { original: number; reason: string; by?: string };
   // Age-restricted product sold after the Challenge 25 check (step 3.5).
   ageCheck?: { minAge: number; method: "looks-over-25" | "id-checked"; by?: string };
+  // A promotion (step 5.3) priced this line: `fixedTotal` holds the promotional total and `saving`
+  // what it took off. Always recomputed by the server, never trusted from the client.
+  promo?: { id: string; name: string; saving: number };
 }
 
 export interface PaymentLine {
   method: string;
   amount: number;
+  // Set when this part was paid with a store-credit slip (step 5.5): the slip's code.
+  creditCode?: string;
 }
 
 export type TableArea = "Ground Floor" | "1st Floor" | "Basement";

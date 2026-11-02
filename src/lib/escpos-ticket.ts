@@ -124,6 +124,8 @@ export interface SunmiTicketItem {
   sellBy?: string;
   unit?: string;
   fixedTotal?: number;
+  // A promotion priced this line (step 5.3) — printed under it.
+  promo?: { name: string; saving: number };
 }
 
 // Items grouped by their menu category, in the order they should print — built by the caller
@@ -161,6 +163,8 @@ export interface SunmiTicketData {
   currencySymbol: string;
   payments?: { method: string; amount: number }[];
   footerText: string;
+  // A gift receipt (step 5.4): what was bought, with no prices, totals or payments.
+  gift?: boolean;
   // The order's public /invoice/[id] link — QR-encoded at the bottom so the customer can scan
   // for a digital copy. Omitted entirely (no QR block) when the order hasn't been saved yet.
   invoiceUrl?: string;
@@ -194,6 +198,7 @@ export async function buildEscPosTicket(t: SunmiTicketData): Promise<{ hex: stri
   // --- Order meta: id, date/time, channel, table/guests, server ---
   bytes.push(...setAlign(0));
   bytes.push(...hr());
+  if (t.gift) bytes.push(...setAlign(1), ...setMode(0x08), ...textBytes("GIFT RECEIPT"), ...setMode(0x00), ...feed(), ...setAlign(0));
   bytes.push(...setMode(0x08), ...textBytes(`Order #${t.orderNumber}`), ...setMode(0x00), ...feed());
   const created = new Date(t.createdAt);
   bytes.push(
@@ -216,11 +221,18 @@ export async function buildEscPosTicket(t: SunmiTicketData): Promise<{ hex: stri
     bytes.push(...setMode(0x08), ...textBytes(group.categoryName.toUpperCase()), ...setMode(0x00), ...feed());
     for (const item of group.items) {
       const [first, second] = receiptLine(item, t.currencySymbol);
+      if (t.gift) {
+        bytes.push(...textBytes(first), ...feed());
+        if (second && item.sellBy && item.sellBy !== "unit") bytes.push(...textBytes(`  ${second.split(" @ ")[0]}`), ...feed());
+        if (item.note) bytes.push(...textBytes(`  > ${item.note}`), ...feed());
+        continue;
+      }
       if (second && item.sellBy && item.sellBy !== "unit") {
         bytes.push(...textBytes(first), ...feed(), ...moneyRow(`  ${second}`, money(lineTotal(item))));
       } else {
         bytes.push(...moneyRow(first, money(lineTotal(item))));
       }
+      if (item.promo) bytes.push(...moneyRow(`  ${item.promo.name}`, `-${money(item.promo.saving)}`));
       if (item.note) bytes.push(...textBytes(`  > ${item.note}`), ...feed());
     }
   }
@@ -238,6 +250,11 @@ export async function buildEscPosTicket(t: SunmiTicketData): Promise<{ hex: stri
   }
 
   // --- Totals ---
+  if (t.gift) {
+    bytes.push(...setAlign(1), ...textBytes(t.footerText), ...feed(2), ...textBytes("Please keep this receipt for exchanges."), ...feed(3));
+    bytes.push(...cutPaper());
+    return { hex: Buffer.from(bytes).toString("hex"), voice: `Gift receipt ${t.orderNumber}` };
+  }
   bytes.push(...moneyRow("Subtotal", money(t.subtotal)));
   if (t.extraDiscount) bytes.push(...moneyRow("Discount", `-${money(t.extraDiscount)}`));
   if (t.couponDiscount) bytes.push(...moneyRow(`Coupon${t.couponCode ? ` (${t.couponCode})` : ""}`, `-${money(t.couponDiscount)}`));

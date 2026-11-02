@@ -331,6 +331,7 @@ export const orders = sqliteTable("orders", {
       fixedTotal?: number;
       priceOverride?: { original: number; reason: string; by?: string };
       ageCheck?: { minAge: number; method: "looks-over-25" | "id-checked"; by?: string };
+      promo?: { id: string; name: string; saving: number };
     }[]
   >(),
   // "Cash", the name of a payment terminal, or "Split" when paid across multiple methods
@@ -338,7 +339,7 @@ export const orders = sqliteTable("orders", {
   paymentMethod: text("payment_method"),
   // Present when the order was paid across more than one method — e.g. half cash, half a
   // named card terminal. Empty/absent for the common single-method case.
-  payments: text("payments", { mode: "json" }).$type<{ method: string; amount: number }[]>(),
+  payments: text("payments", { mode: "json" }).$type<{ method: string; amount: number; creditCode?: string }[]>(),
   // Cash actually handed over by the customer, when it exceeds the cash portion owed —
   // lets the till show change due. Null when no cash was tendered above the amount due.
   cashReceived: real("cash_received"),
@@ -928,6 +929,51 @@ export const stockCountLines = sqliteTable(
     countedAt: int("counted_at"),
   },
   (table) => [index("stock_count_lines_count_idx").on(table.stockCountId)]
+);
+
+// Promotions (step 5.3): multi-buy, buy-some-get-some-free, % / amount off and bundles. `rules`
+// is the JSON described in lib/promotions.ts; applied by the Till and, authoritatively, by the
+// server when an order is placed.
+export const promotions = sqliteTable(
+  "promotions",
+  {
+    id: id(),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    kind: text("kind", { enum: ["multibuy_price", "multibuy_free", "percent_off", "amount_off", "bundle"] }).notNull(),
+    rules: text("rules", { mode: "json" }).notNull().$type<import("@/lib/promotions").PromoRules>(),
+    startsAt: int("starts_at"),
+    endsAt: int("ends_at"),
+    active: int("active", { mode: "boolean" }).notNull().default(true),
+    channels: text("channels", { mode: "json" }).$type<string[]>(),
+    createdAt: timestamp("created_at"),
+  },
+  (table) => [index("promotions_restaurant_idx").on(table.restaurantId)]
+);
+
+// Store credit (step 5.5): issued when a refund is given as credit; the code is an EAN-13 (prefix
+// 29) printed as a barcode on the slip. Redeemed as a payment on the Till — the balance is only
+// ever changed by lib/data/store-credit.ts.
+export const storeCredits = sqliteTable(
+  "store_credits",
+  {
+    id: id(),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    code: text("code").notNull(),
+    balance: real("balance").notNull(),
+    original: real("original").notNull(),
+    customerName: text("customer_name"),
+    // The sale / refund it came from.
+    sourceOrderId: text("source_order_id"),
+    expiresAt: int("expires_at"),
+    createdByName: text("created_by_name"),
+    createdAt: timestamp("created_at"),
+  },
+  (table) => [uniqueIndex("store_credits_code_idx").on(table.restaurantId, table.code)]
 );
 
 // Ad-hoc cash movements outside of order payments (e.g. "Bought cleaning supplies — £15 out",

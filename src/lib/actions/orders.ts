@@ -1,5 +1,7 @@
 "use server";
 
+import { priceItemsWithPromotions } from "@/lib/data/promotions";
+import { redeemStoreCredits, restoreStoreCredits } from "@/lib/data/store-credit";
 import { and, eq, gte } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
@@ -98,14 +100,19 @@ export interface PlaceOrderInput {
 // for every early-return path (no items, a deduped double-tap) where nothing was actually placed.
 export type PlaceOrderResult = { id: string; orderNumber: string; stockWarnings?: string[] } | { error: string } | undefined;
 
-export async function placeOrderAction(input: PlaceOrderInput): Promise<PlaceOrderResult> {
+export async function placeOrderAction(rawInput: PlaceOrderInput): Promise<PlaceOrderResult> {
   const { session, restaurantId } = await requireRestaurantContext();
-  if (input.items.length === 0) return;
+  if (rawInput.items.length === 0) return;
+  // Promotions (step 5.3) are priced here from the live promotions — whatever promo figures the
+  // client sent are thrown away and recomputed, like coupons.
+  const input: PlaceOrderInput = { ...rawInput, items: await priceItemsWithPromotions(restaurantId, rawInput.items, rawInput.channel) };
 
   const hasCustomerInfo = input.channel === "Take Away" || input.channel === "Delivery";
   const paymentMethod =
     input.payments.length === 0 ? null : input.payments.length === 1 ? input.payments[0].method : "Split";
-  const payments = input.payments.length > 1 ? input.payments : null;
+  // A part paid with a store-credit slip keeps its payment line (with the slip's code) even when
+  // it is the only one, so a void can give the balance back.
+  const payments = input.payments.length > 1 || input.payments.some((p) => p.creditCode) ? input.payments : null;
 
   const existing = input.editingOrderId
     ? (
@@ -166,6 +173,15 @@ export async function placeOrderAction(input: PlaceOrderInput): Promise<PlaceOrd
     const lines = short.map((r) => `${r.name} (${formatStockQty(r.quantity)} ${r.unit} left)`);
     if (lines.length && stockMode === "block") return { error: `Not enough stock: ${lines.join(", ")}.` };
     if (lines.length) stockWarnings = lines;
+  }
+
+  // Store credit (step 5.5): take the balance now, before anything is saved, for slips this
+  // order didn't already use (an edit re-sends the payments it already holds).
+  const alreadyUsed = new Set((existing?.payments ?? []).map((p) => p.creditCode).filter(Boolean));
+  const newCreditUses = input.payments.filter((p) => p.creditCode && !alreadyUsed.has(p.creditCode));
+  if (newCreditUses.length) {
+    const taken = await redeemStoreCredits(restaurantId, newCreditUses.map((p) => ({ code: p.creditCode!, amount: p.amount })));
+    if (taken.error) return { error: taken.error };
   }
 
   let newOrderId: string | undefined;
@@ -418,10 +434,15 @@ export async function setOrderStatusAction(orderId: string, status: OrderStatus)
 export async function voidOrderAction(orderId: string, reason: string) {
   const { session, restaurantId } = await requireRestaurantContext();
   const [order] = await db
-    .select({ id: orders.id, tableId: orders.tableId, status: orders.status, items: orders.items })
+    .select({ id: orders.id, tableId: orders.tableId, status: orders.status, items: orders.items, payments: orders.payments })
     .from(orders)
     .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)))
     .limit(1);
+  // A sale paid (even in part) with store credit gives that credit back when it's voided.
+  if (order && order.status !== "Voided") {
+    const used = (order.payments ?? []).filter((p) => p.creditCode).map((p) => ({ code: p.creditCode!, amount: p.amount }));
+    if (used.length) await restoreStoreCredits(restaurantId, used);
+  }
   await db
     .update(orders)
     .set({ status: "Voided", voidReason: reason || "No reason given", voidedAt: Date.now() })

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { placeOrderAction } from "@/lib/actions/orders";
 import { formatMoney, itemsRawTax, itemsSubtotal, roundMoney } from "@/lib/types";
@@ -10,6 +10,7 @@ import { useBarcodeScanner } from "@/lib/use-barcode-scanner";
 import { playScanBeep } from "@/lib/order-sounds";
 import { logAgeRefusalAction } from "@/lib/actions/age-checks";
 import { WeightPad } from "./weight-pad";
+import { applyPromotions, stripPromo, type PromotionDef } from "@/lib/promotions";
 import { AgeCheckModal } from "./age-check-modal";
 import type { Category, Dish, Order, OrderChannel, OrderItem, RestaurantTable, ThirdPartyProvider } from "@/lib/types";
 import {
@@ -95,6 +96,7 @@ export function MobileTillClient({
   channels,
   barcodesByDish,
   embeddedFormats,
+  promotions = [],
 }: {
   categories: Category[];
   dishes: Dish[];
@@ -111,6 +113,7 @@ export function MobileTillClient({
   // Scanning (docs/retail-plan step 3.1): the Simple Till finds products by barcode too.
   barcodesByDish: Record<string, { code: string; packQty: number }[]>;
   embeddedFormats: EmbeddedFormat[];
+  promotions?: PromotionDef[];
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -139,8 +142,21 @@ export function MobileTillClient({
     return category?.taxRatePercent ?? 0;
   };
   const qtyFor = (dishId: string) => cart.items.find((i) => i.dishId === dishId)?.qty ?? 0;
-  const subtotal = itemsSubtotal(cart.items);
-  const tax = roundMoney(itemsRawTax(cart.items));
+  // Promotions (step 5.3): totals use the basket priced with every live promotion; the server
+  // recomputes the same when the order is sent.
+  const [promoNow, setPromoNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (promotions.length === 0) return;
+    const t = setInterval(() => setPromoNow(Date.now()), 60000);
+    return () => clearInterval(t);
+  }, [promotions.length]);
+  const categoryByDish = useMemo(() => new Map(dishes.map((d) => [d.id, d.categoryId])), [dishes]);
+  const pricedItems = useMemo(
+    () => applyPromotions(cart.items, promotions, { now: promoNow, channel: cart.channel, categoryOf: (id) => categoryByDish.get(id) ?? null }).items,
+    [cart.items, cart.channel, promotions, promoNow, categoryByDish]
+  );
+  const subtotal = itemsSubtotal(pricedItems);
+  const tax = roundMoney(itemsRawTax(pricedItems));
   const total = roundMoney(subtotal + tax);
   const itemCount = cart.items.reduce((sum, i) => sum + i.qty, 0);
 
@@ -176,7 +192,7 @@ export function MobileTillClient({
         guests: activeOrder.guests,
         channel: "Dine in",
         thirdPartyProvider: "Uber Eats",
-        items: activeOrder.items.map((i) => ({ ...i })),
+        items: activeOrder.items.map((i) => ({ ...stripPromo(i) })),
         customerName: "",
         customerPhone: "",
         paymentMethod: null,
@@ -550,10 +566,15 @@ export function MobileTillClient({
               <p className="py-10 text-center text-sm text-neutral-400">No items yet.</p>
             ) : (
               <div className="mb-5 space-y-2">
-                {cart.items.map((item) => (
-                  <div key={item.dishId} className="flex items-center justify-between rounded-xl border border-neutral-200 bg-white p-3">
+                {pricedItems.map((item) => (
+                  <div key={item.lineId ?? item.dishId} className="flex items-center justify-between rounded-xl border border-neutral-200 bg-white p-3">
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-semibold text-neutral-800">{item.name}</div>
+                      {item.promo && (
+                        <div className="text-xs font-medium text-emerald-600">
+                          {item.promo.name} · saves {formatMoney(item.promo.saving, currencySymbol)}
+                        </div>
+                      )}
                       <div className="text-xs text-neutral-400">
                         {item.sellBy && item.sellBy !== "unit" ? `${formatQty(item.qty, item.unit, item.sellBy)} @ ${formatMoney(item.price, currencySymbol)}/${item.unit}` : `${formatMoney(item.price, currencySymbol)} each`}
                       </div>

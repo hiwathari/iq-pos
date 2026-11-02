@@ -6,6 +6,7 @@ import { db } from "@/db/client";
 import { orders, restaurants, shifts } from "@/db/schema";
 import { summarizeShiftWindow } from "@/lib/data/shifts";
 import { adjustStockForEdit, returnStockForOrder } from "@/lib/stock";
+import { restoreStoreCredits } from "@/lib/data/store-credit";
 import { assertPermission, requireRestaurantContext } from "@/lib/scope";
 import { ALL_CHANNELS, type OrderChannel, type OrderItem, type PaymentLine } from "@/lib/types";
 
@@ -214,11 +215,16 @@ export async function updateOrderRecordAction(orderId: string, input: OrderRecor
 export async function deleteOrderRecordAction(orderId: string): Promise<RecordActionState> {
   const { session, restaurantId } = await scope();
   const [order] = await db
-    .select({ id: orders.id, orderNumber: orders.orderNumber, status: orders.status, items: orders.items })
+    .select({ id: orders.id, orderNumber: orders.orderNumber, status: orders.status, items: orders.items, payments: orders.payments })
     .from(orders)
     .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)))
     .limit(1);
   if (!order) return {};
+  // Store credit spent on the sale goes back on its slip (unless it was already voided).
+  if (order.status !== "Voided") {
+    const used = (order.payments ?? []).filter((p) => p.creditCode).map((p) => ({ code: p.creditCode!, amount: p.amount }));
+    if (used.length) await restoreStoreCredits(restaurantId, used);
+  }
   await db.delete(orders).where(eq(orders.id, orderId));
   await returnStockForOrder(restaurantId, order, { byName: session.name, note: `Order ${order.orderNumber} deleted in Sales Records` });
   console.log(`[sales-records] order ${order.orderNumber} deleted by ${session.name}`);

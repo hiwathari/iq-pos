@@ -3,13 +3,14 @@
 import QRCode from "qrcode";
 import { lineTotal } from "@/lib/types";
 import { receiptLine } from "@/lib/units";
+import { eanModules } from "@/lib/barcode";
 
 export interface TicketData {
   orderNumber: string;
   createdAt: number;
   tableNumber: number | null;
   channel: string;
-  items: { name: string; qty: number; price: number; note?: string; sellBy?: string; unit?: string; fixedTotal?: number }[];
+  items: { name: string; qty: number; price: number; note?: string; sellBy?: string; unit?: string; fixedTotal?: number; promo?: { name: string; saving: number } }[];
   subtotal: number;
   extraDiscount?: number;
   couponCode?: string;
@@ -33,6 +34,8 @@ export interface TicketData {
   // QR-encoded on the printed receipt so the customer can scan it to get their own shareable,
   // downloadable copy instead of keeping the paper slip.
   invoiceUrl?: string;
+  // A gift receipt (step 5.4): what was bought, without any prices, totals or payments.
+  gift?: boolean;
 }
 
 // Opens a small formatted invoice in a new window and triggers the browser's print dialog.
@@ -48,7 +51,7 @@ export async function printTicket(ticket: TicketData) {
   const rows = ticket.items
     .map(
       (i) =>
-        `<tr><td>${escapeHtml(receiptLine(i, ticket.currencySymbol)[0])}${receiptLine(i, ticket.currencySymbol)[1] ? `<div class="note">${escapeHtml(receiptLine(i, ticket.currencySymbol)[1]!)}</div>` : ""}${i.note ? `<div class="note">↳ ${escapeHtml(i.note)}</div>` : ""}</td><td class="right">${money(lineTotal(i))}</td></tr>`
+        `<tr><td>${escapeHtml(receiptLine(i, ticket.currencySymbol)[0])}${!ticket.gift && receiptLine(i, ticket.currencySymbol)[1] ? `<div class="note">${escapeHtml(receiptLine(i, ticket.currencySymbol)[1]!)}</div>` : ""}${!ticket.gift && i.promo ? `<div class="note">${escapeHtml(i.promo.name)} −${money(i.promo.saving)}</div>` : ""}${i.note ? `<div class="note">↳ ${escapeHtml(i.note)}</div>` : ""}</td>${ticket.gift ? "" : `<td class="right">${money(lineTotal(i))}</td>`}</tr>`
     )
     .join("");
 
@@ -103,7 +106,7 @@ export async function printTicket(ticket: TicketData) {
         </div>`
       : ""
   }
-  <div class="meta">Invoice #${escapeHtml(ticket.orderNumber)} &middot; ${escapeHtml(
+  ${ticket.gift ? `<div class="meta"><strong style="font-size:16px;letter-spacing:1px">GIFT RECEIPT</strong></div>` : ""}<div class="meta">${ticket.gift ? "Order" : "Invoice"} #${escapeHtml(ticket.orderNumber)} &middot; ${escapeHtml(
     new Date(ticket.createdAt).toLocaleString(undefined, { day: "2-digit", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })
   )}<br/>${escapeHtml(ticket.channel)}${ticket.tableNumber ? ` &middot; Table ${ticket.tableNumber}` : ""}</div>
   ${
@@ -118,20 +121,20 @@ export async function printTicket(ticket: TicketData) {
   <hr />
   <table>${rows}</table>
   <hr />
-  <table>
+  ${ticket.gift ? `<div class="footer">Please keep this receipt for exchanges.</div>` : `<table>
     <tr><td>Subtotal</td><td class="right">${money(ticket.subtotal)}</td></tr>
     ${ticket.extraDiscount ? `<tr><td>Extra Discount</td><td class="right">-${money(ticket.extraDiscount)}</td></tr>` : ""}
     ${ticket.couponDiscount ? `<tr><td>Coupon${ticket.couponCode ? ` (${escapeHtml(ticket.couponCode)})` : ""}</td><td class="right">-${money(ticket.couponDiscount)}</td></tr>` : ""}
     <tr><td>Tax</td><td class="right">${money(ticket.tax)}</td></tr>
     <tr class="total"><td>Total</td><td class="right">${money(ticket.total)}</td></tr>
-  </table>
+  </table>`}
   ${
-    paymentRows
+    paymentRows && !ticket.gift
       ? `<hr /><table>${paymentRows}</table>`
       : ""
   }
   ${
-    ticket.cashReceived
+    ticket.cashReceived && !ticket.gift
       ? `<hr /><table>
           <tr><td>Cash Received</td><td class="right">${money(ticket.cashReceived)}</td></tr>
           ${ticket.changeDue ? `<tr class="total"><td>Change Due</td><td class="right">${money(ticket.changeDue)}</td></tr>` : ""}
@@ -152,6 +155,15 @@ export async function printTicket(ticket: TicketData) {
   win.document.close();
 }
 
+// A store-credit slip's EAN-13 as inline SVG (the print window has no React).
+function creditBarcodeSvg(code: string) {
+  const bits = eanModules(code);
+  if (!bits) return `<div>${escapeHtml(code)}</div>`;
+  const quiet = 9;
+  const bars = [...bits].map((b, i) => (b === "1" ? `<rect x="${quiet + i}" y="0" width="1" height="46" fill="#000"/>` : "")).join("");
+  return `<svg viewBox="0 0 ${bits.length + quiet * 2} 56" width="240" height="64" preserveAspectRatio="none"><rect width="100%" height="56" fill="#fff"/>${bars}<text x="${(bits.length + quiet * 2) / 2}" y="54" text-anchor="middle" font-size="7" font-family="monospace">${escapeHtml(code)}</text></svg>`;
+}
+
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
 }
@@ -169,6 +181,8 @@ export function printRefundSlip(r: {
   staffName?: string;
   lines: { name: string; qty: number; amount: number; sellBy?: string; unit?: string }[];
   currencySymbol: string;
+  // Refund given as store credit (step 5.5): the slip carries the credit's barcode.
+  credit?: { code: string; amount: number };
 }) {
   const win = window.open("", "_blank", "width=380,height=600");
   if (!win) return;
@@ -187,6 +201,11 @@ export function printRefundSlip(r: {
     <hr/><table>${rows}</table><hr/>
     <table><tr class="tot"><td>Refunded</td><td class="right">-${money(r.amount)}</td></tr>
     <tr><td>To</td><td class="right">${escapeHtml(r.method)}</td></tr></table>
+    ${
+      r.credit
+        ? `<hr/><div class="c"><b>STORE CREDIT ${money(r.credit.amount)}</b><br/>${creditBarcodeSvg(r.credit.code)}<div class="note">Scan at the till to pay with it</div></div>`
+        : ""
+    }
     ${r.reason ? `<div class="note">Reason: ${escapeHtml(r.reason)}</div>` : ""}
     ${r.staffName ? `<div class="note">Served by ${escapeHtml(r.staffName)}</div>` : ""}
     <hr/><div class="c note">Keep this slip with your receipt.</div>

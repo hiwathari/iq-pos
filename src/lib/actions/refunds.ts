@@ -8,6 +8,7 @@ import { assertPermission, requireRestaurantContext } from "@/lib/scope";
 import { itemsSubtotal, lineTotal, orderBreakdown, roundMoney, type OrderItem } from "@/lib/types";
 import { listRefundsForOrder } from "@/lib/data/refunds";
 import { applyStockChanges, stockUsageForItems } from "@/lib/stock";
+import { issueStoreCredit } from "@/lib/data/store-credit";
 
 // Refunds and returns on the Till (docs/retail-plan step 3.7). A paid sale can be refunded in
 // parts: chosen lines (and how much of each), back to cash or a card machine, optionally putting
@@ -23,7 +24,8 @@ export interface RefundLineInput {
 
 export interface RefundResult {
   error?: string;
-  refund?: { id: string; number: string; amount: number; tax: number; method: string; lines: { name: string; qty: number; amount: number; sellBy?: string; unit?: string }[] };
+  refund?: {
+    credit?: { code: string; amount: number }; id: string; number: string; amount: number; tax: number; method: string; lines: { name: string; qty: number; amount: number; sellBy?: string; unit?: string }[] };
 }
 
 export async function refundOrderAction(orderId: string, input: { lines: RefundLineInput[]; method: string; reason: string }): Promise<RefundResult> {
@@ -67,6 +69,9 @@ export async function refundOrderAction(orderId: string, input: { lines: RefundL
   if (amount > remaining) amount = remaining; // rounding on the last part-refund
   if (amount <= 0) return { error: "This sale has already been refunded in full." };
 
+  // A refund given as store credit becomes a slip with a barcode, usable as payment later.
+  const credit = method === "Store credit" ? await issueStoreCredit(restaurantId, amount, { customerName: order.customerName, sourceOrderId: orderId, byName: session.name }) : undefined;
+
   const [{ n }] = await db.select({ n: sql<number>`count(*)` }).from(refunds).where(eq(refunds.restaurantId, restaurantId));
   const number = `R${String(Number(n) + 1).padStart(4, "0")}`;
   const [row] = await db
@@ -102,6 +107,7 @@ export async function refundOrderAction(orderId: string, input: { lines: RefundL
   revalidatePath("/sales-records");
   return {
     refund: {
+      credit,
       id: row.id,
       number,
       amount,
