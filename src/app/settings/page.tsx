@@ -2,6 +2,7 @@ import { AppShell } from "@/components/app-shell";
 import { businessProfile } from "@/lib/business-profile";
 import { DEFAULT_EMBEDDED_FORMATS } from "@/lib/barcode";
 import { ScaleSettingsClient } from "./scale-settings-client";
+import { LabelPrinterClient } from "./label-printer-client";
 import { requirePermission } from "@/lib/scope";
 import { getAccountsLogin, listStaff } from "@/lib/data/staff";
 import { getRestaurant } from "@/lib/data/restaurants";
@@ -51,6 +52,11 @@ export default async function SettingsPage() {
             <ScaleSettingsClient formats={restaurant?.embeddedBarcodes ?? DEFAULT_EMBEDDED_FORMATS} />
           </div>
         )}
+        {businessProfile(restaurant?.businessType, restaurant?.features).features.purchasing && (
+          <div className="border-t border-neutral-100 pt-8">
+            <LabelPrinterClient config={restaurant?.labelPrinter ?? null} />
+          </div>
+        )}
         <div className="border-t border-neutral-100 pt-8">
           <InvoiceDetailsClient
             invoiceAddress={restaurant?.invoiceAddress ?? ""}
@@ -59,6 +65,7 @@ export default async function SettingsPage() {
             invoiceWebsite={restaurant?.invoiceWebsite ?? ""}
             invoiceLogoUrl={restaurant?.invoiceLogoUrl ?? ""}
             invoiceFooterText={restaurant?.invoiceFooterText ?? "Thank you for dining with us!"}
+            returnsPolicy={restaurant?.returnsPolicy ?? ""}
           />
         </div>
         <div className="border-t border-neutral-100 pt-8">

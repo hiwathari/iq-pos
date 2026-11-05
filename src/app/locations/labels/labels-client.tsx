@@ -4,10 +4,12 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { ArrowLeft, Printer } from "lucide-react";
+import { buildLabelJob, type LabelPrinterConfig } from "@/lib/label-printer";
+import { printViaLocalBridge } from "@/lib/local-print-bridge";
 
 // Bin labels (docs/retail-plan step 6.1): a QR code of the bin's code plus the code in big
 // letters, 12 to an A4 page. Scan the QR with any scanner that reads 2D codes.
-export function LabelsClient({ locations }: { locations: { id: string; code: string; name: string | null }[] }) {
+export function LabelsClient({ locations, labelPrinter }: { locations: { id: string; code: string; name: string | null }[]; labelPrinter: LabelPrinterConfig | null }) {
   const [picked, setPicked] = useState<Set<string>>(new Set(locations.map((l) => l.id)));
   const [qr, setQr] = useState<Record<string, string>>({});
 
@@ -24,6 +26,20 @@ export function LabelsClient({ locations }: { locations: { id: string; code: str
   }, [locations]);
 
   const shown = locations.filter((l) => picked.has(l.id));
+  const [sent, setSent] = useState<{ ok: boolean; text: string } | null>(null);
+  async function sendToPrinter() {
+    if (!labelPrinter) return;
+    try {
+      await printViaLocalBridge({
+        printerIp: labelPrinter.ip,
+        printerPort: labelPrinter.port,
+        escposHex: buildLabelJob(shown.map((l) => ({ kind: "bin" as const, code: l.code, name: l.name, copies: 1 })), labelPrinter).hex,
+      });
+      setSent({ ok: true, text: `Sent ${shown.length} label${shown.length === 1 ? "" : "s"} to the label printer.` });
+    } catch {
+      setSent({ ok: false, text: "Couldn't reach the print bridge on this device — install or start it (Settings → Printers), then try again." });
+    }
+  }
   return (
     <div className="mx-auto max-w-4xl p-6">
       <div className="print:hidden">
@@ -38,7 +54,13 @@ export function LabelsClient({ locations }: { locations: { id: string; code: str
           <button onClick={() => window.print()} disabled={shown.length === 0} className="flex items-center gap-2 rounded-xl bg-[var(--brand)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] disabled:opacity-40">
             <Printer className="h-4 w-4" /> Print {shown.length} label{shown.length === 1 ? "" : "s"}
           </button>
+          {labelPrinter && (
+            <button onClick={sendToPrinter} disabled={shown.length === 0} className="flex items-center gap-2 rounded-xl border border-neutral-300 px-4 py-2.5 text-sm font-semibold text-neutral-800 hover:bg-neutral-50 disabled:opacity-40">
+              <Printer className="h-4 w-4" /> Send to label printer
+            </button>
+          )}
         </div>
+        {sent && <p className={`mb-3 text-sm font-medium ${sent.ok ? "text-emerald-600" : "text-rose-600"}`}>{sent.text}</p>}
         <div className="mb-4 flex flex-wrap gap-2">
           {locations.map((l) => (
             <label key={l.id} className="flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-sm">

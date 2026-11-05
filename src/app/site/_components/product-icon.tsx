@@ -1,4 +1,4 @@
-import { AtSign, Bot, Box, CalendarDays, Gift, Heart, Receipt, Search, Smartphone, Sparkles, type LucideProps } from "lucide-react";
+import { AtSign, Bot, Box, CalendarDays, Gift, Heart, Receipt, Search, ShoppingCart, Smartphone, Sparkles, type LucideProps } from "lucide-react";
 import type { ProductIcon as ProductIconName, ProductStatus } from "@/lib/site/products";
 import { STATUS_LABEL } from "@/lib/site/products";
 
@@ -13,6 +13,7 @@ const ICONS = {
   search: Search,
   bot: Bot,
   receipt: Receipt,
+  cart: ShoppingCart,
 } satisfies Record<ProductIconName, unknown>;
 
 export function ProductIcon({ name, ...props }: { name: ProductIconName } & LucideProps) {

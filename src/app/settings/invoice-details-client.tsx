@@ -11,6 +11,7 @@ export function InvoiceDetailsClient({
   invoiceWebsite,
   invoiceLogoUrl,
   invoiceFooterText,
+  returnsPolicy,
 }: {
   invoiceAddress: string;
   invoicePhone: string;
@@ -18,6 +19,7 @@ export function InvoiceDetailsClient({
   invoiceWebsite: string;
   invoiceLogoUrl: string;
   invoiceFooterText: string;
+  returnsPolicy: string;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -30,6 +32,7 @@ export function InvoiceDetailsClient({
   const [website, setWebsite] = useState(invoiceWebsite);
   const [logoUrl, setLogoUrl] = useState(invoiceLogoUrl);
   const [footerText, setFooterText] = useState(invoiceFooterText);
+  const [policy, setPolicy] = useState(returnsPolicy);
 
   function save() {
     startTransition(async () => {
@@ -40,6 +43,7 @@ export function InvoiceDetailsClient({
         invoiceWebsite: website,
         invoiceLogoUrl: logoUrl,
         invoiceFooterText: footerText,
+        returnsPolicy: policy,
       });
       router.refresh();
       setSaved(true);
@@ -110,6 +114,18 @@ export function InvoiceDetailsClient({
             rows={2}
             className="w-full resize-none rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
           />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="mb-1.5 block text-xs font-medium text-neutral-500">Returns Policy (optional)</label>
+          <textarea
+            value={policy}
+            onChange={(e) => setPolicy(e.target.value)}
+            rows={2}
+            maxLength={300}
+            placeholder="Exchange or refund within 28 days with this receipt."
+            className="w-full resize-none rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+          />
+          <p className="mt-1 text-xs text-neutral-400">Printed under the totals on receipts and invoices.</p>
         </div>
       </div>
       <div className="mt-4 flex items-center gap-3">

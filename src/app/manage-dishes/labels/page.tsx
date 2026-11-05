@@ -22,6 +22,7 @@ export default async function LabelsPage() {
         barcodesByDish={barcodesByDish}
         currencySymbol={restaurant?.currencySymbol ?? "£"}
         manageLabel={words.manageProducts}
+        labelPrinter={restaurant?.labelPrinter ?? null}
       />
     </AppShell>
   );

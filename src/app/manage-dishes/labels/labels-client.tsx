@@ -7,6 +7,14 @@ import type { Category, Dish } from "@/lib/types";
 import { EanBarcode } from "@/components/ean-barcode";
 import { markLabelsPrintedAction } from "@/lib/actions/menu";
 import { priceLabel, unitPriceLabel } from "@/lib/units";
+import { buildLabelJob, type LabelPrinterConfig, type LabelSpec } from "@/lib/label-printer";
+import { printViaLocalBridge } from "@/lib/local-print-bridge";
+
+// The single-item code, preferring the manufacturer's over the store's own "20…" one.
+function pickCode(own: { code: string; packQty: number }[] | undefined) {
+  const list = own ?? [];
+  return (list.find((b) => b.packQty === 1 && !b.code.startsWith("20")) ?? list.find((b) => b.packQty === 1) ?? list[0])?.code;
+}
 
 // Shelf-edge labels and product stickers on A4 label sheets (docs/retail-plan step 2.6) — prints
 // from any printer, no setup. Shelf labels carry the unit price (per 100 g / 100 ml / m) that UK
@@ -24,12 +32,14 @@ export function LabelsClient({
   barcodesByDish,
   currencySymbol,
   manageLabel,
+  labelPrinter,
 }: {
   dishes: Dish[];
   categories: Category[];
   barcodesByDish: Record<string, { code: string; packQty: number }[]>;
   currencySymbol: string;
   manageLabel: string;
+  labelPrinter: LabelPrinterConfig | null;
 }) {
   const [layoutId, setLayoutId] = useState("shelf21");
   const [category, setCategory] = useState("all");
@@ -60,6 +70,26 @@ export function LabelsClient({
   async function print() {
     window.print();
     await markLabelsPrintedAction(chosen.map((d) => d.id));
+  }
+
+  // Straight to the label printer (Settings → Label printer): one job, `copies` of each label.
+  const [sent, setSent] = useState<{ ok: boolean; text: string } | null>(null);
+  async function sendToPrinter() {
+    if (!labelPrinter) return;
+    const specs: LabelSpec[] = chosen.map((d) => {
+      const barcode = pickCode(barcodesByDish[d.id]);
+      const price = `${currencySymbol}${d.price.toFixed(2)}${d.sellBy !== "unit" ? ` / ${d.unit}` : ""}`;
+      return layout.kind === "shelf"
+        ? { kind: "shelf", name: d.name, price, unitPrice: d.sellBy !== "unit" ? unitPriceLabel(d.price, d.unit, currencySymbol) : null, barcode, copies: Math.max(1, copies) }
+        : { kind: "sticker", name: d.name, price: priceLabel(d.price, d.sellBy, d.unit, currencySymbol), barcode, copies: Math.max(1, copies) };
+    });
+    try {
+      await printViaLocalBridge({ printerIp: labelPrinter.ip, printerPort: labelPrinter.port, escposHex: buildLabelJob(specs, labelPrinter).hex });
+      await markLabelsPrintedAction(chosen.map((d) => d.id));
+      setSent({ ok: true, text: `Sent ${labels.length} label${labels.length === 1 ? "" : "s"} to the label printer.` });
+    } catch {
+      setSent({ ok: false, text: "Couldn't reach the print bridge on this device — install or start it (Settings → Printers), then try again." });
+    }
   }
 
   return (
@@ -110,7 +140,18 @@ export function LabelsClient({
           >
             <Printer className="h-4 w-4" /> Print {labels.length} label{labels.length === 1 ? "" : "s"}
           </button>
+          {labelPrinter && (
+            <button
+              type="button"
+              onClick={sendToPrinter}
+              disabled={labels.length === 0}
+              className="flex items-center gap-2 rounded-xl border border-neutral-300 px-5 py-2.5 text-sm font-semibold text-neutral-800 hover:bg-neutral-50 disabled:opacity-40"
+            >
+              <Printer className="h-4 w-4" /> Send to label printer
+            </button>
+          )}
         </div>
+        {sent && <p className={`mt-2 text-sm font-medium ${sent.ok ? "text-emerald-600" : "text-rose-600"}`}>{sent.text}</p>}
 
         <div className="mt-4 grid gap-6 lg:grid-cols-[320px_1fr]">
           <div className="max-h-[560px] overflow-auto rounded-xl border border-neutral-200 bg-white">
@@ -166,8 +207,7 @@ function Sheet({
     <div className="grid w-fit bg-white" style={{ gridTemplateColumns: `repeat(${layout.cols}, ${layout.w})`, gridAutoRows: layout.h }}>
       {labels.map((d, i) => {
         // The single-item code, preferring the manufacturer's over the store's own "20…" one.
-        const own = barcodesByDish[d.id] ?? [];
-        const code = (own.find((b) => b.packQty === 1 && !b.code.startsWith("20")) ?? own.find((b) => b.packQty === 1) ?? own[0])?.code;
+        const code = pickCode(barcodesByDish[d.id]);
         const unitPrice = d.sellBy !== "unit" ? unitPriceLabel(d.price, d.unit, currencySymbol) : null;
         return layout.kind === "shelf" ? (
           <div key={i} className="flex flex-col justify-between overflow-hidden border border-dashed border-neutral-300 p-[2.5mm] text-black print:border-transparent" style={{ breakInside: "avoid" }}>

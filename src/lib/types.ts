@@ -223,6 +223,35 @@ export function orderBreakdown(order: Pick<Order, "items" | "extraDiscount" | "c
   return { subtotal, discount, tax, total: roundMoney(subtotal - discount + tax) };
 }
 
+// Tax by rate, for the VAT summary on receipts and invoices (needed once some lines are 0% and
+// others 20%): per rate the goods value (net, after the order's discount) and its tax. The tax
+// figures are shared out to sum exactly to orderBreakdown's single rounded tax.
+export function vatSummary(order: Pick<Order, "items" | "extraDiscount" | "couponDiscount">) {
+  const { subtotal, discount, tax } = orderBreakdown(order);
+  const factor = subtotal > 0 ? (subtotal - discount) / subtotal : 0;
+  const byRate = new Map<number, number>();
+  for (const i of order.items) byRate.set(i.taxRate ?? 0, (byRate.get(i.taxRate ?? 0) ?? 0) + lineTotal(i));
+  const rates = [...byRate.entries()].sort((a, b) => b[0] - a[0]);
+  let given = 0;
+  const taxed = rates.filter(([rate]) => rate > 0);
+  return rates.map(([rate, gross]) => {
+    const net = roundMoney(gross * factor);
+    let t = 0;
+    if (rate > 0) {
+      const isLast = taxed[taxed.length - 1][0] === rate;
+      t = isLast ? roundMoney(tax - given) : roundMoney(net * (rate / 100));
+      given = roundMoney(given + t);
+    }
+    return { rate, net, tax: t, gross: roundMoney(net + t) };
+  });
+}
+
+// Everything the customer saved on this sale: promotions, coupon and manual discount.
+export function savedAmount(order: Pick<Order, "items" | "extraDiscount" | "couponDiscount">) {
+  const promo = order.items.reduce((sum, i) => sum + (i.promo?.saving ?? 0), 0);
+  return roundMoney(promo + orderBreakdown(order).discount);
+}
+
 // Money rule, used everywhere a line or order total is worked out (Till, receipts, invoices,
 // reports, the server): each line is rounded to the penny — a weighed line like 0.734 kg ×
 // £2.40 would otherwise carry fractions of a penny — and tax and the order total are rounded once

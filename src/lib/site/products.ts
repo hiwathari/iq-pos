@@ -15,7 +15,8 @@ export type ProductIcon =
   | "instagram"
   | "search"
   | "bot"
-  | "receipt";
+  | "receipt"
+  | "cart";
 
 export interface ProductPoint {
   title: string;
@@ -219,6 +220,31 @@ export const PRODUCTS: Product[] = [
       { src: "/site/shots/reports.webp", alt: "Reports showing sales by channel and payment" },
     ],
     keywords: ["pos", "till", "epos", "card machine", "payments", "receipt", "kitchen display"],
+  },
+  {
+    slug: "retail",
+    name: "Retail & grocery",
+    tagline: "Shops, stock & warehouses",
+    status: "live",
+    icon: "cart",
+    headline: "The same till, ready for a shop.",
+    intro:
+      "Scan a barcode, weigh the cheese, take the card — and know what is on the shelves. IQ POS runs grocery shops, retail stores and warehouses with the stock control, suppliers and reports they need.",
+    points: [
+      { title: "Scan and sell", body: "Any barcode scanner or the phone camera, scale labels with the price or weight inside, and weighed products at the counter." },
+      { title: "Stock you can trust", body: "Live stock on every sale, goods in, stocktakes, reorder suggestions, purchase orders and a full history of every change." },
+      { title: "Sizes, colours and serial numbers", body: "Variants with their own barcode and stock, and IMEI / serial numbers tied to the sale." },
+      { title: "Promotions and returns", body: "3 for £2, buy two get one free, meal deals, gift receipts, refunds and store credit." },
+      { title: "Online shop, click & collect", body: "A shop page with search, sizes and colours, live stock, click & collect or delivery — priced the same as the till." },
+      { title: "Warehouses and several shops", body: "Bins and best-before dates, picking and delivery notes, trade accounts with credit limits and statements, stock transfers and a central catalogue." },
+      { title: "Shop reports", body: "Margin, stock value, losses, dead stock, refunds, promotions and aged debt — each with a CSV export." },
+      { title: "Receipts that fit a shop", body: "VAT by rate, what you saved, a returns policy, a barcode to start a return, and label printers for shelf-edge labels." },
+    ],
+    shots: [
+      { src: "/site/shots/till.webp", alt: "The Till with a basket on the right and products on the left" },
+      { src: "/site/shots/reports.webp", alt: "Reports showing sales and margin" },
+    ],
+    keywords: ["shop", "retail", "grocery", "store", "warehouse", "wholesale", "barcode", "stock", "inventory", "supermarket"],
   },
 ];
 

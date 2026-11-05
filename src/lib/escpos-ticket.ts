@@ -40,6 +40,19 @@ function feed(lines = 1): number[] {
 function textBytes(s: string): number[] {
   return Array.from(Buffer.from(s, "utf8"));
 }
+// Opens the cash drawer wired to the printer (ESC p — pin 2, 50 ms on / 500 ms off): sent with a
+// receipt that has a cash payment.
+function drawerKick(): number[] {
+  return [ESC, 0x70, 0x00, 25, 250];
+}
+
+// Code 128 (set B) barcode of `text`, with the text printed under it: GS h height, GS w module
+// width, GS H text position, then GS k 73 n "{B" data.
+function code128Commands(text: string): number[] {
+  const data = textBytes(text);
+  return [GS, 0x68, 60, GS, 0x77, 2, GS, 0x48, 2, GS, 0x6b, 73, data.length + 2, 0x7b, 0x42, ...data];
+}
+
 function hr(): number[] {
   return [...textBytes("-".repeat(LINE_WIDTH)), ...feed()];
 }
@@ -166,6 +179,13 @@ export interface SunmiTicketData {
   footerText: string;
   // A gift receipt (step 5.4): what was bought, with no prices, totals or payments.
   gift?: boolean;
+  // Shop receipts (step 7.2): what the customer saved, tax by rate, the returns policy, the order
+  // number as a Code 128 barcode (scan it on the Till to start a return) and the cash drawer kick.
+  saved?: number;
+  vat?: { rate: number; net: number; tax: number }[];
+  returnsPolicy?: string;
+  orderBarcode?: string;
+  openDrawer?: boolean;
   // The order's public /invoice/[id] link — QR-encoded at the bottom so the customer can scan
   // for a digital copy. Omitted entirely (no QR block) when the order hasn't been saved yet.
   invoiceUrl?: string;
@@ -176,6 +196,7 @@ export async function buildEscPosTicket(t: SunmiTicketData): Promise<{ hex: stri
   const bytes: number[] = [];
 
   bytes.push(...initPrinter());
+  if (t.openDrawer && !t.gift) bytes.push(...drawerKick());
 
   // --- Header: logo (mandatory when one's configured), name, contact details ---
   bytes.push(...setAlign(1));
@@ -264,6 +285,12 @@ export async function buildEscPosTicket(t: SunmiTicketData): Promise<{ hex: stri
   bytes.push(...hr());
   // Total payable — bold, per the restaurant's requirement.
   bytes.push(...moneyRow("TOTAL PAYABLE", money(t.total), true));
+  if (t.saved && t.saved > 0.004) bytes.push(...setAlign(1), ...setMode(0x08), ...textBytes(`You saved ${money(t.saved)}`), ...setMode(0x00), ...feed(), ...setAlign(0));
+  // Tax by rate — only worth printing when some of the sale is taxed.
+  if (t.vat && t.vat.some((v) => v.rate > 0)) {
+    bytes.push(...feed(), ...textBytes("VAT SUMMARY"), ...feed());
+    for (const v of t.vat) bytes.push(...moneyRow(v.rate > 0 ? `  ${v.rate}% on ${money(v.net)}` : `  0% on ${money(v.net)}`, money(v.tax)));
+  }
 
   if (t.payments?.length) {
     bytes.push(...feed());
@@ -273,7 +300,10 @@ export async function buildEscPosTicket(t: SunmiTicketData): Promise<{ hex: stri
   // --- Footer: thank-you text, QR code to the digital receipt ---
   bytes.push(...feed());
   bytes.push(...setAlign(1));
-  bytes.push(...textBytes(t.footerText), ...feed(2));
+  bytes.push(...textBytes(t.footerText), ...feed());
+  if (t.returnsPolicy) bytes.push(...textBytes(t.returnsPolicy), ...feed());
+  bytes.push(...feed());
+  if (t.orderBarcode) bytes.push(...code128Commands(t.orderBarcode), ...feed(2));
   if (t.invoiceUrl) {
     bytes.push(...qrCommands(t.invoiceUrl), ...feed());
     bytes.push(...textBytes("Scan for your digital receipt"), ...feed());

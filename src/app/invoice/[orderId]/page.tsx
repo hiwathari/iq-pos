@@ -43,6 +43,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ orderI
         invoiceWebsite={restaurant.invoiceWebsite}
         invoiceLogoUrl={restaurant.invoiceLogoUrl}
         invoiceFooterText={restaurant.invoiceFooterText}
+        returnsPolicy={restaurant.returnsPolicy}
       />
     </div>
   );

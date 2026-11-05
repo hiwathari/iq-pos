@@ -17,6 +17,8 @@ import {
 import { RevenueBarChart, RevenueLineChart, RevenuePieChart } from "@/components/charts";
 import { SortableTable, type Column } from "./sortable-table";
 import { TAB_GROUPS } from "./report-tabs";
+import { ShopReportTab } from "./shop-tabs";
+import type { ShopReport } from "@/lib/data/shop-reports";
 import type { ReportInsights } from "@/lib/data/report-insights";
 import {
   CustomersTab,
@@ -70,6 +72,7 @@ export interface ReportsSearchParams {
   date?: string;
   week?: string;
   terminal?: string;
+  by?: string;
 }
 
 // A tiny top-level wrapper around Date.now() (rather than calling it directly inside a
@@ -101,6 +104,9 @@ export function ReportsClient({
   terminalPayouts,
   terminalExpenses,
   insights,
+  shopReport,
+  shopBy,
+  hiddenTabs,
   restaurantName,
 }: {
   tab: string;
@@ -123,6 +129,9 @@ export function ReportsClient({
   terminalPayouts: TerminalPayout[];
   terminalExpenses: TerminalExpense[];
   insights: ReportInsights | null;
+  shopReport: ShopReport | null;
+  shopBy: string;
+  hiddenTabs: string[];
   restaurantName: string;
 }) {
   const tabHref = (t: string) => `/reports?tab=${t}&from=${fromStr}&to=${toStr}`;
@@ -138,6 +147,7 @@ export function ReportsClient({
         timezone={timezone}
         paymentTerminals={paymentTerminals}
         selectedTerminalId={selectedTerminalId}
+        hiddenTabs={hiddenTabs}
         onExportCsv={() => downloadOrdersCsv(ordersInRange, restaurantName, fromStr, toStr)}
       />
 
@@ -152,6 +162,7 @@ export function ReportsClient({
         {tab === "stock" && insights && <StockTab insights={insights} />}
         {tab === "endday" && insights && <EndDayTab insights={insights} currencySymbol={currencySymbol} />}
         {tab === "customers" && insights && <CustomersTab insights={insights} currencySymbol={currencySymbol} />}
+        {shopReport && <ShopReportTab tab={tab} report={shopReport} currencySymbol={currencySymbol} timezone={timezone} by={shopBy} fromStr={fromStr} toStr={toStr} />}
         {tab === "overview" && <OverviewTab report={report} currencySymbol={currencySymbol} />}
         {tab === "trends" && <TrendsTab report={report} currencySymbol={currencySymbol} />}
         {tab === "channel" && <ChannelTab report={report} currencySymbol={currencySymbol} />}
@@ -202,6 +213,7 @@ function ReportFilterBar({
   timezone,
   paymentTerminals,
   selectedTerminalId,
+  hiddenTabs,
   onExportCsv,
 }: {
   tab: string;
@@ -213,6 +225,7 @@ function ReportFilterBar({
   timezone: string;
   paymentTerminals: PaymentTerminal[];
   selectedTerminalId: string;
+  hiddenTabs: string[];
   onExportCsv: () => void;
 }) {
   const router = useRouter();
@@ -245,11 +258,11 @@ function ReportFilterBar({
   return (
     <div className="mb-6 print:hidden">
       <div className="mb-3 grid gap-x-4 gap-y-2 rounded-xl border border-neutral-200 bg-white p-2 sm:grid-cols-[auto_1fr]">
-        {TAB_GROUPS.map((g) => (
+        {TAB_GROUPS.filter((g) => g.tabs.some((t) => !hiddenTabs.includes(t.slug))).map((g) => (
           <div key={g.label} className="contents">
             <div className="hidden pt-2.5 text-[11px] font-bold uppercase tracking-wide text-neutral-400 sm:block">{g.label}</div>
             <div className="flex flex-wrap gap-1">
-              {g.tabs.map((t) => (
+              {g.tabs.filter((t) => !hiddenTabs.includes(t.slug)).map((t) => (
                 <button
                   key={t.slug}
                   onClick={() => navigate({ tab: t.slug })}

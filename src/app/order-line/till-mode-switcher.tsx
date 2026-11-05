@@ -33,6 +33,7 @@ export function TillModeSwitcher({
   invoiceWebsite,
   invoiceLogoUrl,
   invoiceFooterText,
+  returnsPolicy,
   openTime,
   timezone,
   localPrintTarget,
@@ -66,6 +67,7 @@ export function TillModeSwitcher({
   invoiceWebsite?: string;
   invoiceLogoUrl?: string;
   invoiceFooterText: string;
+  returnsPolicy?: string;
   openTime: string | null;
   timezone: string;
   // The restaurant's default printer, when set up for local network printing (see
@@ -158,6 +160,7 @@ export function TillModeSwitcher({
       invoiceWebsite={invoiceWebsite}
       invoiceLogoUrl={invoiceLogoUrl}
       invoiceFooterText={invoiceFooterText}
+      returnsPolicy={returnsPolicy}
       openTime={openTime}
       timezone={timezone}
       localPrintTarget={localPrintTarget}

@@ -11,7 +11,10 @@ import { getTerminalSettlementReport, listTerminalExpenses, listTerminalPayouts 
 import { filterOrdersForAccountsRole } from "@/lib/accounts-filter";
 import { businessDateKey, businessDayRange, shiftDateKey } from "@/lib/business-day";
 import { ReportsClient, type ReportsSearchParams } from "./reports-client";
-import { INSIGHT_TABS } from "./report-tabs";
+import { INSIGHT_TABS, SHOP_TABS, hiddenReportTabs } from "./report-tabs";
+import { getShopReport } from "@/lib/data/shop-reports";
+import { businessProfile } from "@/lib/business-profile";
+import { listAccessibleSites } from "@/lib/data/sites";
 
 // Today's business-day key, as of whenever this is called — a tiny top-level wrapper around
 // Date.now() (rather than calling it directly in the page component below) keeps the page
@@ -74,6 +77,12 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
       INSIGHT_TABS.includes(tab) ? getReportInsights(restaurantId, { from, to }, accountsFilter, businessDay) : Promise.resolve(null),
     ]);
   const currencySymbol = restaurant?.currencySymbol ?? "£";
+  const profile = businessProfile(restaurant?.businessType, restaurant?.features);
+  const sites = session.role === "super_admin" || session.role === "regional_admin" ? await listAccessibleSites(session) : [];
+  const hiddenTabs = hiddenReportTabs(profile.features, sites.length > 1);
+  const shopReport = SHOP_TABS.includes(tab)
+    ? await getShopReport(restaurantId, tab, { from, to }, businessDay, { by: params.by, siteIds: sites.map((x) => x.id), accountsFilter })
+    : null;
 
   const allOrders = accountsFilter ? filterOrdersForAccountsRole(rawOrders, accountsFilter.defaultTerminalName) : rawOrders;
   const ordersInRange = allOrders.filter((o) => o.createdAt >= from && o.createdAt < to);
@@ -104,6 +113,9 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           terminalPayouts={terminalPayouts}
           terminalExpenses={terminalExpenses}
           insights={insights}
+          shopReport={shopReport}
+          shopBy={params.by ?? "product"}
+          hiddenTabs={hiddenTabs}
           restaurantName={restaurant?.name ?? "IQ POS"}
         />
       </div>

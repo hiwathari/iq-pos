@@ -19,6 +19,8 @@ export const restaurants = sqliteTable("restaurants", {
   invoiceWebsite: text("invoice_website"),
   invoiceLogoUrl: text("invoice_logo_url"),
   invoiceFooterText: text("invoice_footer_text").notNull().default("Thank you for dining with us!"),
+  // Printed under the totals on receipts and invoices (step 7.2): "Exchange within 28 days with receipt".
+  returnsPolicy: text("returns_policy"),
   // This restaurant's brand color (hex, e.g. "#0d9488") — set by Super Admin, applied via a CSS
   // variable to the key surfaces of this tenant's Till/Kitchen/Dashboard (buttons, active states,
   // accents). Null falls back to IQ POS's default teal everywhere, unchanged from today.
@@ -65,6 +67,16 @@ export const restaurants = sqliteTable("restaurants", {
   embeddedBarcodes: text("embedded_barcodes", { mode: "json" }).$type<
     { prefix: string; itemDigits: number; value: "price" | "weight"; decimals: number }[]
   >(),
+  // The label printer (step 7.3): where it is and what it understands. Null = none; labels print
+  // from the A4 sheets instead.
+  labelPrinter: text("label_printer", { mode: "json" }).$type<{
+    ip: string;
+    port: number | null;
+    language: "zpl" | "tspl";
+    widthMm: number;
+    heightMm: number;
+    dpi: 203 | 300;
+  }>(),
   // Shop hours, as "HH:MM" 24-hour clock times in the restaurant's own timezone (below).
   // openTime anchors the "business day" boundary used by autoVoidStaleOrders, Kitchen Display's
   // Completed panel, and Reports' daily/weekly buckets, so a shift running past midnight still

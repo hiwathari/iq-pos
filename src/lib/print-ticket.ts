@@ -3,7 +3,7 @@
 import QRCode from "qrcode";
 import { lineTotal } from "@/lib/types";
 import { receiptLine } from "@/lib/units";
-import { eanModules } from "@/lib/barcode";
+import { code128Modules, eanModules } from "@/lib/barcode";
 
 export interface TicketData {
   orderNumber: string;
@@ -36,6 +36,12 @@ export interface TicketData {
   invoiceUrl?: string;
   // A gift receipt (step 5.4): what was bought, without any prices, totals or payments.
   gift?: boolean;
+  // Shop receipts (step 7.2).
+  saved?: number;
+  vat?: { rate: number; net: number; tax: number }[];
+  returnsPolicy?: string;
+  // The order number as a Code 128 barcode (scan on the Till to start a return).
+  orderBarcode?: string;
 }
 
 // Opens a small formatted invoice in a new window and triggers the browser's print dialog.
@@ -91,6 +97,8 @@ export async function printTicket(ticket: TicketData) {
   .qr-wrap { text-align: center; margin-top: 14px; }
   .qr-wrap img { width: 100px; height: 100px; }
   .qr-caption { font-size: 10px; color: #777; margin-top: 3px; }
+  .saved { text-align: center; font-weight: bold; margin: 8px 0; font-size: 13px; }
+  .vat { font-size: 11px; color: #444; margin-top: 6px; }
   .footer { text-align: center; font-size: 11px; color: #777; margin-top: 10px; white-space: pre-wrap; }
 </style>
 </head>
@@ -127,7 +135,11 @@ export async function printTicket(ticket: TicketData) {
     ${ticket.couponDiscount ? `<tr><td>Coupon${ticket.couponCode ? ` (${escapeHtml(ticket.couponCode)})` : ""}</td><td class="right">-${money(ticket.couponDiscount)}</td></tr>` : ""}
     <tr><td>Tax</td><td class="right">${money(ticket.tax)}</td></tr>
     <tr class="total"><td>Total</td><td class="right">${money(ticket.total)}</td></tr>
-  </table>`}
+  </table>${ticket.saved && ticket.saved > 0.004 ? `<div class="saved">You saved ${money(ticket.saved)}</div>` : ""}${
+    ticket.vat && ticket.vat.some((v) => v.rate > 0)
+      ? `<table class="vat"><tr><td colspan="2"><b>VAT summary</b></td></tr>${ticket.vat.map((v) => `<tr><td>${v.rate}% on ${money(v.net)}</td><td class="right">${money(v.tax)}</td></tr>`).join("")}</table>`
+      : ""
+  }`}
   ${
     paymentRows && !ticket.gift
       ? `<hr /><table>${paymentRows}</table>`
@@ -149,6 +161,8 @@ export async function printTicket(ticket: TicketData) {
       : ""
   }
   <div class="footer">${escapeHtml(ticket.invoiceFooterText)}</div>
+  ${ticket.returnsPolicy && !ticket.gift ? `<div class="footer">${escapeHtml(ticket.returnsPolicy)}</div>` : ""}
+  ${ticket.orderBarcode && !ticket.gift ? `<div class="qr-wrap">${code128Svg(ticket.orderBarcode)}</div>` : ""}
   <script>window.onload = () => { window.print(); }<\/script>
 </body>
 </html>`);
@@ -162,6 +176,16 @@ function creditBarcodeSvg(code: string) {
   const quiet = 9;
   const bars = [...bits].map((b, i) => (b === "1" ? `<rect x="${quiet + i}" y="0" width="1" height="46" fill="#000"/>` : "")).join("");
   return `<svg viewBox="0 0 ${bits.length + quiet * 2} 56" width="240" height="64" preserveAspectRatio="none"><rect width="100%" height="56" fill="#fff"/>${bars}<text x="${(bits.length + quiet * 2) / 2}" y="54" text-anchor="middle" font-size="7" font-family="monospace">${escapeHtml(code)}</text></svg>`;
+}
+
+// The order number as a Code 128 barcode in inline SVG (the print window has no React).
+function code128Svg(text: string) {
+  const bits = code128Modules(text);
+  if (!bits) return `<div>${escapeHtml(text)}</div>`;
+  const quiet = 10;
+  const bars = [...bits].map((b, i) => (b === "1" ? `<rect x="${quiet + i}" y="0" width="1" height="40" fill="#000"/>` : "")).join("");
+  const w = bits.length + quiet * 2;
+  return `<svg viewBox="0 0 ${w} 52" width="${Math.min(260, w * 2)}" height="56" preserveAspectRatio="none"><rect width="100%" height="52" fill="#fff"/>${bars}<text x="${w / 2}" y="50" text-anchor="middle" font-size="8" font-family="monospace">${escapeHtml(text)}</text></svg>`;
 }
 
 function escapeHtml(value: string) {

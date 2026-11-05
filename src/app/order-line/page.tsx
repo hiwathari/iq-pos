@@ -113,6 +113,7 @@ export default async function OrderLinePage() {
         invoiceWebsite={restaurant?.invoiceWebsite ?? undefined}
         invoiceLogoUrl={restaurant?.invoiceLogoUrl ?? undefined}
         invoiceFooterText={restaurant?.invoiceFooterText ?? profile.receiptFooter}
+        returnsPolicy={restaurant?.returnsPolicy ?? undefined}
         openTime={restaurant?.openTime ?? null}
         timezone={restaurant?.timezone ?? "UTC"}
         localPrintTarget={localPrintTarget}

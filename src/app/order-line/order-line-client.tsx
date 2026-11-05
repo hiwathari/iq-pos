@@ -14,7 +14,7 @@ import type {
   RestaurantTable,
   ThirdPartyProvider,
 } from "@/lib/types";
-import { formatMoney, formatOccupiedTime, formatOrderTimestamp, itemsRawTax, itemsSubtotal, lineTotal, orderSequence, orderTotal, roundMoney } from "@/lib/types";
+import { formatMoney, formatOccupiedTime, formatOrderTimestamp, itemsRawTax, itemsSubtotal, lineTotal, orderSequence, orderTotal, roundMoney, savedAmount, vatSummary } from "@/lib/types";
 import {
   acceptOnlineOrderAction,
   mergeTableIntoOrderAction,
@@ -276,6 +276,7 @@ export function OrderLineClient({
   invoiceWebsite,
   invoiceLogoUrl,
   invoiceFooterText,
+  returnsPolicy,
   openTime,
   timezone,
   localPrintTarget,
@@ -309,6 +310,7 @@ export function OrderLineClient({
   invoiceWebsite?: string;
   invoiceLogoUrl?: string;
   invoiceFooterText: string;
+  returnsPolicy?: string;
   openTime: string | null;
   timezone: string;
   localPrintTarget: { ip: string; port: number | null } | null;
@@ -746,6 +748,47 @@ export function OrderLineClient({
     return m;
   }, [dishes, barcodesByDish]);
 
+  function loadOrderIntoCart(order: Order) {
+    if (order.status === "Pending") {
+      setView("incoming");
+      return;
+    }
+    const orderTotalAmount = orderTotal(order);
+    const payments: PaymentLine[] =
+      order.payments?.length ? order.payments : order.paymentMethod ? [{ method: order.paymentMethod, amount: orderTotalAmount }] : [];
+
+    setCart({
+      channelChosen: true,
+      editingOrderId: order.id,
+      tableId: order.tableId,
+      tableNumber: order.tableNumber,
+      guests: order.guests,
+      channel: order.channel,
+      thirdPartyProvider: order.thirdPartyProvider ?? "Uber Eats",
+      // Backfills a lineId for items placed before this existed, so every line in the cart has a
+      // stable identity to edit/remove/toggle by regardless of when the order was first placed.
+      items: order.items.map((i) => ({ ...stripPromo(i), lineId: i.lineId ?? crypto.randomUUID() })),
+      customerName: order.customerName ?? "",
+      customerPhone: order.customerPhone ?? "",
+      customerAddress: order.customerAddress ?? "",
+      payments,
+      cashReceived: order.cashReceived ? String(order.cashReceived) : "",
+      extraDiscount: order.extraDiscount ? String(order.extraDiscount) : "",
+      extraDiscountMode: "amount",
+      couponCode: order.couponCode ?? "",
+      appliedCoupon: order.couponCode ? { code: order.couponCode, discount: order.couponDiscount ?? 0 } : null,
+      loyaltyContact: "",
+      loyaltyMember: order.loyaltyMemberId ? { id: order.loyaltyMemberId, code: "", name: null } : null,
+      tradeAccountId: order.tradeAccountId ?? null,
+    });
+    setForcePaymentEdit(false);
+    setCouponError(null);
+    setLoyaltyError(null);
+    setTableEditorOpen(false);
+    setMobileCartOpen(true);
+    setView("order");
+  }
+
   function handleScan(raw: string) {
     const code = canonicalCode(raw);
     const hit = barcodeIndex.get(code);
@@ -780,6 +823,15 @@ export function OrderLineClient({
         setScanNotice({ kind: "ok", text: `Added — ${bySku.name}` });
         beep(true);
       } else beep(false);
+      return;
+    }
+    // The order number barcode on a receipt: opens that sale (to refund or return from it).
+    const receiptNo = /^IQ(.+)$/i.exec(raw.trim())?.[1]?.toLowerCase();
+    const sale = receiptNo ? orders.find((x) => x.orderNumber.toLowerCase() === receiptNo && x.status !== "Voided") : undefined;
+    if (sale && cart.items.length === 0 && !cart.editingOrderId) {
+      loadOrderIntoCart(sale);
+      setScanNotice({ kind: "ok", text: `Opened sale #${sale.orderNumber}${canRefund ? " — use the refund button for a return" : ""}` });
+      beep(true);
       return;
     }
     // A store-credit slip (EAN-13 starting 29) pays for the sale, up to what's left to pay.
@@ -886,47 +938,6 @@ export function OrderLineClient({
       ...prev,
       items: prev.items.map((i) => ((i.lineId ?? i.dishId) === lineId ? { ...i, note: note || undefined } : i)),
     }));
-  }
-
-  function loadOrderIntoCart(order: Order) {
-    if (order.status === "Pending") {
-      setView("incoming");
-      return;
-    }
-    const orderTotalAmount = orderTotal(order);
-    const payments: PaymentLine[] =
-      order.payments?.length ? order.payments : order.paymentMethod ? [{ method: order.paymentMethod, amount: orderTotalAmount }] : [];
-
-    setCart({
-      channelChosen: true,
-      editingOrderId: order.id,
-      tableId: order.tableId,
-      tableNumber: order.tableNumber,
-      guests: order.guests,
-      channel: order.channel,
-      thirdPartyProvider: order.thirdPartyProvider ?? "Uber Eats",
-      // Backfills a lineId for items placed before this existed, so every line in the cart has a
-      // stable identity to edit/remove/toggle by regardless of when the order was first placed.
-      items: order.items.map((i) => ({ ...stripPromo(i), lineId: i.lineId ?? crypto.randomUUID() })),
-      customerName: order.customerName ?? "",
-      customerPhone: order.customerPhone ?? "",
-      customerAddress: order.customerAddress ?? "",
-      payments,
-      cashReceived: order.cashReceived ? String(order.cashReceived) : "",
-      extraDiscount: order.extraDiscount ? String(order.extraDiscount) : "",
-      extraDiscountMode: "amount",
-      couponCode: order.couponCode ?? "",
-      appliedCoupon: order.couponCode ? { code: order.couponCode, discount: order.couponDiscount ?? 0 } : null,
-      loyaltyContact: "",
-      loyaltyMember: order.loyaltyMemberId ? { id: order.loyaltyMemberId, code: "", name: null } : null,
-      tradeAccountId: order.tradeAccountId ?? null,
-    });
-    setForcePaymentEdit(false);
-    setCouponError(null);
-    setLoyaltyError(null);
-    setTableEditorOpen(false);
-    setMobileCartOpen(true);
-    setView("order");
   }
 
   function activeOrderForTable(table: RestaurantTable) {
@@ -1101,6 +1112,19 @@ export function OrderLineClient({
   // Android bridge from the APK, or the HTTP one — see lib/local-print-bridge.ts) — the one and
   // only print path once a restaurant has local printing configured. Used both by the manual
   // Print button below and by handlePlaceOrder's auto-print on payment.
+  // Step 7.2: "You saved", tax by rate, returns policy, the order number as a barcode (once the
+  // sale is saved) and the cash drawer kick for a sale with cash in it.
+  function shopReceiptExtras(receiptCart: CartState, totals: ReturnType<typeof computeCartTotals>, orderNumber: string | null) {
+    const basis = { items: receiptCart.items, extraDiscount: totals.extraDiscountAmount, couponDiscount: totals.couponDiscountAmount };
+    return {
+      saved: savedAmount(basis) || undefined,
+      vat: totals.tax > 0 ? vatSummary(basis) : undefined,
+      returnsPolicy: returnsPolicy || undefined,
+      orderBarcode: orderNumber ? `IQ${orderNumber}` : undefined,
+      openDrawer: receiptCart.payments.some((p) => p.method === "Cash"),
+    };
+  }
+
   async function printReceiptLocally(receiptCart: CartState, orderNumber: string, createdAt: number, orderId: string | null, gift = false) {
     if (!localPrintTarget) return;
     const totals = computeCartTotals(receiptCart);
@@ -1132,6 +1156,7 @@ export function OrderLineClient({
       footerText: invoiceFooterText,
       gift,
       invoiceUrl: orderId ? `${window.location.origin}/invoice/${orderId}` : undefined,
+      ...shopReceiptExtras(receiptCart, totals, orderId ? orderNumber : null),
     });
     await printViaLocalBridge({ printerIp: localPrintTarget.ip, printerPort: localPrintTarget.port, escposHex: hex });
   }
@@ -1173,6 +1198,10 @@ export function OrderLineClient({
       invoiceLogoUrl,
       invoiceFooterText,
       gift,
+      saved: savedAmount({ items: priced.items, extraDiscount: extraDiscountAmount, couponDiscount: couponDiscountAmount }) || undefined,
+      vat: tax > 0 ? vatSummary({ items: priced.items, extraDiscount: extraDiscountAmount, couponDiscount: couponDiscountAmount }) : undefined,
+      returnsPolicy: returnsPolicy || undefined,
+      orderBarcode: cart.editingOrderId && editingOrder ? `IQ${editingOrder.orderNumber}` : undefined,
     });
   }
 

@@ -1,5 +1,6 @@
 "use server";
 
+import { cleanLabelPrinter } from "@/lib/label-printer";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -216,6 +217,23 @@ export async function updateEmbeddedBarcodesAction(formats: unknown[]): Promise<
   return {};
 }
 
+// Settings → Label printer (step 7.3): null removes it.
+export async function updateLabelPrinterAction(config: unknown): Promise<{ error?: string }> {
+  const { session, restaurantId } = await requireRestaurantContext();
+  await assertPermission(session, "settings");
+  if (config === null) {
+    await db.update(restaurants).set({ labelPrinter: null }).where(eq(restaurants.id, restaurantId));
+  } else {
+    const clean = cleanLabelPrinter(config);
+    if (!clean) return { error: "Enter the printer's IP address (for example 192.168.1.60)." };
+    await db.update(restaurants).set({ labelPrinter: clean }).where(eq(restaurants.id, restaurantId));
+  }
+  revalidatePath("/settings");
+  revalidatePath("/manage-dishes/labels");
+  revalidatePath("/locations/labels");
+  return {};
+}
+
 export async function updateNegativeStockAction(mode: "allow" | "warn" | "block") {
   const { session, restaurantId } = await requireRestaurantContext();
   await assertPermission(session, "settings");
@@ -295,6 +313,7 @@ export interface InvoiceDetailsInput {
   invoiceWebsite: string;
   invoiceLogoUrl: string;
   invoiceFooterText: string;
+  returnsPolicy?: string;
 }
 
 export async function updateInvoiceDetailsAction(input: InvoiceDetailsInput) {
@@ -309,6 +328,7 @@ export async function updateInvoiceDetailsAction(input: InvoiceDetailsInput) {
       invoiceWebsite: input.invoiceWebsite.trim() || null,
       invoiceLogoUrl: input.invoiceLogoUrl.trim() || null,
       invoiceFooterText: input.invoiceFooterText.trim() || "Thank you for dining with us!",
+      returnsPolicy: (input.returnsPolicy ?? "").trim().slice(0, 300) || null,
     })
     .where(eq(restaurants.id, restaurantId));
   revalidatePath("/settings");

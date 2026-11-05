@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { formatMoney, formatOrderTimestamp, lineTotal, orderBreakdown, type Order } from "@/lib/types";
+import { formatMoney, formatOrderTimestamp, lineTotal, orderBreakdown, savedAmount, vatSummary, type Order } from "@/lib/types";
 import { qtyPrefix } from "@/lib/units";
 import { Printer, Share2, ChefHat } from "lucide-react";
 
@@ -33,6 +33,7 @@ export function InvoiceClient({
   invoiceWebsite,
   invoiceLogoUrl,
   invoiceFooterText,
+  returnsPolicy,
   trade,
 }: {
   order: InvoiceOrder;
@@ -44,9 +45,13 @@ export function InvoiceClient({
   invoiceWebsite?: string | null;
   invoiceLogoUrl?: string | null;
   invoiceFooterText: string;
+  returnsPolicy?: string | null;
 }) {
   const [shared, setShared] = useState(false);
   const { subtotal, discount, tax, total } = orderBreakdown(order);
+  const saved = savedAmount(order);
+  const vat = vatSummary(order);
+  const showVat = tax > 0 && vat.length > 0;
   const paymentLines = order.payments?.length ? order.payments : order.paymentMethod ? [{ method: order.paymentMethod, amount: total }] : [];
   const cashLine = paymentLines.find((p) => p.method === "Cash");
   const changeDue = cashLine && order.cashReceived ? Math.max(0, order.cashReceived - cashLine.amount) : 0;
@@ -149,6 +154,27 @@ export function InvoiceClient({
         <Row label="Total" value={total} currencySymbol={currencySymbol} emphasize />
       </div>
 
+      {saved > 0.004 && <div className="mb-6 rounded-xl bg-emerald-50 px-4 py-2.5 text-center text-sm font-semibold text-emerald-700">You saved {formatMoney(saved, currencySymbol)}</div>}
+
+      {showVat && (
+        <div className="mb-6 overflow-hidden rounded-xl border border-neutral-200 text-xs text-neutral-600">
+          <div className="grid grid-cols-4 gap-2 bg-neutral-50 px-4 py-2 font-semibold uppercase tracking-wide text-neutral-400">
+            <span>VAT</span>
+            <span className="text-right">Net</span>
+            <span className="text-right">VAT</span>
+            <span className="text-right">Gross</span>
+          </div>
+          {vat.map((v) => (
+            <div key={v.rate} className="grid grid-cols-4 gap-2 border-t border-neutral-100 px-4 py-2">
+              <span>{v.rate > 0 ? `${v.rate}%` : "0%"}</span>
+              <span className="text-right">{formatMoney(v.net, currencySymbol)}</span>
+              <span className="text-right">{formatMoney(v.tax, currencySymbol)}</span>
+              <span className="text-right">{formatMoney(v.gross, currencySymbol)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {paymentLines.length > 0 && (
         <div className="mb-6 overflow-hidden rounded-xl border border-neutral-200">
           {paymentLines.map((p, i) => (
@@ -160,6 +186,7 @@ export function InvoiceClient({
 
       <div className="mt-10 border-t border-neutral-200 pt-4 text-center text-xs text-neutral-400 whitespace-pre-wrap">
         {invoiceFooterText}
+        {returnsPolicy && <div className="mt-3 text-neutral-500">{returnsPolicy}</div>}
       </div>
 
       <style>{`

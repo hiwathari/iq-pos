@@ -32,7 +32,7 @@ export const PLANS: Plan[] = [
     tagline: "For busy restaurants and stores.",
     monthly: 45.99,
     annual: 550,
-    features: ["Up to 3 tills", "Everything in Basic", "Kitchen display or live stock control", "Staff logins & permissions", "Phone support, 7 days"],
+    features: ["Up to 3 tills", "Everything in Basic", "Kitchen display or live stock control & reorders", "Staff logins & permissions", "Phone support, 7 days"],
     cta: "Subscribe now",
     popular: true,
   },
@@ -42,7 +42,7 @@ export const PLANS: Plan[] = [
     tagline: "For multi-site and high-volume businesses.",
     monthly: 60.99,
     annual: 699,
-    features: ["Unlimited tills", "Everything in Standard", "Multi-site reporting & central menus", "Supplier ordering & integrations", "Priority support & account manager"],
+    features: ["Unlimited tills", "Everything in Standard", "Multi-site overview, stock transfers & central catalogue", "Suppliers, purchase orders & integrations", "Priority support & account manager"],
     cta: "Choose Premium",
   },
 ];
