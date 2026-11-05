@@ -3,10 +3,11 @@
 import { priceItemsWithPromotions } from "@/lib/data/promotions";
 import { redeemStoreCredits, restoreStoreCredits } from "@/lib/data/store-credit";
 import { releaseSerials, sellSerials, serialsOf } from "@/lib/data/serials";
-import { and, eq, gte, inArray } from "drizzle-orm";
+import { onAccountAmount } from "@/lib/data/trade-accounts";
+import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
-import { ageChecks, orders, restaurants, serialNumbers, tables } from "@/db/schema";
+import { ageChecks, orders, restaurants, serialNumbers, tables, tradeAccounts } from "@/db/schema";
 import type { Order, OrderChannel, OrderItem, OrderStatus, PaymentLine, ThirdPartyProvider } from "@/lib/types";
 import { itemsSubtotal, orderBreakdown, resolveCouponDiscount } from "@/lib/types";
 import { getUserPermissions, requireRestaurantContext } from "@/lib/scope";
@@ -89,6 +90,8 @@ export interface PlaceOrderInput {
   cashReceived?: number;
   extraDiscount?: number;
   couponCode?: string;
+  // The business customer this sale is for (step 6.6); "On account" payments need it.
+  tradeAccountId?: string;
   loyaltyMemberId?: string;
   customerName?: string;
   customerPhone?: string;
@@ -113,7 +116,7 @@ export async function placeOrderAction(rawInput: PlaceOrderInput): Promise<Place
     input.payments.length === 0 ? null : input.payments.length === 1 ? input.payments[0].method : "Split";
   // A part paid with a store-credit slip keeps its payment line (with the slip's code) even when
   // it is the only one, so a void can give the balance back.
-  const payments = input.payments.length > 1 || input.payments.some((p) => p.creditCode) ? input.payments : null;
+  const payments = input.payments.length > 1 || input.payments.some((p) => p.creditCode || p.method === "On account") ? input.payments : null;
 
   const existing = input.editingOrderId
     ? (
@@ -185,6 +188,27 @@ export async function placeOrderAction(rawInput: PlaceOrderInput): Promise<Place
     if (taken.error) return { error: taken.error };
   }
 
+  // Trade account (step 6.6): a sale on account adds to what the customer owes, within their credit
+  // limit and never while the account is on hold. An edit only adds / removes the difference.
+  const onAccountNow = input.payments.filter((p) => p.method === "On account").reduce((s, p) => s + p.amount, 0);
+  const onAccountBefore = existing ? onAccountAmount(existing) : 0;
+  let tradeAccountId: string | null = existing?.tradeAccountId ?? null;
+  if (input.tradeAccountId !== undefined) tradeAccountId = input.tradeAccountId || null;
+  if (tradeAccountId) {
+    const [acct] = await db.select().from(tradeAccounts).where(and(eq(tradeAccounts.id, tradeAccountId), eq(tradeAccounts.restaurantId, restaurantId))).limit(1);
+    if (!acct) return { error: "That trade account no longer exists." };
+    const delta = Math.round((onAccountNow - onAccountBefore) * 100) / 100;
+    if (delta > 0) {
+      if (acct.onHold) return { error: `${acct.companyName} is on hold — they can't buy on account.` };
+      if (acct.creditLimit != null && acct.balance + delta > acct.creditLimit + 0.004) {
+        return { error: `That would take ${acct.companyName} over their credit limit (${acct.creditLimit.toFixed(2)}; they owe ${acct.balance.toFixed(2)}).` };
+      }
+    }
+    if (Math.abs(delta) > 0.004) await db.update(tradeAccounts).set({ balance: sql`round(${tradeAccounts.balance} + ${delta}, 2)` }).where(eq(tradeAccounts.id, acct.id));
+  } else if (onAccountNow > 0.004) {
+    return { error: "Choose the trade account for a sale on account." };
+  }
+
   // Serial numbers (step 5.2): every serial on a line must be in stock for that product, except the
   // ones this order already holds (an edit re-sends them). Marked sold once the order has an id.
   const priorSerials = new Set(serialsOf(existing?.items ?? []));
@@ -244,6 +268,7 @@ export async function placeOrderAction(rawInput: PlaceOrderInput): Promise<Place
         extraDiscount,
         couponCode,
         couponDiscount,
+        tradeAccountId,
         loyaltyMemberId,
         customerName: hasCustomerInfo ? input.customerName || null : null,
         customerPhone: hasCustomerInfo ? input.customerPhone || null : null,
@@ -317,6 +342,7 @@ export async function placeOrderAction(rawInput: PlaceOrderInput): Promise<Place
       extraDiscount,
       couponCode,
       couponDiscount,
+      tradeAccountId,
       loyaltyMemberId,
       customerName: hasCustomerInfo ? input.customerName || null : null,
       customerPhone: hasCustomerInfo ? input.customerPhone || null : null,
@@ -462,7 +488,7 @@ export async function setOrderStatusAction(orderId: string, status: OrderStatus)
 export async function voidOrderAction(orderId: string, reason: string) {
   const { session, restaurantId } = await requireRestaurantContext();
   const [order] = await db
-    .select({ id: orders.id, tableId: orders.tableId, status: orders.status, items: orders.items, payments: orders.payments })
+    .select({ id: orders.id, tableId: orders.tableId, status: orders.status, items: orders.items, payments: orders.payments, paymentMethod: orders.paymentMethod, extraDiscount: orders.extraDiscount, couponDiscount: orders.couponDiscount, tradeAccountId: orders.tradeAccountId })
     .from(orders)
     .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)))
     .limit(1);
@@ -471,6 +497,9 @@ export async function voidOrderAction(orderId: string, reason: string) {
     const used = (order.payments ?? []).filter((p) => p.creditCode).map((p) => ({ code: p.creditCode!, amount: p.amount }));
     if (used.length) await restoreStoreCredits(restaurantId, used);
     await releaseSerials(restaurantId, serialsOf(order.items));
+    // A sale on account taken off the customer's balance again.
+    const owed = onAccountAmount(order);
+    if (order.tradeAccountId && owed > 0) await db.update(tradeAccounts).set({ balance: sql`round(${tradeAccounts.balance} - ${owed}, 2)` }).where(eq(tradeAccounts.id, order.tradeAccountId));
   }
   await db
     .update(orders)

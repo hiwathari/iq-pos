@@ -49,6 +49,7 @@ export function TillModeSwitcher({
   canRefund,
   promotions = [],
   variantsByDish = {},
+  tradeAccounts = [],
 }: {
   categories: Category[];
   dishes: Dish[];
@@ -89,6 +90,7 @@ export function TillModeSwitcher({
   canRefund: boolean;
   promotions?: PromotionDef[];
   variantsByDish?: Record<string, VariantLite[]>;
+  tradeAccounts?: { id: string; companyName: string; priceTier: string | null; onHold: boolean; creditLimit: number | null; balance: number }[];
 }) {
   const [mode, setMode] = useState<Mode | null>(null);
 
@@ -172,6 +174,7 @@ export function TillModeSwitcher({
       canRefund={canRefund}
       promotions={promotions}
       variantsByDish={variantsByDish}
+      tradeAccounts={tradeAccounts}
     />
   );
 }

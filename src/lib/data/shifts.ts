@@ -38,7 +38,7 @@ export async function summarizeShiftWindow(restaurantId: string, sinceTs: number
   const byMethod = new Map(sales.byMethod);
   for (const [method, amount] of refunded.byMethod) byMethod.set(method, (byMethod.get(method) ?? 0) - amount);
 
-  const totalSales = cashSales + cardSales + otherSales;
+  const totalSales = cashSales + cardSales + otherSales + (sales.credit - refunded.credit);
   const voidAmount = voidedOrders.reduce((sum, o) => sum + orderTotal(o), 0);
   const terminalSales = [...byMethod.entries()].map(([method, amount]) => ({ method, amount }));
 

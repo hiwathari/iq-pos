@@ -33,8 +33,10 @@ export function InvoiceClient({
   invoiceWebsite,
   invoiceLogoUrl,
   invoiceFooterText,
+  trade,
 }: {
   order: InvoiceOrder;
+  trade?: { companyName: string; vatNumber: string | null; billingAddress: string | null; paymentTermsDays: number | null };
   restaurantName: string;
   currencySymbol: string;
   invoiceAddress?: string | null;
@@ -103,6 +105,19 @@ export function InvoiceClient({
         {order.status === "Voided" && <div className="mt-1 font-semibold text-rose-600">Voided</div>}
       </div>
 
+      {trade && (
+        <div className="mb-4 rounded-xl border border-neutral-200 p-3 text-sm text-neutral-700">
+          <div className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Bill to</div>
+          <div className="font-semibold">{trade.companyName}</div>
+          {trade.billingAddress && <div className="whitespace-pre-line">{trade.billingAddress}</div>}
+          {trade.vatNumber && <div>VAT no. {trade.vatNumber}</div>}
+          {paymentLines.some((p) => p.method === "On account") && (
+            <div className="mt-1 font-medium">
+              On account{trade.paymentTermsDays != null ? ` — payment due within ${trade.paymentTermsDays} days (${new Date(order.createdAt + trade.paymentTermsDays * 86400000).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })})` : ""}
+            </div>
+          )}
+        </div>
+      )}
       {(order.customerName || order.customerPhone || order.customerAddress) && (
         <div className="mb-6 text-center text-sm text-neutral-600">
           {order.customerName && <div className="font-semibold">{order.customerName}</div>}

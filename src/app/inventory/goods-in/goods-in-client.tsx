@@ -14,6 +14,9 @@ interface Line {
   cost: string;
   // Serial / IMEI numbers, one per line, for serial-tracked products (step 5.2).
   serials: string;
+  locationId: string;
+  lot: string;
+  expiresOn: string;
 }
 
 const serialList = (t: string) => [...new Set(t.split(/[\n,]+/).map((x) => x.trim()).filter(Boolean))];
@@ -24,11 +27,15 @@ export function GoodsInClient({
   items,
   suppliers,
   currencySymbol,
+  locations = [],
+  batches = false,
   order,
 }: {
   items: PickItem[];
   suppliers: { id: string; name: string }[];
   currencySymbol: string;
+  locations?: { id: string; code: string }[];
+  batches?: boolean;
   order: { id: string; number: string; supplierId: string; lines: { itemId: string; qty: number; cost: number | null }[] } | null;
 }) {
   const router = useRouter();
@@ -39,7 +46,7 @@ export function GoodsInClient({
     (order?.lines ?? [])
       .map((l) => ({ item: items.find((i) => i.id === l.itemId), qty: l.qty, cost: l.cost }))
       .filter((l): l is { item: PickItem; qty: number; cost: number | null } => !!l.item && l.qty > 0)
-      .map((l) => ({ item: l.item, qty: String(l.qty), cost: l.cost != null ? String(l.cost) : l.item.costPrice != null ? String(l.item.costPrice) : "", serials: "" }))
+      .map((l) => ({ item: l.item, qty: String(l.qty), cost: l.cost != null ? String(l.cost) : l.item.costPrice != null ? String(l.item.costPrice) : "", serials: "", locationId: "", lot: "", expiresOn: "" }))
   );
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -50,7 +57,7 @@ export function GoodsInClient({
       const at = cur.findIndex((l) => l.item.id === item.id);
       if (at >= 0 && item.trackSerials) return cur;
       if (at >= 0) return cur.map((l, i) => (i === at ? { ...l, qty: String(Math.round((Number(l.qty) + packQty) * 1000) / 1000) } : l));
-      return [...cur, { item, qty: item.trackSerials ? "0" : String(packQty), cost: item.costPrice != null ? String(item.costPrice) : "", serials: "" }];
+      return [...cur, { item, qty: item.trackSerials ? "0" : String(packQty), cost: item.costPrice != null ? String(item.costPrice) : "", serials: "", locationId: "", lot: "", expiresOn: "" }];
     });
   }
 
@@ -66,7 +73,7 @@ export function GoodsInClient({
         purchaseOrderId: order?.id ?? null,
         lines: lines.map((l) => {
           const serials = l.item.trackSerials ? serialList(l.serials) : undefined;
-          return { itemId: l.item.id, qty: serials ? serials.length : Number(l.qty), cost: l.cost === "" ? null : Number(l.cost), serials };
+          return { itemId: l.item.id, qty: serials ? serials.length : Number(l.qty), cost: l.cost === "" ? null : Number(l.cost), serials, locationId: l.locationId || null, lot: l.lot, expiresOn: l.expiresOn };
         }),
       });
       if (res.error) return setError(res.error);
@@ -154,6 +161,30 @@ export function GoodsInClient({
                   </button>
                 </td>
               </tr>
+              {(locations.length > 0 || batches) && (
+                <tr>
+                  <td colSpan={4} className="px-4 pb-3">
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-500">
+                      {locations.length > 0 && (
+                        <select value={l.locationId} onChange={(e) => setLines((cur) => cur.map((c, i) => (i === idx ? { ...c, locationId: e.target.value } : c)))} aria-label={`Bin for ${l.item.name}`} className={`${input} py-1`}>
+                          <option value="">Put away later</option>
+                          {locations.map((loc) => (
+                            <option key={loc.id} value={loc.id}>
+                              {loc.code}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      {batches && (
+                        <>
+                          <input value={l.lot} onChange={(e) => setLines((cur) => cur.map((c, i) => (i === idx ? { ...c, lot: e.target.value } : c)))} placeholder="Lot" aria-label={`Lot for ${l.item.name}`} className={`${input} w-28 py-1`} />
+                          <input type="date" value={l.expiresOn} onChange={(e) => setLines((cur) => cur.map((c, i) => (i === idx ? { ...c, expiresOn: e.target.value } : c)))} aria-label={`Best before for ${l.item.name}`} className={`${input} py-1`} />
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              )}
               {l.item.trackSerials && (
                 <tr>
                   <td colSpan={4} className="px-4 pb-3">

@@ -1,6 +1,7 @@
 import { and, eq, gt, gte, lt, lte } from "drizzle-orm";
 import { db } from "@/db/client";
 import { refunds } from "@/db/schema";
+import { isOffTerminalTender } from "@/lib/types";
 
 // Refunds made in a time window — they come off takings on the day they happen (End Day, the
 // Till's "Today", Reports), not on the day of the original sale. docs/retail-plan step 3.7.
@@ -25,11 +26,16 @@ export async function listRefundsForOrder(restaurantId: string, orderId: string)
 export function refundsByTender(list: { method: string; amount: number }[]) {
   let cash = 0;
   let card = 0;
+  let credit = 0;
   const byMethod = new Map<string, number>();
   for (const r of list) {
+    if (isOffTerminalTender(r.method)) {
+      credit += r.amount;
+      continue;
+    }
     if (r.method === "Cash") cash += r.amount;
     else card += r.amount;
     byMethod.set(r.method, (byMethod.get(r.method) ?? 0) + r.amount);
   }
-  return { cash, card, total: cash + card, byMethod };
+  return { cash, card, credit, total: cash + card + credit, byMethod };
 }

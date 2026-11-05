@@ -118,6 +118,8 @@ export interface DishInput {
   variantOptions?: { name: string; values: string[] }[];
   variants?: VariantInput[];
   trackSerials?: boolean;
+  // Price per trade tier (step 6.6a), e.g. {"trade": 1.1}.
+  tierPrices?: Record<string, number>;
   // Own stock (step 2.4): when on, the product gets its own stock item; stockQty sets how many
   // are in stock now (a change is logged as a count), lowStock its low-stock level.
   trackStock?: boolean;
@@ -134,6 +136,18 @@ const optNum = (v: unknown, min = 0, max = 1e7) => {
   const n = typeof v === "number" ? v : v === null || v === undefined || v === "" ? NaN : Number(v);
   return Number.isFinite(n) && n >= min && n <= max ? n : null;
 };
+
+// Trade tier prices: lower-cased tier names, sensible prices, at most 5.
+function cleanTiers(raw: unknown): Record<string, number> | null {
+  if (!raw || typeof raw !== "object") return null;
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>).slice(0, 5)) {
+    const name = k.trim().toLowerCase().slice(0, 30);
+    const n = Number(v);
+    if (name && Number.isFinite(n) && n >= 0 && n <= 1e6) out[name] = Math.round(n * 100) / 100;
+  }
+  return Object.keys(out).length ? out : null;
+}
 
 // Cleans and checks everything the product form sends. Returns the columns to write plus the
 // checked barcodes, or an error to show on the form.
@@ -201,6 +215,7 @@ async function normaliseDishInput(restaurantId: string, input: DishInput, dishId
     minAge,
     plu: String(input.plu ?? "").replace(/\D/g, "").slice(0, 6) || null,
     trackSerials: !!input.trackSerials,
+    tierPrices: cleanTiers(input.tierPrices),
     supplierId,
     supplierCode: String(input.supplierCode ?? "").trim().slice(0, 60) || null,
     // A product with variants keeps its stock per variant, not on the product itself.

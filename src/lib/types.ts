@@ -123,6 +123,8 @@ export interface OrderItem {
   variantId?: string;
   // Serial / IMEI numbers sold on this line (step 5.2), one per unit.
   serials?: string[];
+  // Picking (step 6.3): `ready` means picked; `short` means the picker could not find all of it.
+  short?: boolean;
 }
 
 export interface PaymentLine {
@@ -249,12 +251,19 @@ export function itemsRawTax(items: Pick<OrderItem, "price" | "qty" | "taxRate" |
 // payment lines are the source of truth (falling back to its single paymentMethod for orders
 // from before split payments), and an order with neither counts as "other" (not yet paid).
 // Shared by End Day (summarizeShiftWindow) and the Till's "Today" figures so the two agree.
+// Tenders that aren't money in a drawer or on a card machine: store-credit slips and sales on a
+// trade account. They count towards sales but are never "expected" in the cash drawer or on a
+// card machine's End Day total — otherwise every day would look like it didn't balance.
+export const NON_CASH_TENDERS = ["Store credit", "On account"];
+export const isOffTerminalTender = (method: string) => NON_CASH_TENDERS.includes(method);
+
 export function salesByTender(
   list: Pick<Order, "status" | "payments" | "paymentMethod" | "items" | "extraDiscount" | "couponDiscount">[]
 ) {
   let cash = 0;
   let card = 0;
   let other = 0;
+  let credit = 0;
   const byMethod = new Map<string, number>();
   for (const o of list) {
     if (o.status === "Voided") continue;
@@ -265,12 +274,16 @@ export function salesByTender(
       continue;
     }
     for (const line of lines) {
+      if (isOffTerminalTender(line.method)) {
+        credit += line.amount;
+        continue;
+      }
       if (line.method === "Cash") cash += line.amount;
       else card += line.amount;
       byMethod.set(line.method, (byMethod.get(line.method) ?? 0) + line.amount);
     }
   }
-  return { cash, card, other, byMethod };
+  return { cash, card, other, credit, byMethod };
 }
 
 // Resolves a coupon's percent/fixed value into an actual currency amount against a given

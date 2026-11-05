@@ -32,6 +32,8 @@ export function InventoryClient({
   categories,
   productWord = "dish",
   purchasing = false,
+  features = {},
+  canTransfer = false,
   currencySymbol,
 }: {
   items: StockRow[];
@@ -39,6 +41,9 @@ export function InventoryClient({
   categories: { id: string; name: string }[];
   productWord?: string;
   purchasing?: boolean;
+  features?: { locations?: boolean; batches?: boolean };
+  // A login that manages 2+ sites can move stock between them (step 6.5).
+  canTransfer?: boolean;
   currencySymbol: string;
 }) {
   const router = useRouter();
@@ -111,6 +116,16 @@ export function InventoryClient({
               <Link href="/inventory/serials" className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50">
                 <Search className="h-4 w-4" /> Serials
               </Link>
+              {canTransfer && (
+                <Link href="/transfers" className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50">
+                  Transfers
+                </Link>
+              )}
+              {features.batches && (
+                <Link href="/inventory/expiry" className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50">
+                  Expiry
+                </Link>
+              )}
               <Link href="/stocktake" className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50">
                 <ClipboardCheck className="h-4 w-4" /> Stocktake
               </Link>

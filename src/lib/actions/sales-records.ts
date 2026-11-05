@@ -8,6 +8,8 @@ import { summarizeShiftWindow } from "@/lib/data/shifts";
 import { adjustStockForEdit, returnStockForOrder } from "@/lib/stock";
 import { restoreStoreCredits } from "@/lib/data/store-credit";
 import { releaseSerials, serialsOf } from "@/lib/data/serials";
+import { onAccountAmount } from "@/lib/data/trade-accounts";
+import { tradeAccounts } from "@/db/schema";
 import { assertPermission, requireRestaurantContext } from "@/lib/scope";
 import { ALL_CHANNELS, type OrderChannel, type OrderItem, type PaymentLine } from "@/lib/types";
 
@@ -216,7 +218,7 @@ export async function updateOrderRecordAction(orderId: string, input: OrderRecor
 export async function deleteOrderRecordAction(orderId: string): Promise<RecordActionState> {
   const { session, restaurantId } = await scope();
   const [order] = await db
-    .select({ id: orders.id, orderNumber: orders.orderNumber, status: orders.status, items: orders.items, payments: orders.payments })
+    .select({ id: orders.id, orderNumber: orders.orderNumber, status: orders.status, items: orders.items, payments: orders.payments, paymentMethod: orders.paymentMethod, extraDiscount: orders.extraDiscount, couponDiscount: orders.couponDiscount, tradeAccountId: orders.tradeAccountId })
     .from(orders)
     .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)))
     .limit(1);
@@ -226,6 +228,8 @@ export async function deleteOrderRecordAction(orderId: string): Promise<RecordAc
     const used = (order.payments ?? []).filter((p) => p.creditCode).map((p) => ({ code: p.creditCode!, amount: p.amount }));
     if (used.length) await restoreStoreCredits(restaurantId, used);
     await releaseSerials(restaurantId, serialsOf(order.items));
+    const owed = onAccountAmount(order);
+    if (order.tradeAccountId && owed > 0) await db.update(tradeAccounts).set({ balance: sql`round(${tradeAccounts.balance} - ${owed}, 2)` }).where(eq(tradeAccounts.id, order.tradeAccountId));
   }
   await db.delete(orders).where(eq(orders.id, orderId));
   await returnStockForOrder(restaurantId, order, { byName: session.name, note: `Order ${order.orderNumber} deleted in Sales Records` });

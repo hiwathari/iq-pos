@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/db/client";
 import { printers, restaurants, users } from "@/db/schema";
 import { createSession, rememberDeviceRestaurant } from "@/lib/auth";
+import { registerTillDevice } from "@/lib/till-license";
 
 // PIN-unlocked devices (till, kitchen display) get a shorter session than a full staff login,
 // since they're shared hardware left logged in for a shift rather than a personal device.
@@ -31,6 +32,10 @@ export async function tillPinLoginAction(
 
   const [restaurant] = await db.select().from(restaurants).where(eq(restaurants.id, staff.restaurantId)).limit(1);
   if (!restaurant || !restaurant.active) return { error: "Incorrect code." };
+
+  // Till licences: this device must fit within the plan's till limit (step 6.8).
+  const licenceError = await registerTillDevice(staff.restaurantId);
+  if (licenceError) return { error: licenceError };
 
   await createSession(
     {

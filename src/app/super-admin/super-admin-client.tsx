@@ -87,8 +87,16 @@ export function SuperAdminClient({
     <div className="p-6">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-neutral-900">{isSuperAdmin ? "Super Admin" : "Regional Admin"}</h1>
+        {!isSuperAdmin && (
+          <Link href="/super-admin/sites" className="flex items-center gap-2 rounded-xl border border-neutral-200 px-4 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50">
+            Sites overview
+          </Link>
+        )}
         {isSuperAdmin && (
           <div className="flex flex-wrap gap-2">
+            <Link href="/super-admin/sites" className="flex items-center gap-2 rounded-xl border border-neutral-200 px-4 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50">
+              Sites &amp; plans
+            </Link>
             <Link
               href="/super-admin/website-requests"
               className="flex items-center gap-2 rounded-xl border border-neutral-200 px-4 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"

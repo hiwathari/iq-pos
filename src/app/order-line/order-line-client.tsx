@@ -62,6 +62,7 @@ import {
   Plus,
   Trash2,
   Wallet,
+  Building2,
   CreditCard,
   LayoutGrid,
   X,
@@ -99,6 +100,11 @@ import {
   Tag,
   RotateCcw,
 } from "lucide-react";
+
+// Module-level wrapper so components stay free of impure calls (react-hooks purity lint rule).
+function currentTimeMs() {
+  return Date.now();
+}
 
 // Ticket filter chips. Shops (no tables — see lib/business-profile.ts) get their own order types
 // instead of Dine in / Wait List / Take Away.
@@ -224,6 +230,8 @@ interface CartState {
   appliedCoupon: { code: string; discount: number } | null;
   loyaltyContact: string;
   loyaltyMember: { id: string; code: string; name: string | null } | null;
+  // The business customer this sale is for (step 6.6): trade prices and "On account".
+  tradeAccountId: string | null;
   // UI-only: whether staff have picked the order type yet. Until they have, the Order Type picker
   // shows every option; once one's picked it collapses to just that one (with a Change link).
   channelChosen: boolean;
@@ -248,6 +256,7 @@ const EMPTY_CART: CartState = {
   appliedCoupon: null,
   loyaltyContact: "",
   loyaltyMember: null,
+  tradeAccountId: null,
   channelChosen: false,
 };
 
@@ -283,6 +292,7 @@ export function OrderLineClient({
   canRefund,
   promotions = [],
   variantsByDish = {},
+  tradeAccounts = [],
 }: {
   categories: Category[];
   dishes: Dish[];
@@ -319,6 +329,8 @@ export function OrderLineClient({
   promotions?: PromotionDef[];
   // Active variants (size / colour…) per product, with their own stock (step 5.1).
   variantsByDish?: Record<string, VariantLite[]>;
+  // Trade accounts to pick from (step 6.6) — empty when the feature is off.
+  tradeAccounts?: { id: string; companyName: string; priceTier: string | null; onHold: boolean; creditLimit: number | null; balance: number }[];
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -515,10 +527,27 @@ export function OrderLineClient({
   }, [orders, historyDateStr, openTime, timezone]);
   const historyCompleted = historyOrders.filter((o) => o.status !== "Voided");
 
-  const priceFor = (dish: Dish) => {
+  const tradeAccount = tradeAccounts.find((a) => a.id === cart.tradeAccountId) ?? null;
+  const priceForTier = (dish: Dish, tier: string | null | undefined) => {
     const key = cart.channel === "Third Party" ? cart.thirdPartyProvider : cart.channel;
-    return dish.channelPrices?.[key] ?? dish.price;
+    return (tier ? dish.tierPrices?.[tier] : undefined) ?? dish.channelPrices?.[key] ?? dish.price;
   };
+  const priceFor = (dish: Dish) => priceForTier(dish, tradeAccount?.priceTier);
+  // Picking (or changing) the trade account re-prices the lines already in the basket to that
+  // account's tier; lines with a manual price, a scale label or a variant price are left alone.
+  function setTradeAccount(id: string) {
+    const next = tradeAccounts.find((a) => a.id === id) ?? null;
+    setCart((prev) => ({
+      ...prev,
+      tradeAccountId: next?.id ?? null,
+      payments: next && !next.onHold ? prev.payments : prev.payments.filter((p) => p.method !== "On account"),
+      items: prev.items.map((i) => {
+        const dish = dishes.find((d) => d.id === i.dishId);
+        if (!dish || i.priceOverride || i.fixedTotal != null || i.variantId) return i;
+        return { ...i, price: priceForTier(dish, next?.priceTier) };
+      }),
+    }));
+  }
   // Snapshotted onto the cart line at add-time (see addToCart) so it survives into the placed
   // order untouched — only relevant while the restaurant has tax turned on at all.
   const taxRateFor = (dish: Dish) => {
@@ -890,6 +919,7 @@ export function OrderLineClient({
       appliedCoupon: order.couponCode ? { code: order.couponCode, discount: order.couponDiscount ?? 0 } : null,
       loyaltyContact: "",
       loyaltyMember: order.loyaltyMemberId ? { id: order.loyaltyMemberId, code: "", name: null } : null,
+      tradeAccountId: order.tradeAccountId ?? null,
     });
     setForcePaymentEdit(false);
     setCouponError(null);
@@ -989,6 +1019,7 @@ export function OrderLineClient({
           extraDiscount: extraDiscountAmount || undefined,
           couponCode: cart.appliedCoupon?.code,
           loyaltyMemberId: cart.loyaltyMember?.id,
+          tradeAccountId: cart.tradeAccountId ?? undefined,
           customerName: cart.customerName.trim() || undefined,
           customerPhone: cart.customerPhone.trim() || undefined,
           customerAddress: cart.customerAddress.trim() || undefined,
@@ -1110,14 +1141,14 @@ export function OrderLineClient({
   // per the explicit instruction that staff shouldn't see the old browser print dialog anymore.
   function handlePrint(gift = false) {
     if (localPrintTarget) {
-      printReceiptLocally({ ...cart, items: priced.items }, editingOrder?.orderNumber ?? "NEW", editingOrder?.createdAt ?? Date.now(), cart.editingOrderId, gift).catch(
+      printReceiptLocally({ ...cart, items: priced.items }, editingOrder?.orderNumber ?? "NEW", editingOrder?.createdAt ?? currentTimeMs(), cart.editingOrderId, gift).catch(
         (err) => console.warn("Local print failed.", err)
       );
       return;
     }
     printTicket({
       orderNumber: editingOrder?.orderNumber ?? "NEW",
-      createdAt: editingOrder?.createdAt ?? Date.now(),
+      createdAt: editingOrder?.createdAt ?? currentTimeMs(),
       invoiceUrl: cart.editingOrderId ? `${window.location.origin}/invoice/${cart.editingOrderId}` : undefined,
       tableNumber: cart.tableNumber,
       channel: cart.channel,
@@ -1156,6 +1187,9 @@ export function OrderLineClient({
     tablePickerOpen,
     setTablePickerOpen,
     tables,
+    tradeAccounts,
+    tradeAccount,
+    onSetTradeAccount: setTradeAccount,
     pricedItems: priced.items,
     subtotal,
     tax,
@@ -1817,6 +1851,9 @@ interface CartPanelProps {
   tablePickerOpen: boolean;
   setTablePickerOpen: (v: boolean) => void;
   tables: RestaurantTable[];
+  tradeAccounts: { id: string; companyName: string; priceTier: string | null; onHold: boolean; creditLimit: number | null; balance: number }[];
+  tradeAccount: { id: string; companyName: string; priceTier: string | null; onHold: boolean; creditLimit: number | null; balance: number } | null;
+  onSetTradeAccount: (id: string) => void;
   pricedItems: OrderItem[];
   subtotal: number;
   tax: number;
@@ -1874,6 +1911,9 @@ function CartPanel({
   tablePickerOpen,
   setTablePickerOpen,
   tables,
+  tradeAccounts,
+  tradeAccount,
+  onSetTradeAccount,
   pricedItems,
   subtotal,
   tax,
@@ -2407,6 +2447,25 @@ function CartPanel({
         </div>
 
         <div>
+          {tradeAccounts.length > 0 && !paymentLocked && (
+            <div className="mb-2 flex items-center gap-2">
+              <Building2 className="h-4 w-4 shrink-0 text-neutral-400" />
+              <select
+                value={cart.tradeAccountId ?? ""}
+                onChange={(e) => onSetTradeAccount(e.target.value)}
+                aria-label="Trade account"
+                className="min-w-0 flex-1 rounded-lg border border-neutral-200 bg-white px-2.5 py-2 text-sm outline-none focus:border-teal-500"
+              >
+                <option value="">Trade account — none</option>
+                {tradeAccounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.companyName}
+                    {a.onHold ? " (on hold)" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           {paymentLocked ? (
             <div className="space-y-1.5 rounded-xl border border-neutral-200 bg-neutral-50 p-2.5">
               <div className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Payment taken</div>
@@ -2441,6 +2500,9 @@ function CartPanel({
                   onClick={() => tapTerminal(t)}
                 />
               ))}
+              {tradeAccount && !tradeAccount.onHold && (
+                <PaymentButton icon={Building2} label="On account" active={cart.payments.some((p) => p.method === "On account")} onClick={() => togglePaymentLine("On account")} />
+              )}
             </div>
           )}
 

@@ -11,7 +11,7 @@ SQL for schema changes is **not** deferred — it is always handed over before t
 
 ## Owed
 
-SQL for Phase 5 (all of it): `phase5.sql` — promotions, store_credits, product_variants, serial_numbers, new columns on dishes and inventory_items.
+SQL for Phase 6 (all of it): `phase6.sql` — stock_locations, stock_levels, stock_batches, trade_accounts, trade_payments, stock_transfers, till_devices; new columns on restaurants (plan), dishes (tier_prices, master_id, local_price), orders (trade_account_id, pick_status, dispatched_at, carrier, tracking). (Phase 5's `phase5.sql` has been run.)
 
 ### Built, not yet documented (FAQ answer + marked screenshot + Developer Guide entry/section)
 - **5.3 Promotions** — `/promotions` (new sidebar item, permission `promotions`, feature switch `promotions`);
@@ -41,12 +41,20 @@ SQL for Phase 5 (all of it): `phase5.sql` — promotions, store_credits, product
   (stock-tracked products only; restaurants never show stock), Click & collect or Delivery (address) instead of tables,
   promotions priced live and again by the server; weighed and serial products are not offered; kiosk and table-QR menus
   hide products with variants. Screenshots: shop page, picker, checkout with Delivery.
-- Existing FAQ answers to re-check when documenting: "How do I refund or take a return?" (mention Store credit),
+- **6.1–6.2 Locations, bins and batches/expiry** — `/locations` (feature switch `locations`/`batches`): shelves/bins per product, move stock between bins, QR bin labels (`/locations/labels`), Goods in takes bin + lot + expiry, `/inventory/expiry` (expiring soon, write-off); stock sold comes off the biggest bin / earliest expiry first. Screenshots: Locations page, Goods in with lot/expiry, Expiry page, bin labels.
+- **6.3 Trade accounts** — `/trade-accounts` (+ statement page, feature switch `tradeAccounts`): company, VAT no., price tier, credit limit, payment terms, hold; product form has trade price tiers; Till has a Trade account selector + "On account" payment (refused over credit limit / on hold); payments and statements, aged debt; invoice shows Bill to / VAT / due date; refunds "On account" = credit note. Screenshots: accounts list, statement, Till with trade account, invoice.
+- **6.4 Picking & dispatch** — `/picking` (feature switch `picking`): Delivery / Click & collect orders in bin walking order, scan to tick, wrong item refused, mark short, pack, dispatch with carrier + tracking, printable delivery note. Screenshots: picking list, dispatch popup, delivery note.
+- **6.5 Stock transfers** — `/transfers` (regional / super admin logins): draft, send (stock leaves), receive at the other site (matched by barcode, SKU, then name; differences recorded; "create missing" option). Screenshots: transfer list, receive screen.
+- **6.6 Sites overview, plans & till licences** — Super Admin → "Sites & plans" (`/super-admin/sites`; plan Basic 1 till / Standard 3 / Premium unlimited; revoke a till), regional admin "Sites overview"; a PIN till sign-in on a new device is refused past the plan limit ("Till limit reached"). Screenshots: sites page.
+- **6.7 Central catalogue** — `/catalogue` (only when a login manages 2+ sites): push products to other sites as linked copies (category by name, barcodes, own stock item, "update prices" option, "keeps its own price" per site). Screenshots: catalogue page.
+- **Fixes to mention in the changelog** — End Day no longer shows a false "Store credit short" alert (Store credit and On account are off-terminal tenders); sidebar "Catalogue" item no longer renamed to "Products".
+- Existing FAQ answers to re-check for Phase 6: "How do I take a refund" (On account credit note), Settings → Team permissions list (Locations, Picking, Trade Accounts, Transfers), business-type switches (locations, batches, picking, trade accounts).
+- Existing FAQ answers to re-check when documenting (Phase 5): "How do I refund or take a return?" (mention Store credit),
   "How do I sell by scanning barcodes?" (store-credit slips), "Which business type…" (Promotions switch),
   Settings → Team permissions list (Promotions).
 
 ### Not built yet
-- Phase 6 (warehouse / multi-site), Phase 7 (reports, printing, online)
+- Phase 7 (reports, printing, online)
 - Website builder (owner's decisions, 2026-11-02): Stripe payment before the final build — £4.99 for the first
   generation, £1.00 for each later change (GBP); Super Admin coupon codes with expiry date/time and a use limit;
   Google Gemini Flash (free tier via AI Studio, model name kept as a setting, key entered in Super Admin) +

@@ -100,6 +100,7 @@ export function DishModal({
   const [moreOpen, setMoreOpen] = useState(false);
   const [variantsState, setVariantsState] = useState<VariantsState>(() => initialVariantsState(initial?.variantOptions, initialVariants));
   const [trackSerials, setTrackSerials] = useState(initial?.trackSerials ?? false);
+  const [tiers, setTiers] = useState<{ name: string; price: string }[]>(Object.entries(initial?.tierPrices ?? {}).map(([name, p]) => ({ name, price: String(p) })));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -174,6 +175,7 @@ export function DishModal({
       supplierId: supplierId || null,
       supplierCode: supplierCode.trim(),
       trackSerials,
+      tierPrices: Object.fromEntries(tiers.filter((t) => t.name.trim() && t.price !== "").map((t) => [t.name.trim(), Number(t.price)])),
       ...variantsPayload(variantsState),
       barcodes: allBarcodes.map((b) => ({ code: b.code, packQty: Number(b.packQty) || 1 })),
       trackStock,
@@ -417,6 +419,25 @@ export function DishModal({
                   <label className={LABEL}>Brand</label>
                   <input value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="Optional" className={INPUT} />
                 </div>
+                {isShop && (
+                  <div className="col-span-2">
+                    <label className={LABEL}>Trade prices (for trade accounts with that price tier)</label>
+                    {tiers.map((t, i) => (
+                      <div key={i} className="mb-1.5 flex gap-2">
+                        <input value={t.name} onChange={(e) => setTiers((cur) => cur.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} placeholder="Tier, e.g. trade" aria-label={`Tier ${i + 1} name`} className={INPUT} />
+                        <input value={t.price} onChange={(e) => setTiers((cur) => cur.map((x, j) => (j === i ? { ...x, price: e.target.value.replace(/[^0-9.]/g, "") } : x)))} placeholder="Price" inputMode="decimal" aria-label={`Tier ${i + 1} price`} className={INPUT} />
+                        <button type="button" onClick={() => setTiers((cur) => cur.filter((_, j) => j !== i))} className="rounded-lg px-2 text-neutral-400 hover:text-rose-600" aria-label="Remove tier">
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                    {tiers.length < 5 && (
+                      <button type="button" onClick={() => setTiers((cur) => [...cur, { name: "trade", price: "" }])} className="text-xs font-semibold text-[var(--brand)] hover:underline">
+                        + Add a trade price
+                      </button>
+                    )}
+                  </div>
+                )}
                 {suppliers.length > 0 && (
                   <>
                     <div>

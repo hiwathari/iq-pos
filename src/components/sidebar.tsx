@@ -23,6 +23,10 @@ import {
   ShoppingBasket,
   ClipboardCheck,
   Percent,
+  MapPin,
+  PackageCheck,
+  Building2,
+  Layers,
   PanelLeftClose,
   PanelLeftOpen,
   Globe,
@@ -48,6 +52,10 @@ const NAV: { href: string; label: string; icon: typeof LayoutDashboard; key: Per
   { href: "/purchase-orders", label: "Purchase Orders", icon: ShoppingBasket, key: "purchase-orders" },
   { href: "/stocktake", label: "Stocktake", icon: ClipboardCheck, key: "stocktake" },
   { href: "/promotions", label: "Promotions", icon: Percent, key: "promotions" },
+  { href: "/locations", label: "Locations", icon: MapPin, key: "locations" },
+  { href: "/picking", label: "Picking", icon: PackageCheck, key: "picking" },
+  { href: "/trade-accounts", label: "Trade Accounts", icon: Building2, key: "trade-accounts" },
+  { href: "/catalogue", label: "Catalogue", icon: Layers, key: "manage-dishes" },
   { href: "/customers", label: "Customers", icon: Users, key: "customers" },
   { href: "/reports", label: "Reports", icon: BarChart3, key: "reports" },
   { href: "/sales-records", label: "Sales Records", icon: Table2, key: "sales-records" },
@@ -73,6 +81,8 @@ export function Sidebar({
   productsLabel = "Manage Dishes",
   showPurchasing = false,
   showPromotions = false,
+  multiSite = false,
+  features = {},
 }: {
   role: Role;
   name: string;
@@ -90,6 +100,10 @@ export function Sidebar({
   // Suppliers, Purchase Orders and Stocktake (the "purchasing" feature); Inventory is called Stock with it.
   showPurchasing?: boolean;
   showPromotions?: boolean;
+  // The login manages 2+ sites: shows the central Catalogue (step 6.7).
+  multiSite?: boolean;
+  // Which optional feature switches are on (lib/business-profile.ts).
+  features?: Partial<Record<string, boolean>>;
 }) {
   const pathname = usePathname();
   const isSuperOrRegional = role === "super_admin" || role === "regional_admin";
@@ -106,9 +120,13 @@ export function Sidebar({
             (item.key !== "kitchen" || showKitchenDisplay) &&
             (item.key !== "manage-table" || showTables) &&
             (!["suppliers", "purchase-orders", "stocktake"].includes(item.key) || showPurchasing) &&
-            (item.key !== "promotions" || showPromotions)
+            (item.key !== "promotions" || showPromotions) &&
+            (item.href !== "/catalogue" || multiSite) &&
+            (item.key !== "locations" || features.locations) &&
+            (item.key !== "picking" || features.picking) &&
+            (item.key !== "trade-accounts" || features.tradeAccounts)
         ).map((item) =>
-          item.key === "manage-dishes" ? { ...item, label: productsLabel } : item.key === "inventory" && showPurchasing ? { ...item, label: "Stock" } : item
+          item.key === "manage-dishes" && item.href !== "/catalogue" ? { ...item, label: productsLabel } : item.key === "inventory" && showPurchasing ? { ...item, label: "Stock" } : item
         );
 
   // Starts expanded (matches the server-rendered markup) and only collapses once mounted, so

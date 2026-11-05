@@ -18,6 +18,7 @@ import { TodaySales } from "@/components/today-sales";
 import { TillModeSwitcher } from "./till-mode-switcher";
 import { listActivePromotionDefs } from "@/lib/data/promotions";
 import { listVariantsByDish } from "@/lib/data/menu";
+import { listTradeAccounts } from "@/lib/data/trade-accounts";
 
 export const metadata: Metadata = {
   title: "Till",
@@ -34,10 +35,16 @@ function currentBusinessDayStart(openTime: string | null, timezone: string) {
   return businessDayStart(Date.now(), openTime, timezone);
 }
 
+// Trade accounts only load for businesses that switched the feature on (docs/retail-plan step 6.6).
+async function listTradeAccountsIfOn(restaurantId: string) {
+  const restaurant = await getRestaurant(restaurantId);
+  return businessProfile(restaurant?.businessType, restaurant?.features).features.tradeAccounts ? listTradeAccounts(restaurantId) : [];
+}
+
 export default async function OrderLinePage() {
   const { session, restaurantId } = await requirePermission("order-line");
 
-  const [categories, dishes, tables, orders, paymentTerminals, printers, restaurant, permissions, barcodesByDish, stockItems, promotions, variantDetails] = await Promise.all([
+  const [categories, dishes, tables, orders, paymentTerminals, printers, restaurant, permissions, barcodesByDish, stockItems, promotions, variantDetails, tradeAccountRows] = await Promise.all([
     listCategories(restaurantId),
     listDishes(restaurantId),
     listTables(restaurantId),
@@ -50,6 +57,7 @@ export default async function OrderLinePage() {
     listInventoryItems(restaurantId),
     listActivePromotionDefs(restaurantId),
     listVariantsByDish(restaurantId),
+    listTradeAccountsIfOn(restaurantId),
   ]);
   const variantsByDish: Record<string, { id: string; name: string; price: number | null; qty: number | null; low: number }[]> = {};
   for (const [dishId, list] of Object.entries(variantDetails)) {
@@ -121,6 +129,7 @@ export default async function OrderLinePage() {
         canRefund={hasPermission(session.role, permissions, "till-refund")}
         promotions={promotions}
         variantsByDish={variantsByDish}
+        tradeAccounts={tradeAccountRows.map((a) => ({ id: a.id, companyName: a.companyName, priceTier: a.priceTier, onHold: a.onHold, creditLimit: a.creditLimit, balance: a.balance }))}
       />
     </AppShell>
   );

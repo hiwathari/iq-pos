@@ -5,16 +5,20 @@ import { listSuppliers } from "@/lib/data/suppliers";
 import { getPurchaseOrder } from "@/lib/data/purchase-orders";
 import { getRestaurant } from "@/lib/data/restaurants";
 import { GoodsInClient } from "./goods-in-client";
+import { listLocations } from "@/lib/data/locations";
+import { businessProfile } from "@/lib/business-profile";
 
 export default async function GoodsInPage({ searchParams }: { searchParams: Promise<{ po?: string }> }) {
   const { restaurantId } = await requirePermission("inventory");
   const { po: poId } = await searchParams;
-  const [items, suppliers, restaurant, po] = await Promise.all([
+  const [items, suppliers, restaurant, po, locations] = await Promise.all([
     listStockRows(restaurantId),
     listSuppliers(restaurantId),
     getRestaurant(restaurantId),
     poId ? getPurchaseOrder(restaurantId, poId) : null,
+    listLocations(restaurantId),
   ]);
+  const features = businessProfile(restaurant?.businessType, restaurant?.features).features;
 
   return (
     <AppShell title="Goods in">
@@ -22,6 +26,8 @@ export default async function GoodsInPage({ searchParams }: { searchParams: Prom
         items={items.map((i) => ({ id: i.id, name: i.name, unit: i.unit, sku: i.sku, costPrice: i.costPrice, supplierId: i.supplierId, trackSerials: i.trackSerials, barcodes: i.packBarcodes }))}
         suppliers={suppliers.map((s) => ({ id: s.id, name: s.name }))}
         currencySymbol={restaurant?.currencySymbol ?? "£"}
+        locations={features.locations ? locations.map((l) => ({ id: l.id, code: l.code })) : []}
+        batches={features.batches}
         order={
           po && po.status !== "cancelled" && po.status !== "received"
             ? {

@@ -7,6 +7,7 @@ import { businessProfile } from "@/lib/business-profile";
 import { getUserPermissions } from "@/lib/scope";
 import { brandCssVars } from "@/lib/color";
 import { Sidebar } from "./sidebar";
+import { listAccessibleSites } from "@/lib/data/sites";
 import { Topbar } from "./topbar";
 import { ImpersonationBanner } from "./impersonation-banner";
 import { LockedShell } from "./locked-shell";
@@ -68,6 +69,8 @@ export async function AppShell({
         productsLabel={profile.words.manageProducts}
         showPurchasing={profile.features.purchasing}
         showPromotions={profile.features.promotions}
+        features={profile.features}
+        multiSite={isImpersonating && (await listAccessibleSites(session)).length > 1}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         {isImpersonating && restaurant && (

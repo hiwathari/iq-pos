@@ -213,3 +213,37 @@ export function printRefundSlip(r: {
   </body></html>`);
   win.document.close();
 }
+
+// A delivery note (docs/retail-plan step 6.4): what is in the parcel, who it is for, and a box to
+// sign — no prices. Printed from the Picking screen.
+export function printDeliveryNote(d: {
+  business: { name: string; address: string | null; phone: string | null };
+  order: {
+    orderNumber: string;
+    createdAt: number;
+    channel: string;
+    customerName: string | null;
+    customerPhone: string | null;
+    customerAddress: string | null;
+    lines: { name: string; qty: number; unit?: string; sellBy?: string; serials?: string[]; short: boolean }[];
+  };
+}) {
+  const win = window.open("", "_blank", "width=720,height=900");
+  if (!win) return;
+  const rows = d.order.lines
+    .map((l) => `<tr><td>${escapeHtml(l.name)}${l.serials?.length ? `<div class="note">S/N ${escapeHtml(l.serials.join(", "))}</div>` : ""}${l.short ? `<div class="note"><b>Short — not all supplied</b></div>` : ""}</td><td class="right">${l.qty}${l.sellBy && l.sellBy !== "unit" ? ` ${escapeHtml(l.unit ?? "")}` : ""}</td></tr>`)
+    .join("");
+  win.document.write(`<!doctype html><html><head><title>Delivery note ${escapeHtml(d.order.orderNumber)}</title><style>
+    body{font-family:system-ui,sans-serif;font-size:13px;margin:28px;color:#111} h1{font-size:20px;margin:0 0 2px} .muted{color:#666}
+    table{width:100%;border-collapse:collapse;margin-top:14px} th,td{border-bottom:1px solid #ddd;padding:7px 4px;text-align:left;vertical-align:top} .right{text-align:right}
+    .note{font-size:11px;color:#555} .grid{display:flex;justify-content:space-between;gap:24px;margin-top:12px} .sig{margin-top:40px;border-top:1px solid #000;width:260px;padding-top:4px;font-size:12px}
+  </style></head><body>
+    <h1>Delivery note</h1><div class="muted">${escapeHtml(d.business.name)}${d.business.address ? ` · ${escapeHtml(d.business.address)}` : ""}${d.business.phone ? ` · ${escapeHtml(d.business.phone)}` : ""}</div>
+    <div class="grid"><div><b>Deliver to</b><br/>${escapeHtml(d.order.customerName ?? "")}<br/>${escapeHtml(d.order.customerAddress ?? "")}<br/>${escapeHtml(d.order.customerPhone ?? "")}</div>
+    <div class="right"><b>Order #${escapeHtml(d.order.orderNumber)}</b><br/>${new Date(d.order.createdAt).toLocaleDateString("en-GB")}<br/>${escapeHtml(d.order.channel)}</div></div>
+    <table><thead><tr><th>Item</th><th class="right">Quantity</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="sig">Received by (signature) &nbsp; Date</div>
+    <script>window.onload=()=>{window.print()}</script>
+  </body></html>`);
+  win.document.close();
+}

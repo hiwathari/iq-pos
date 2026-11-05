@@ -55,6 +55,9 @@ export const restaurants = sqliteTable("restaurants", {
   // the negative number shows what was sold without stock), "warn" (sell, then tell the Till)
   // or "block" (refuse the sale, naming the item). See lib/stock.ts.
   negativeStock: text("negative_stock", { enum: ["allow", "warn", "block"] }).notNull().default("allow"),
+  // Plan (Pricing page) — limits how many tills can sign in (step 6.8): basic 1, standard 3,
+  // premium unlimited. Null = no limit (every business that existed before plans).
+  plan: text("plan", { enum: ["basic", "standard", "premium"] }),
   // Last number used for the business's own "Make a barcode" codes (lib/barcode.ts makeInternalEan13).
   barcodeSeq: int("barcode_seq").notNull().default(0),
   // Scale-label barcode layouts this business's scales print (lib/barcode.ts EmbeddedFormat[]);
@@ -238,6 +241,12 @@ export const dishes = sqliteTable("dishes", {
   variantOptions: text("variant_options", { mode: "json" }).$type<{ name: string; values: string[] }[]>(),
   // Serial / IMEI numbers (step 5.2): every unit sold is a specific serial from serial_numbers.
   trackSerials: int("track_serials", { mode: "boolean" }).notNull().default(false),
+  // Trade price tiers (step 6.6a): {"trade": 1.10, "wholesale": 0.95}; falls back to `price`.
+  tierPrices: text("tier_prices", { mode: "json" }).$type<Record<string, number>>(),
+  // Central catalogue (step 6.7): the master product this is a linked copy of, and whether this
+  // site keeps its own price when the master changes.
+  masterId: text("master_id"),
+  localPrice: int("local_price", { mode: "boolean" }).notNull().default(false),
 });
 
 // A product's barcodes — several per product (single item, multipack, outer case: pack_qty is
@@ -339,6 +348,7 @@ export const orders = sqliteTable("orders", {
       promo?: { id: string; name: string; saving: number };
       variantId?: string;
       serials?: string[];
+      short?: boolean;
     }[]
   >(),
   // "Cash", the name of a payment terminal, or "Split" when paid across multiple methods
@@ -382,6 +392,12 @@ export const orders = sqliteTable("orders", {
   // conditions are true, cleared if either stops being true. A minute after this, the Till
   // auto-frees the order's table so staff don't have to remember to clear it by hand.
   closedOutAt: int("closed_out_at"),
+  // A trade customer (step 6.6) and where the order is in picking / dispatch (steps 6.3–6.4).
+  tradeAccountId: text("trade_account_id"),
+  pickStatus: text("pick_status", { enum: ["picking", "packed", "dispatched"] }),
+  dispatchedAt: int("dispatched_at"),
+  carrier: text("carrier"),
+  tracking: text("tracking"),
   // When the order was voided — the Kitchen Display drops a voided ticket off its board about
   // 30 seconds after this (it stays visible on the Till's history for the full audit trail).
   voidedAt: int("voided_at"),
@@ -1027,6 +1043,131 @@ export const serialNumbers = sqliteTable(
     createdAt: timestamp("created_at"),
   },
   (table) => [uniqueIndex("serial_numbers_serial_idx").on(table.restaurantId, table.serial), index("serial_numbers_dish_idx").on(table.dishId, table.status)]
+);
+
+// Warehouse locations (step 6.1): zones, aisles and bins. `stock_levels` says how much of an item
+// sits in each; inventory_items.quantity stays the total (levels never exceed it).
+export const stockLocations = sqliteTable(
+  "stock_locations",
+  {
+    id: id(),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    code: text("code").notNull(),
+    name: text("name"),
+    kind: text("kind", { enum: ["zone", "aisle", "bin", "shop_floor", "backroom"] }).notNull().default("bin"),
+    parentId: text("parent_id"),
+    pickable: int("pickable", { mode: "boolean" }).notNull().default(true),
+    sort: int("sort").notNull().default(0),
+  },
+  (table) => [uniqueIndex("stock_locations_code_idx").on(table.restaurantId, table.code)]
+);
+
+export const stockLevels = sqliteTable(
+  "stock_levels",
+  {
+    inventoryItemId: text("inventory_item_id").notNull(),
+    locationId: text("location_id").notNull(),
+    quantity: real("quantity").notNull().default(0),
+  },
+  (table) => [uniqueIndex("stock_levels_pk").on(table.inventoryItemId, table.locationId)]
+);
+
+// Lots and best-before dates (step 6.2). Sales and picks take the earliest expiry first.
+export const stockBatches = sqliteTable(
+  "stock_batches",
+  {
+    id: id(),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    inventoryItemId: text("inventory_item_id").notNull(),
+    locationId: text("location_id"),
+    lot: text("lot"),
+    expiresOn: text("expires_on"),
+    quantity: real("quantity").notNull(),
+    receivedAt: int("received_at").notNull(),
+  },
+  (table) => [index("stock_batches_item_idx").on(table.inventoryItemId, table.expiresOn)]
+);
+
+// Business customers (step 6.6): trade prices, sale on account within a credit limit, statements.
+export const tradeAccounts = sqliteTable(
+  "trade_accounts",
+  {
+    id: id(),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    companyName: text("company_name").notNull(),
+    contactName: text("contact_name"),
+    email: text("email"),
+    phone: text("phone"),
+    billingAddress: text("billing_address"),
+    deliveryAddress: text("delivery_address"),
+    vatNumber: text("vat_number"),
+    creditLimit: real("credit_limit"),
+    paymentTermsDays: int("payment_terms_days"),
+    // What the customer owes: sales on account minus payments received.
+    balance: real("balance").notNull().default(0),
+    priceTier: text("price_tier"),
+    onHold: int("on_hold", { mode: "boolean" }).notNull().default(false),
+    createdAt: timestamp("created_at"),
+  },
+  (table) => [index("trade_accounts_restaurant_idx").on(table.restaurantId)]
+);
+
+export const tradePayments = sqliteTable(
+  "trade_payments",
+  {
+    id: id(),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    tradeAccountId: text("trade_account_id").notNull(),
+    amount: real("amount").notNull(),
+    method: text("method").notNull(),
+    reference: text("reference"),
+    createdByName: text("created_by_name"),
+    createdAt: timestamp("created_at"),
+  },
+  (table) => [index("trade_payments_account_idx").on(table.tradeAccountId, table.createdAt)]
+);
+
+// Stock moved between two sites under the same owner / regional admin (step 6.5).
+export const stockTransfers = sqliteTable(
+  "stock_transfers",
+  {
+    id: id(),
+    number: text("number").notNull(),
+    fromRestaurantId: text("from_restaurant_id").notNull(),
+    toRestaurantId: text("to_restaurant_id").notNull(),
+    status: text("status", { enum: ["draft", "sent", "received", "cancelled"] }).notNull().default("draft"),
+    // [{ sku, barcode, name, unit, fromItemId, qty, received }]
+    lines: text("lines", { mode: "json" }).notNull().$type<{ name: string; unit: string; sku: string | null; barcode: string | null; fromItemId: string; qty: number; received: number | null }[]>(),
+    createdByName: text("created_by_name"),
+    createdAt: timestamp("created_at"),
+    sentAt: int("sent_at"),
+    receivedAt: int("received_at"),
+  },
+  (table) => [index("stock_transfers_from_idx").on(table.fromRestaurantId), index("stock_transfers_to_idx").on(table.toRestaurantId)]
+);
+
+// Tills registered on a business (step 6.8) — counted against the plan's till limit.
+export const tillDevices = sqliteTable(
+  "till_devices",
+  {
+    id: id(),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    createdAt: timestamp("created_at"),
+    lastSeenAt: int("last_seen_at"),
+    revoked: int("revoked", { mode: "boolean" }).notNull().default(false),
+  },
+  (table) => [index("till_devices_restaurant_idx").on(table.restaurantId)]
 );
 
 // Ad-hoc cash movements outside of order payments (e.g. "Bought cleaning supplies — £15 out",

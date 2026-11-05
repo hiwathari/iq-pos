@@ -1,7 +1,8 @@
 import "server-only";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db/client";
-import { dishes, inventoryItems, productVariants, restaurants, stockMovements } from "@/db/schema";
+import { dishes, inventoryItems, productVariants, restaurants, stockBatches, stockLevels, stockMovements } from "@/db/schema";
+import { businessProfile } from "@/lib/business-profile";
 import type { OrderItem, OrderStatus } from "@/lib/types";
 
 // The one place stock quantities change. Every change updates inventory_items.quantity and
@@ -37,6 +38,9 @@ export interface StockChangeOptions {
 
 // changes: inventory item id → signed amount (+ in, − out). Zero entries are skipped.
 export async function applyStockChanges(restaurantId: string, changes: Map<string, number>, opts: StockChangeOptions) {
+  // Locations and batches (steps 6.1–6.2) sit on top of the total: when stock goes down, what
+  // the bins and lots hold is trimmed to match — largest bin first, earliest expiry first.
+  const overlays = changes.size > 0 && (await overlaysOn(restaurantId));
   for (const [inventoryItemId, rawChange] of changes) {
     // Six decimals is plenty for any unit and drops float noise like 0.20000000000000007.
     const change = Math.round(rawChange * 1e6) / 1e6;
@@ -58,6 +62,40 @@ export async function applyStockChanges(restaurantId: string, changes: Map<strin
       unitCost: opts.unitCosts?.get(inventoryItemId) ?? null,
       createdByName: opts.byName ?? null,
     });
+    if (overlays && change < 0) await trimOverlays(inventoryItemId, updated.quantity);
+  }
+}
+
+async function overlaysOn(restaurantId: string) {
+  const [r] = await db.select({ type: restaurants.businessType, features: restaurants.features }).from(restaurants).where(eq(restaurants.id, restaurantId)).limit(1);
+  const f = businessProfile(r?.type, r?.features).features;
+  return f.locations || f.batches;
+}
+
+// Never let bins or batches hold more than the item's total.
+async function trimOverlays(inventoryItemId: string, quantity: number) {
+  const target = Math.max(0, quantity);
+  const levels = await db.select().from(stockLevels).where(eq(stockLevels.inventoryItemId, inventoryItemId)).orderBy(desc(stockLevels.quantity));
+  let excess = Math.round((levels.reduce((s, l) => s + l.quantity, 0) - target) * 1e6) / 1e6;
+  for (const l of levels) {
+    if (excess <= 1e-9) break;
+    const take = Math.min(l.quantity, excess);
+    excess -= take;
+    if (l.quantity - take <= 1e-9) await db.delete(stockLevels).where(and(eq(stockLevels.inventoryItemId, inventoryItemId), eq(stockLevels.locationId, l.locationId)));
+    else await db.update(stockLevels).set({ quantity: Math.round((l.quantity - take) * 1e6) / 1e6 }).where(and(eq(stockLevels.inventoryItemId, inventoryItemId), eq(stockLevels.locationId, l.locationId)));
+  }
+  const batches = await db
+    .select()
+    .from(stockBatches)
+    .where(eq(stockBatches.inventoryItemId, inventoryItemId))
+    .orderBy(sql`${stockBatches.expiresOn} is null`, asc(stockBatches.expiresOn), asc(stockBatches.receivedAt));
+  let excessB = Math.round((batches.reduce((s, b) => s + b.quantity, 0) - target) * 1e6) / 1e6;
+  for (const b of batches) {
+    if (excessB <= 1e-9) break;
+    const take = Math.min(b.quantity, excessB);
+    excessB -= take;
+    if (b.quantity - take <= 1e-9) await db.delete(stockBatches).where(eq(stockBatches.id, b.id));
+    else await db.update(stockBatches).set({ quantity: Math.round((b.quantity - take) * 1e6) / 1e6 }).where(eq(stockBatches.id, b.id));
   }
 }
 

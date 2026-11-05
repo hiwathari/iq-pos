@@ -12,7 +12,7 @@ import { listLowStockItems } from "@/lib/data/inventory";
 import { businessProfile } from "@/lib/business-profile";
 import { filterOrdersForAccountsRole } from "@/lib/accounts-filter";
 import { businessDateKey, businessDayRange, shiftDateKey } from "@/lib/business-day";
-import { formatMoney, formatOrderTimestamp, orderTotal, shiftTotals, type Order, type Shift } from "@/lib/types";
+import { formatMoney, formatOrderTimestamp, isOffTerminalTender, orderTotal, shiftTotals, type Order, type Shift } from "@/lib/types";
 import { DashboardCharts } from "./dashboard-charts";
 import { EndShiftButton } from "./end-shift-button";
 import { OpenTillButton } from "./open-till-button";
@@ -125,6 +125,7 @@ export default async function DashboardPage() {
     const methodLines = o.payments?.length ? o.payments : o.paymentMethod ? [{ method: o.paymentMethod, amount: total }] : [];
     for (const line of methodLines) {
       if (line.method === "Cash") cashSales += line.amount;
+      else if (isOffTerminalTender(line.method)) continue;
       else {
         cardSales += line.amount;
         byTerminal.set(line.method, (byTerminal.get(line.method) ?? 0) + line.amount);

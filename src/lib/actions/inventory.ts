@@ -3,7 +3,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
-import { dishes, inventoryItems, orders, purchaseOrderLines, purchaseOrders, serialNumbers, stockCounts, suppliers } from "@/db/schema";
+import { dishes, inventoryItems, orders, purchaseOrderLines, purchaseOrders, serialNumbers, stockBatches, stockCounts, stockLevels, stockLocations, suppliers } from "@/db/schema";
 import { assertPermission, requireRestaurantContext } from "@/lib/scope";
 import { findInventoryItem, listLowStockItems } from "@/lib/data/inventory";
 import { listMovements, type MovementRow } from "@/lib/data/stock";
@@ -149,6 +149,10 @@ export interface GoodsInLine {
   cost?: number | null;
   // Products that track serial / IMEI numbers (step 5.2): one per unit received.
   serials?: string[];
+  // Put-away bin (step 6.1) and lot / best-before (step 6.2), when those features are on.
+  locationId?: string | null;
+  lot?: string;
+  expiresOn?: string;
 }
 
 export interface GoodsInInput {
@@ -229,6 +233,24 @@ export async function receiveStockAction(input: GoodsInInput): Promise<Inventory
     note,
     unitCosts: costByItem,
   });
+  // Put-away and batches: where it went and which lot / expiry (steps 6.1–6.2).
+  const placed = lines.filter((l) => l.locationId || (l.lot && l.lot.trim()) || (l.expiresOn && /^\d{4}-\d{2}-\d{2}$/.test(l.expiresOn)));
+  if (placed.length) {
+    const locIds = [...new Set(placed.map((l) => l.locationId).filter((x): x is string => !!x))];
+    const okLocs = new Set(locIds.length ? (await db.select({ id: stockLocations.id }).from(stockLocations).where(and(eq(stockLocations.restaurantId, restaurantId), inArray(stockLocations.id, locIds)))).map((r) => r.id) : []);
+    const now = Date.now();
+    for (const l of placed) {
+      const qty = Number(l.qty);
+      if (l.locationId && okLocs.has(l.locationId)) {
+        const [lvl] = await db.select().from(stockLevels).where(and(eq(stockLevels.inventoryItemId, l.itemId), eq(stockLevels.locationId, l.locationId))).limit(1);
+        if (lvl) await db.update(stockLevels).set({ quantity: Math.round((lvl.quantity + qty) * 1e6) / 1e6 }).where(and(eq(stockLevels.inventoryItemId, l.itemId), eq(stockLevels.locationId, l.locationId)));
+        else await db.insert(stockLevels).values({ inventoryItemId: l.itemId, locationId: l.locationId, quantity: qty });
+      }
+      const lot = (l.lot ?? "").trim().slice(0, 40) || null;
+      const expiresOn = l.expiresOn && /^\d{4}-\d{2}-\d{2}$/.test(l.expiresOn) ? l.expiresOn : null;
+      if (lot || expiresOn) await db.insert(stockBatches).values({ restaurantId, inventoryItemId: l.itemId, locationId: l.locationId && okLocs.has(l.locationId) ? l.locationId : null, lot, expiresOn, quantity: qty, receivedAt: now });
+    }
+  }
   if (newSerials.length) {
     const receivedAt = Date.now();
     for (let at = 0; at < newSerials.length; at += 100) {

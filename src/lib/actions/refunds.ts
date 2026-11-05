@@ -9,6 +9,7 @@ import { itemsSubtotal, lineTotal, orderBreakdown, roundMoney, type OrderItem } 
 import { listRefundsForOrder } from "@/lib/data/refunds";
 import { applyStockChanges, stockUsageForItems } from "@/lib/stock";
 import { issueStoreCredit } from "@/lib/data/store-credit";
+import { tradeAccounts } from "@/db/schema";
 import { releaseSerials } from "@/lib/data/serials";
 import { serialNumbers } from "@/db/schema";
 
@@ -72,6 +73,11 @@ export async function refundOrderAction(orderId: string, input: { lines: RefundL
   if (amount <= 0) return { error: "This sale has already been refunded in full." };
 
   // A refund given as store credit becomes a slip with a barcode, usable as payment later.
+  // A refund "On account" is a credit note: it comes off what the trade customer owes.
+  if (method === "On account") {
+    if (!order.tradeAccountId) return { error: "This sale isn't on a trade account." };
+    await db.update(tradeAccounts).set({ balance: sql`round(${tradeAccounts.balance} - ${amount}, 2)` }).where(eq(tradeAccounts.id, order.tradeAccountId));
+  }
   const credit = method === "Store credit" ? await issueStoreCredit(restaurantId, amount, { customerName: order.customerName, sourceOrderId: orderId, byName: session.name }) : undefined;
 
   const [{ n }] = await db.select({ n: sql<number>`count(*)` }).from(refunds).where(eq(refunds.restaurantId, restaurantId));
