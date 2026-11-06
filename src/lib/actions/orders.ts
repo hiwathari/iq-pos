@@ -462,6 +462,28 @@ export async function completeOrderAction(orderId: string) {
   revalidatePath("/order-line");
 }
 
+// Kitchen Display → Completed list → Recall: takes a finished ticket back to "In Kitchen" (a
+// mistaken Complete, or a dish sent back) so it shows on the Pending board again. Every item is
+// un-ticked, so the cook works through it once more. Voided orders can't be recalled.
+export async function recallOrderAction(orderId: string) {
+  const { restaurantId } = await requireRestaurantContext();
+  const [order] = await db
+    .select()
+    .from(orders)
+    .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)))
+    .limit(1);
+  if (!order || (order.status !== "Served" && order.status !== "Ready")) return;
+  const items = order.items.map((i) => ({ ...i, ready: false }));
+  await db
+    .update(orders)
+    .set({ items, status: "In Kitchen", servedAt: null, closedOutAt: null })
+    .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)));
+  revalidatePath("/kitchen");
+  revalidatePath("/order-line");
+  revalidatePath("/manage-table");
+  revalidatePath("/dashboard");
+}
+
 export async function setOrderStatusAction(orderId: string, status: OrderStatus) {
   const { restaurantId } = await requireRestaurantContext();
   const [order] = await db

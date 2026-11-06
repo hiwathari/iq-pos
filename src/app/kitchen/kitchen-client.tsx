@@ -14,7 +14,7 @@ import {
   type Printer,
   type PrinterStation,
 } from "@/lib/types";
-import { completeOrderAction, setOrderStatusAction, toggleOrderItemReadyAction } from "@/lib/actions/orders";
+import { completeOrderAction, recallOrderAction, setOrderStatusAction, toggleOrderItemReadyAction } from "@/lib/actions/orders";
 import { setDishStockAction } from "@/lib/actions/menu";
 import { unlockOrderAudio, playNewOrderChime, playOrderReadyChime } from "@/lib/order-sounds";
 import { businessDateKey, businessDayRange, shiftDateKey } from "@/lib/business-day";
@@ -24,6 +24,7 @@ import { SoundSettingsButton } from "@/components/sound-settings";
 import {
   Check,
   CheckCheck,
+  RotateCcw,
   CheckCircle2,
   ChefHat,
   ChevronLeft,
@@ -75,7 +76,8 @@ const COMPLETED_STATUSES: OrderStatus[] = ["Ready", "Served", "Voided"];
 type OptimisticChange =
   | { type: "item"; orderId: string; itemKey: string; ready: boolean }
   | { type: "status"; orderId: string; status: OrderStatus }
-  | { type: "complete"; orderId: string };
+  | { type: "complete"; orderId: string }
+  | { type: "recall"; orderId: string };
 
 function applyOptimisticChange(orders: Order[], change: OptimisticChange): Order[] {
   return orders.map((o) => {
@@ -86,6 +88,9 @@ function applyOptimisticChange(orders: Order[], change: OptimisticChange): Order
     }
     if (change.type === "status") {
       return { ...o, status: change.status, servedAt: change.status === "Served" ? Date.now() : o.servedAt };
+    }
+    if (change.type === "recall") {
+      return { ...o, items: o.items.map((i) => ({ ...i, ready: false })), status: "In Kitchen", servedAt: null };
     }
     return { ...o, items: o.items.map((i) => ({ ...i, ready: true })), status: "Served", servedAt: Date.now() };
   });
@@ -282,6 +287,14 @@ export function KitchenClient({
     });
   }
 
+  function recallOrder(orderId: string) {
+    startTransition(async () => {
+      applyOptimistic({ type: "recall", orderId });
+      await recallOrderAction(orderId);
+      router.refresh();
+    });
+  }
+
   function toggleItem(orderId: string, itemKey: string, ready: boolean) {
     startTransition(async () => {
       applyOptimistic({ type: "item", orderId, itemKey, ready });
@@ -469,7 +482,7 @@ export function KitchenClient({
               <div className="flex h-24 items-center justify-center text-sm text-neutral-300">No orders</div>
             )}
             {completedOrders.map((order) => (
-              <CompletedOrderRow key={order.id} order={order} itemMatchesStation={station !== "All" ? itemMatchesStation : undefined} />
+              <CompletedOrderRow key={order.id} order={order} itemMatchesStation={station !== "All" ? itemMatchesStation : undefined} onRecall={() => recallOrder(order.id)} />
             ))}
           </div>
         </div>
@@ -583,9 +596,11 @@ function formatElapsed(elapsedMs: number) {
 function CompletedOrderRow({
   order,
   itemMatchesStation,
+  onRecall,
 }: {
   order: Order;
   itemMatchesStation?: (item: OrderItem) => boolean;
+  onRecall: () => void;
 }) {
   const visibleItems = itemMatchesStation ? order.items.filter(itemMatchesStation) : order.items;
   const isVoided = order.status === "Voided";
@@ -634,6 +649,15 @@ function CompletedOrderRow({
           </div>
         ))}
       </div>
+      {!isVoided && (
+        <button
+          onClick={onRecall}
+          title="Puts this ticket back on the Pending board, with every item un-ticked"
+          className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-neutral-300 bg-white py-2 text-sm font-bold text-neutral-700 hover:bg-neutral-50"
+        >
+          <RotateCcw className="h-4 w-4" /> Recall
+        </button>
+      )}
     </div>
   );
 }
