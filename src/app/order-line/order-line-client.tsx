@@ -41,6 +41,7 @@ import { startTeyaChargeAction, pollTeyaChargeAction, cancelTeyaChargeAction } f
 import { businessDateKey, businessDayRange, businessDayStart, shiftDateKey } from "@/lib/business-day";
 import { TableLayoutPicker } from "@/components/table-layout-picker";
 import { CategoryIconView } from "@/components/category-icon";
+import { StockCountModal } from "@/components/stock-count-modal";
 import { FullscreenButton } from "@/components/fullscreen-button";
 import { canonicalCode, parseEmbedded, type EmbeddedFormat } from "@/lib/barcode";
 import { formatQty } from "@/lib/units";
@@ -58,6 +59,7 @@ import { VariantPicker } from "./variant-picker";
 import { SerialPicker } from "./serial-picker";
 import type { VariantLite } from "@/lib/variants";
 import {
+  Boxes,
   Minus,
   Plus,
   Trash2,
@@ -353,6 +355,8 @@ export function OrderLineClient({
   const [priceOverrideFor, setPriceOverrideFor] = useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [refundOpen, setRefundOpen] = useState(false);
+  // The Stock panel (count each product, − / +, type a number) — open to every Till user.
+  const [stockPanelOpen, setStockPanelOpen] = useState(false);
   const [scanNotice, setScanNotice] = useState<{ kind: "ok" | "error"; text: string; code?: string } | null>(null);
 
   const [cart, setCart] = useState<CartState>(() => {
@@ -1340,6 +1344,14 @@ export function OrderLineClient({
             />
           </div>
           <div className="ml-auto flex items-center gap-1.5">
+            <button
+              onClick={() => setStockPanelOpen(true)}
+              title="Stock — count what is left of each item"
+              aria-label="Stock"
+              className="flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-2.5 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50 2xl:text-base [&>svg]:size-5"
+            >
+              <Boxes className="h-4 w-4" /> <span className="hidden 2xl:inline">Stock</span>
+            </button>
             <SoundSettingsButton className="flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-2.5 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50 2xl:text-base [&>svg]:size-5" />
             <FullscreenButton className="hidden min-h-11 min-w-11 items-center xl:flex justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-2.5 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50 2xl:text-base [&>svg]:size-5" />
             <button
@@ -1775,6 +1787,17 @@ export function OrderLineClient({
             />
           );
         })()}
+      {stockPanelOpen && (
+        <StockCountModal
+          categories={categories}
+          dishes={dishes}
+          counts={stockByDish}
+          source="till"
+          onToggleOutOfStock={handleToggleStock}
+          onChanged={() => router.refresh()}
+          onClose={() => setStockPanelOpen(false)}
+        />
+      )}
       {cameraOpen && <CameraScanner onScan={handleScan} onClose={() => setCameraOpen(false)} />}
       {refundOpen && editingOrder && (
         <RefundModal

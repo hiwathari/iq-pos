@@ -20,6 +20,7 @@ import { unlockOrderAudio, playNewOrderChime, playOrderReadyChime } from "@/lib/
 import { businessDateKey, businessDayRange, shiftDateKey } from "@/lib/business-day";
 import { useVisibleInterval } from "@/lib/use-visible-interval";
 import { FullscreenButton } from "@/components/fullscreen-button";
+import { StockCountModal } from "@/components/stock-count-modal";
 import { SoundSettingsButton } from "@/components/sound-settings";
 import {
   Check,
@@ -34,7 +35,6 @@ import {
   Phone,
   Plus,
   RefreshCw,
-  X,
   XCircle,
   PackageX,
   Radio,
@@ -100,6 +100,7 @@ export function KitchenClient({
   orders: serverOrders,
   categories,
   dishes,
+  stockCounts,
   printers,
   timerLimitMinutes,
   openTime,
@@ -109,6 +110,7 @@ export function KitchenClient({
   orders: Order[];
   categories: Category[];
   dishes: Dish[];
+  stockCounts: Record<string, { qty: number; unit: string }>;
   printers: Printer[];
   timerLimitMinutes: number;
   openTime: string | null;
@@ -489,67 +491,16 @@ export function KitchenClient({
       </div>
 
       {stockModalOpen && (
-        <StockModal categories={categories} dishes={dishes} onToggle={toggleStock} onClose={() => setStockModalOpen(false)} />
+        <StockCountModal
+          categories={categories}
+          dishes={dishes}
+          counts={stockCounts}
+          source="kitchen"
+          onToggleOutOfStock={toggleStock}
+          onChanged={() => router.refresh()}
+          onClose={() => setStockModalOpen(false)}
+        />
       )}
-    </div>
-  );
-}
-
-function StockModal({
-  categories,
-  dishes,
-  onToggle,
-  onClose,
-}: {
-  categories: Category[];
-  dishes: Dish[];
-  onToggle: (dish: Dish) => void;
-  onClose: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b border-neutral-100 px-5 py-4">
-          <h2 className="flex items-center gap-2 text-base font-bold text-neutral-900">
-            <PackageX className="h-5 w-5 text-rose-500" /> Menu Stock
-          </h2>
-          <button onClick={onClose} className="rounded-lg p-1 text-neutral-400 hover:bg-neutral-100">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-        <p className="border-b border-neutral-100 px-5 py-2.5 text-xs text-neutral-400">
-          Mark an item out of stock the moment it runs out — the Till stops taking new orders for it immediately.
-        </p>
-        <div className="flex-1 overflow-y-auto p-3">
-          {categories.map((category) => {
-            const categoryDishes = dishes.filter((d) => d.categoryId === category.id);
-            if (categoryDishes.length === 0) return null;
-            return (
-              <div key={category.id} className="mb-3">
-                <div className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">{category.name}</div>
-                {categoryDishes.map((dish) => (
-                  <button
-                    key={dish.id}
-                    onClick={() => onToggle(dish)}
-                    className="flex w-full items-center justify-between rounded-xl px-2.5 py-2.5 text-left hover:bg-neutral-50"
-                  >
-                    <span className={`text-sm font-medium ${dish.outOfStock ? "text-neutral-400 line-through" : "text-neutral-800"}`}>
-                      {dish.name}
-                    </span>
-                    <span
-                      className={`rounded-full px-2.5 py-1 text-xs font-bold ${
-                        dish.outOfStock ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700"
-                      }`}
-                    >
-                      {dish.outOfStock ? "Out of Stock" : "In Stock"}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            );
-          })}
-        </div>
-      </div>
     </div>
   );
 }
