@@ -313,6 +313,11 @@ export function KitchenClient({
   }
 
   const outOfStockCount = dishes.filter((d) => d.outOfStock).length;
+  // The out-of-stock strip across the top of this screen (only here, not on the Till): every item
+  // switched off, limited to what belongs on this station's screen.
+  const outOfStockDishes = dishes
+    .filter((d) => d.outOfStock && itemMatchesStation({ dishId: d.id } as OrderItem))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   // Already newest-first (listOrders sorts by createdAt desc), so the first pending ticket is
   // always the most recently placed one — that's the one flagged "major" below.
@@ -403,6 +408,26 @@ export function KitchenClient({
           </div>
         </div>
       </div>
+
+      {outOfStockDishes.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setStockModalOpen(true)}
+          title="Open Stock to put items back in"
+          className="mb-4 flex w-full items-start gap-3 rounded-2xl border-2 border-rose-300 bg-rose-100 px-4 py-2.5 text-left hover:bg-rose-200/70"
+        >
+          <span className="flex shrink-0 items-center gap-1.5 pt-0.5 text-sm font-extrabold uppercase tracking-wide text-rose-700">
+            <PackageX className="h-5 w-5" /> Out of stock ({outOfStockDishes.length})
+          </span>
+          <span className="flex max-h-[4.5rem] min-w-0 flex-1 flex-wrap gap-1.5 overflow-y-auto">
+            {outOfStockDishes.map((d) => (
+              <span key={d.id} className="rounded-full bg-rose-600 px-2.5 py-0.5 text-sm font-bold text-white">
+                {d.name}
+              </span>
+            ))}
+          </span>
+        </button>
+      )}
 
       <div className="flex flex-1 gap-4 overflow-hidden">
         <div className="flex min-h-0 flex-[3] flex-col rounded-2xl bg-white">
