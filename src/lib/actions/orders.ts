@@ -276,7 +276,7 @@ export async function placeOrderAction(rawInput: PlaceOrderInput): Promise<Place
         updatedAt: Date.now(),
         closedOutAt,
         ...(reopensKitchen ? { status: "In Kitchen" as OrderStatus, servedAt: null } : {}),
-        ...(finishesNow ? { status: "Served" as OrderStatus, servedAt: Date.now() } : {}),
+        ...(finishesNow ? { status: "Served" as OrderStatus, servedAt: Date.now(), recalledAt: null } : {}),
       })
       .where(and(eq(orders.id, input.editingOrderId), eq(orders.restaurantId, restaurantId)));
     // Stock follows the edit: only the difference is taken or given back. A Pending customer
@@ -457,7 +457,7 @@ export async function completeOrderAction(orderId: string) {
   if (!order) return;
 
   const items = order.items.map((i) => ({ ...i, ready: true }));
-  await db.update(orders).set({ items, status: "Served", servedAt: Date.now() }).where(eq(orders.id, orderId));
+  await db.update(orders).set({ items, status: "Served", servedAt: Date.now(), recalledAt: null }).where(eq(orders.id, orderId));
   revalidatePath("/kitchen");
   revalidatePath("/order-line");
 }
@@ -476,7 +476,7 @@ export async function recallOrderAction(orderId: string) {
   const items = order.items.map((i) => ({ ...i, ready: false }));
   await db
     .update(orders)
-    .set({ items, status: "In Kitchen", servedAt: null, closedOutAt: null })
+    .set({ items, status: "In Kitchen", servedAt: null, closedOutAt: null, recalledAt: Date.now() })
     .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)));
   revalidatePath("/kitchen");
   revalidatePath("/order-line");
@@ -499,7 +499,7 @@ export async function setOrderStatusAction(orderId: string, status: OrderStatus)
 
   await db
     .update(orders)
-    .set({ status, servedAt: status === "Served" ? Date.now() : undefined, closedOutAt })
+    .set({ status, servedAt: status === "Served" ? Date.now() : undefined, closedOutAt, ...(status === "Served" || status === "Voided" ? { recalledAt: null } : {}) })
     .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)));
   revalidatePath("/order-line");
   revalidatePath("/manage-table");

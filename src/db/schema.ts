@@ -389,6 +389,9 @@ export const orders = sqliteTable("orders", {
   // When the order's status became "Served" — the Kitchen Display auto-clears a completed
   // ticket about a minute after this so the board doesn't pile up with old tickets.
   servedAt: int("served_at"),
+  // Set when the kitchen recalls a finished ticket from the Completed list — the ticket shows a red
+  // RECALLED banner until it is completed again (then cleared).
+  recalledAt: int("recalled_at"),
   // Extra table numbers folded into this order via a table merge (e.g. a party spanning two
   // physical tables billed as one ticket) — shown as "Table 03 + 04". Null for the normal case.
   mergedTableNumbers: text("merged_table_numbers", { mode: "json" }).$type<number[]>(),

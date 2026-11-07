@@ -87,12 +87,12 @@ function applyOptimisticChange(orders: Order[], change: OptimisticChange): Order
       return { ...o, items: o.items.map((i) => ((i.lineId ?? i.dishId) === change.itemKey ? { ...i, ready: change.ready } : i)) };
     }
     if (change.type === "status") {
-      return { ...o, status: change.status, servedAt: change.status === "Served" ? Date.now() : o.servedAt };
+      return { ...o, status: change.status, servedAt: change.status === "Served" ? Date.now() : o.servedAt, recalledAt: change.status === "Served" || change.status === "Voided" ? null : o.recalledAt };
     }
     if (change.type === "recall") {
-      return { ...o, items: o.items.map((i) => ({ ...i, ready: false })), status: "In Kitchen", servedAt: null };
+      return { ...o, items: o.items.map((i) => ({ ...i, ready: false })), status: "In Kitchen", servedAt: null, recalledAt: Date.now() };
     }
-    return { ...o, items: o.items.map((i) => ({ ...i, ready: true })), status: "Served", servedAt: Date.now() };
+    return { ...o, items: o.items.map((i) => ({ ...i, ready: true })), status: "Served", servedAt: Date.now(), recalledAt: null };
   });
 }
 
@@ -699,6 +699,9 @@ function OrderTicket({
   // kitchen had already finished — see the reopensKitchen check in placeOrderAction) — cleared
   // once it's done (Served/Voided), since it no longer matters.
   const wasUpdated = !!order.updatedAt && order.status !== "Served" && order.status !== "Voided";
+  // A ticket the kitchen recalled from the Completed list: solid red with a RECALLED banner on top
+  // until it is completed again.
+  const isRecalled = !!order.recalledAt && !isDone && !isVoided;
   // On a single station's screen, only that station's items show — the rest of the ticket
   // belongs to another screen. A "no display" item is excluded even on "All" (itemMatchesStation
   // handles that). Whole-ticket actions (advance) stay in the "All" view only, since a bar screen
@@ -724,11 +727,18 @@ function OrderTicket({
           ? "border-rose-200 bg-rose-50/60 opacity-75"
           : isDone
             ? "border-emerald-200 bg-emerald-50/50"
-            : band
+            : isRecalled
+              ? "border-rose-600 bg-rose-300"
+              : band
               ? TICKET_BAND_STYLES[band]
               : "border-neutral-200"
       }`}
     >
+      {isRecalled && (
+        <div className="-mx-2 -mt-2 mb-1.5 flex items-center justify-center gap-1.5 rounded-t-lg bg-rose-600 px-2 py-1 text-sm font-extrabold uppercase tracking-wider text-white">
+          <RotateCcw className="h-4 w-4" /> Recalled
+        </div>
+      )}
       <div className="mb-1 flex items-center justify-between gap-2">
         <span className="flex items-center gap-1.5 text-xl font-extrabold leading-none text-neutral-900">
           {isVoided && <XCircle className="h-5 w-5 shrink-0 text-rose-500" />}
