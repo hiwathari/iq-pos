@@ -6,6 +6,8 @@ import { MobileTillClient } from "./mobile-till-client";
 import type { Category, Dish, Order, OrderChannel, PaymentTerminal, RestaurantTable } from "@/lib/types";
 import type { EmbeddedFormat } from "@/lib/barcode";
 import type { PromotionDef } from "@/lib/promotions";
+import type { KitchenPrinter } from "@/lib/kitchen-ticket";
+import type { Printer } from "@/lib/types";
 import type { VariantLite } from "@/lib/variants";
 
 // A handheld runner's phone/mobile POS gets the simplified order-only Till; a counter tablet
@@ -49,6 +51,9 @@ export function TillModeSwitcher({
   canAddProducts,
   canRefund,
   promotions = [],
+  lastEndDayAt = null,
+  kitchenPrinters = [],
+  printerList,
   variantsByDish = {},
   tradeAccounts = [],
 }: {
@@ -91,6 +96,11 @@ export function TillModeSwitcher({
   canAddProducts: boolean;
   canRefund: boolean;
   promotions?: PromotionDef[];
+  // When the last End Day happened — finished orders from before it live in History, not Tickets.
+  lastEndDayAt?: number | null;
+  kitchenPrinters?: KitchenPrinter[];
+  // All printers, only for logins allowed to set printers up (Settings permission).
+  printerList?: Printer[];
   variantsByDish?: Record<string, VariantLite[]>;
   tradeAccounts?: { id: string; companyName: string; priceTier: string | null; onHold: boolean; creditLimit: number | null; balance: number }[];
 }) {
@@ -176,6 +186,9 @@ export function TillModeSwitcher({
       canAddProducts={canAddProducts}
       canRefund={canRefund}
       promotions={promotions}
+      lastEndDayAt={lastEndDayAt}
+      kitchenPrinters={kitchenPrinters}
+      printerList={printerList}
       variantsByDish={variantsByDish}
       tradeAccounts={tradeAccounts}
     />

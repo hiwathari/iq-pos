@@ -8,6 +8,13 @@ export async function listShifts(restaurantId: string) {
   return db.select().from(shifts).where(eq(shifts.restaurantId, restaurantId)).orderBy(desc(shifts.closedAt));
 }
 
+// When the most recent End Day happened (null if never): the Till's Tickets list lets finished
+// orders from before it go to History.
+export async function lastShiftClosedAt(restaurantId: string) {
+  const [row] = await db.select({ closedAt: shifts.closedAt }).from(shifts).where(eq(shifts.restaurantId, restaurantId)).orderBy(desc(shifts.closedAt)).limit(1);
+  return row?.closedAt ?? null;
+}
+
 export async function getShift(restaurantId: string, shiftId: string) {
   const [shift] = await db
     .select()

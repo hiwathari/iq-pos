@@ -552,6 +552,10 @@ export const printers = sqliteTable(
     // keeps using the original browser-print flow untouched — so saving a local IP alone never
     // silently changes a restaurant's printing behavior until this is turned on too.
     tillReceiptPrinter: int("till_receipt_printer", { mode: "boolean" }).notNull().default(false),
+    // Kitchen tickets (step: print per category printer): on = the Till prints an order's tickets
+    // here — only the items whose category (or product) is linked to this printer. Off by default so
+    // saving an IP never starts printing tickets by itself. Any number of printers may have it on.
+    kitchenTickets: int("kitchen_tickets", { mode: "boolean" }).notNull().default(false),
   },
   (table) => [uniqueIndex("printers_pin_idx").on(table.pin)]
 );

@@ -8,6 +8,7 @@ import {
   deletePrinterAction,
   saveLocalPrinterAction,
   setDefaultPrinterAction,
+  setKitchenTicketsPrinterAction,
   setTillReceiptPrinterAction,
   togglePrinterActiveAction,
 } from "@/lib/actions/printers";
@@ -153,7 +154,7 @@ export function PrintersClient({ printers, restaurantId }: { printers: Printer[]
 // actually works without any vendor cloud account (see docs/DEVELOPER_GUIDE.md §7.7). Needs a
 // small local bridge program running on the same network as the printer (public/downloads/iq-print-bridge.js)
 // since the browser itself can't open the raw socket — Test Print exercises that whole chain.
-function LocalNetworkPrintRow({ printer, restaurantId }: { printer: Printer; restaurantId?: string }) {
+export function LocalNetworkPrintRow({ printer, restaurantId }: { printer: Printer; restaurantId?: string }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [editing, setEditing] = useState(!printer.localPrinterIp);
@@ -168,6 +169,20 @@ function LocalNetworkPrintRow({ printer, restaurantId }: { printer: Printer; res
     setPending(true);
     startTransition(async () => {
       const result = await setTillReceiptPrinterAction(printer.id, enabled, restaurantId);
+      setPending(false);
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  function toggleKitchenTickets(enabled: boolean) {
+    setError(null);
+    setPending(true);
+    startTransition(async () => {
+      const result = await setKitchenTicketsPrinterAction(printer.id, enabled, restaurantId);
       setPending(false);
       if (result?.error) {
         setError(result.error);
@@ -300,6 +315,22 @@ function LocalNetworkPrintRow({ printer, restaurantId }: { printer: Printer; res
               disabled={pending}
               onChange={(e) => toggleTillReceiptPrinter(e.target.checked)}
               className="h-4 w-4 shrink-0 accent-[var(--brand)]"
+            />
+          </label>
+          <label className="mt-1.5 flex items-center justify-between gap-2 rounded-md border border-neutral-200 bg-white px-2 py-1.5">
+            <span className="text-xs font-medium text-neutral-600">
+              Print kitchen tickets here
+              <span className="block text-[10px] font-normal text-neutral-400">
+                On: the Till prints the items of the categories linked to this printer when an order is sent.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              checked={printer.kitchenTickets}
+              disabled={pending}
+              onChange={(e) => toggleKitchenTickets(e.target.checked)}
+              className="h-4 w-4 shrink-0 accent-[var(--brand)]"
+              aria-label="Print kitchen tickets here"
             />
           </label>
         </>

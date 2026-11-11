@@ -140,6 +140,24 @@ export async function setTillReceiptPrinterAction(printerId: string, enabled: bo
   return {};
 }
 
+// Switch a printer on or off for kitchen tickets (see printers.kitchenTickets in schema.ts). Needs
+// the printer's local IP saved first, like the Till receipt printer.
+export async function setKitchenTicketsPrinterAction(printerId: string, enabled: boolean, targetRestaurantId?: string): Promise<PrinterActionState> {
+  const { restaurantId } = await printerScope(targetRestaurantId);
+  if (enabled) {
+    const [printer] = await db
+      .select({ localPrinterIp: printers.localPrinterIp })
+      .from(printers)
+      .where(and(eq(printers.id, printerId), eq(printers.restaurantId, restaurantId)))
+      .limit(1);
+    if (!printer?.localPrinterIp) return { error: "Save this printer's local IP first." };
+  }
+  await db.update(printers).set({ kitchenTickets: enabled }).where(and(eq(printers.id, printerId), eq(printers.restaurantId, restaurantId)));
+  revalidatePrinters();
+  revalidatePath("/order-line");
+  return {};
+}
+
 export async function setDefaultPrinterAction(printerId: string, targetRestaurantId?: string) {
   const { restaurantId } = await printerScope(targetRestaurantId);
   await db.update(printers).set({ isDefault: false }).where(eq(printers.restaurantId, restaurantId));

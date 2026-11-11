@@ -759,7 +759,6 @@ async function shopDashReport(c: Ctx): Promise<ShopReport> {
     const live = list.filter((o) => o.status !== "Voided");
     let net = 0;
     let items = 0;
-    let revenue = 0;
     let costed = 0;
     let cost = 0;
     for (const o of live) {
@@ -768,7 +767,6 @@ async function shopDashReport(c: Ctx): Promise<ShopReport> {
         items += it.sellBy && it.sellBy !== "unit" ? 1 : it.qty;
         const uc = cat.costOf(it);
         const rev = lineTotal(it);
-        revenue += rev;
         if (uc != null) {
           costed += rev;
           cost += uc * it.qty;

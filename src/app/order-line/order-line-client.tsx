@@ -38,10 +38,14 @@ import { SoundSettingsButton } from "@/components/sound-settings";
 import { useVisibleInterval } from "@/lib/use-visible-interval";
 import { startSumupChargeAction, pollSumupChargeAction, cancelSumupChargeAction } from "@/lib/actions/sumup";
 import { startTeyaChargeAction, pollTeyaChargeAction, cancelTeyaChargeAction } from "@/lib/actions/teya";
-import { businessDateKey, businessDayRange, businessDayStart, shiftDateKey } from "@/lib/business-day";
+import { businessDateKey, businessDayRange, shiftDateKey } from "@/lib/business-day";
 import { TableLayoutPicker } from "@/components/table-layout-picker";
 import { CategoryIconView } from "@/components/category-icon";
 import { StockCountModal } from "@/components/stock-count-modal";
+import { PrintFailureToast, PrintersPanel, PrintStatusButton } from "./print-center";
+import { buildKitchenTicketHex, diffForKitchen, itemsForKitchen, routeKitchenItems, type KitchenPrinter, type RoutedItem } from "@/lib/kitchen-ticket";
+import { sendPrintJob } from "@/lib/print-queue";
+import type { Printer as PrinterRow } from "@/lib/types";
 import { FullscreenButton } from "@/components/fullscreen-button";
 import { canonicalCode, parseEmbedded, type EmbeddedFormat } from "@/lib/barcode";
 import { formatQty } from "@/lib/units";
@@ -60,6 +64,7 @@ import { SerialPicker } from "./serial-picker";
 import type { VariantLite } from "@/lib/variants";
 import {
   Boxes,
+  ChefHat,
   Minus,
   Plus,
   Trash2,
@@ -294,6 +299,9 @@ export function OrderLineClient({
   canAddProducts,
   canRefund,
   promotions = [],
+  lastEndDayAt = null,
+  kitchenPrinters = [],
+  printerList,
   variantsByDish = {},
   tradeAccounts = [],
 }: {
@@ -331,6 +339,9 @@ export function OrderLineClient({
   canAddProducts: boolean;
   canRefund: boolean;
   promotions?: PromotionDef[];
+  lastEndDayAt?: number | null;
+  kitchenPrinters?: KitchenPrinter[];
+  printerList?: PrinterRow[];
   // Active variants (size / colour…) per product, with their own stock (step 5.1).
   variantsByDish?: Record<string, VariantLite[]>;
   // Trade accounts to pick from (step 6.6) — empty when the feature is off.
@@ -357,6 +368,7 @@ export function OrderLineClient({
   const [refundOpen, setRefundOpen] = useState(false);
   // The Stock panel (count each product, − / +, type a number) — open to every Till user.
   const [stockPanelOpen, setStockPanelOpen] = useState(false);
+  const [printersPanelOpen, setPrintersPanelOpen] = useState(false);
   const [scanNotice, setScanNotice] = useState<{ kind: "ok" | "error"; text: string; code?: string } | null>(null);
 
   const [cart, setCart] = useState<CartState>(() => {
@@ -450,15 +462,6 @@ export function OrderLineClient({
     knownStatusRef.current = new Map(orders.map((o) => [o.id, o.status]));
   }, [orders]);
 
-  // A voided order never counts as "closed out" (that needs served + paid), so without this it
-  // would sit in the order queue forever. Today's voids stay visible; anything voided from an
-  // earlier business day drops off once the restaurant's day rolls over (still in History).
-  const [clock, setClock] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setClock(Date.now()), 60_000);
-    return () => clearInterval(id);
-  }, []);
-  const dayStart = useMemo(() => businessDayStart(clock, openTime, timezone), [clock, openTime, timezone]);
   // Customer orders waiting to be accepted, oldest first — counted on the red "New Orders" tab and
   // listed on its view, with the alert repeating every 15s until each is accepted or rejected.
   // They only join Open Tickets once accepted.
@@ -480,13 +483,29 @@ export function OrderLineClient({
       const result = accept ? await acceptOnlineOrderAction(order.id) : await rejectOnlineOrderAction(order.id);
       setHandlingId(null);
       if (result.error) window.alert(result.error);
+      else if (accept) {
+        void printKitchenTickets(
+          { orderNumber: order.orderNumber, createdAt: order.createdAt, channel: order.channel, tableNumber: order.tableNumber, guests: order.guests, customerName: order.customerName ?? undefined },
+          itemsForKitchen(order.items),
+          "NEW ORDER"
+        );
+      }
       router.refresh();
     });
   }
 
+  // Tickets lists live orders: voided ones are never shown here (they are in History), and once an
+  // End Day has been done, the finished (served + paid) orders from before it move to History too.
+  // Orders still open (unpaid, or still in the kitchen) stay until they are finished.
   const queueOrders = useMemo(
-    () => orders.filter((o) => o.status !== "Pending" && !(o.status === "Voided" && o.createdAt < dayStart)),
-    [orders, dayStart]
+    () =>
+      orders.filter(
+        (o) =>
+          o.status !== "Pending" &&
+          o.status !== "Voided" &&
+          !(lastEndDayAt != null && isOrderClosedOut(o) && (o.closedOutAt ?? o.servedAt ?? o.createdAt) <= lastEndDayAt)
+      ),
+    [orders, lastEndDayAt]
   );
 
   const filteredOrders = useMemo(() => {
@@ -503,10 +522,10 @@ export function OrderLineClient({
   const queueCounts = useMemo(() => {
     const counts = {} as Record<QueueTab, number>;
     for (const tab of [...QUEUE_TABS, ...SHOP_QUEUE_TABS]) {
-      counts[tab] = tab === "Served" ? orders.filter((o) => o.status === "Served").length : activeOrders.filter((o) => matchesQueueTab(o, tab)).length;
+      counts[tab] = tab === "Served" ? queueOrders.filter((o) => o.status === "Served").length : activeOrders.filter((o) => matchesQueueTab(o, tab)).length;
     }
     return counts;
-  }, [orders, activeOrders]);
+  }, [queueOrders, activeOrders]);
 
   const menuDishes = useMemo(() => {
     const query = menuSearch.trim().toLowerCase();
@@ -1009,6 +1028,35 @@ export function OrderLineClient({
   const cashReceivedAmount = Number(cart.cashReceived) || 0;
   const changeDue = cashLine && cashReceivedAmount > cashLine.amount ? cashReceivedAmount - cashLine.amount : 0;
 
+  // Kitchen tickets: one per kitchen printer, with only that printer's items (a product's own
+  // printer, else its category's). Built here and sent straight to the printer — nothing goes to
+  // the server for printing. A failure is kept and shown (see print-center.tsx).
+  async function printKitchenTickets(
+    meta: { orderNumber: string; createdAt: number; channel: string; tableNumber: number | null; guests: number | null; customerName?: string },
+    items: RoutedItem[],
+    title: string
+  ) {
+    if (kitchenPrinters.length === 0 || items.length === 0) return;
+    for (const slot of routeKitchenItems(items, dishes, categories, kitchenPrinters)) {
+      await sendPrintJob({
+        printer: slot.printer.name,
+        ip: slot.printer.ip,
+        port: slot.printer.port,
+        label: `${title} · order #${meta.orderNumber}`,
+        hex: buildKitchenTicketHex({ printerName: slot.printer.name, ...meta, staffName, items: slot.items, title }),
+      });
+    }
+  }
+
+  function reprintKitchenTickets() {
+    if (!editingOrder) return;
+    void printKitchenTickets(
+      { orderNumber: editingOrder.orderNumber, createdAt: editingOrder.createdAt, channel: editingOrder.channel, tableNumber: editingOrder.tableNumber, guests: editingOrder.guests, customerName: editingOrder.customerName ?? undefined },
+      itemsForKitchen(editingOrder.items),
+      "REPRINT"
+    );
+  }
+
   function handlePlaceOrder() {
     // Guard against double/triple-tapping the button (or a slow network making someone tap
     // again before it visibly responds) firing this twice and creating duplicate orders.
@@ -1019,6 +1067,16 @@ export function OrderLineClient({
     // then React may already have cleared cart state.
     const wasPaid = cart.payments.length > 0;
     const receiptCart: CartState = { ...cart, items: priced.items };
+    // What the kitchen printers need: the whole order if it is new, only what changed if it is an edit.
+    const kitchenItems = cart.editingOrderId && editingOrder ? diffForKitchen(editingOrder.items, priced.items) : itemsForKitchen(priced.items);
+    const kitchenTitle = cart.editingOrderId ? "ORDER CHANGED" : "NEW ORDER";
+    const kitchenMeta = {
+      createdAt: editingOrder?.createdAt ?? currentTimeMs(),
+      channel: cart.channel,
+      tableNumber: cart.tableNumber,
+      guests: cart.tableNumber ? cart.guests : null,
+      customerName: cart.customerName.trim() || undefined,
+    };
     startTransition(async () => {
       try {
         const result = await placeOrderAction({
@@ -1050,6 +1108,8 @@ export function OrderLineClient({
         setTableEditorOpen(false);
         setMobileCartOpen(false);
         router.refresh();
+
+        if (result && kitchenPrinters.length > 0) void printKitchenTickets({ orderNumber: result.orderNumber, ...kitchenMeta }, kitchenItems, kitchenTitle);
 
         // Auto-print on payment, not on a plain send-to-kitchen — an order placed with no
         // payment lines is still awaiting payment at the till later, so nothing should print
@@ -1269,6 +1329,7 @@ export function OrderLineClient({
     emptyCart,
     onEditLineQty: openLinePad,
     onRefundClick: canRefund ? () => setRefundOpen(true) : undefined,
+    onReprintKitchen: kitchenPrinters.length > 0 ? reprintKitchenTickets : undefined,
     onPriceOverride: canOverridePrice ? (lineId: string) => setPriceOverrideFor(lineId) : undefined,
   };
 
@@ -1344,6 +1405,17 @@ export function OrderLineClient({
             />
           </div>
           <div className="ml-auto flex items-center gap-1.5">
+            <PrintStatusButton className="flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-2.5 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50 2xl:text-base [&>svg]:size-5" />
+            {printerList && (
+              <button
+                onClick={() => setPrintersPanelOpen(true)}
+                title="Printers — type each printer's IP and choose what prints where"
+                aria-label="Printers"
+                className="flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-2.5 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50 2xl:text-base [&>svg]:size-5"
+              >
+                <Printer className="h-4 w-4" /> <span className="hidden 2xl:inline">Printers</span>
+              </button>
+            )}
             <button
               onClick={() => setStockPanelOpen(true)}
               title="Stock — count what is left of each item"
@@ -1787,6 +1859,8 @@ export function OrderLineClient({
             />
           );
         })()}
+      <PrintFailureToast />
+      {printersPanelOpen && printerList && <PrintersPanel printers={printerList} categories={categories} onClose={() => setPrintersPanelOpen(false)} />}
       {stockPanelOpen && (
         <StockCountModal
           categories={categories}
@@ -1950,6 +2024,8 @@ interface CartPanelProps {
   onPriceOverride?: (lineId: string) => void;
   // Shown on a paid sale for staff allowed to refund (docs/retail-plan step 3.7).
   onRefundClick?: () => void;
+  // Reprint the kitchen tickets of the open order (shown only when kitchen printers are set up).
+  onReprintKitchen?: () => void;
 }
 
 function CartPanel({
@@ -2008,6 +2084,7 @@ function CartPanel({
   onEditLineQty,
   onPriceOverride,
   onRefundClick,
+  onReprintKitchen,
 }: CartPanelProps) {
   const canManageTable = !!cart.editingOrderId && !!cart.tableId && editingOrder?.status !== "Voided";
   // onPaid is set when the charge was started from the Split popup, so it can mark that share paid.
@@ -2163,6 +2240,16 @@ function CartPanel({
           >
             <Printer className="h-4 w-4" />
           </button>
+          {onReprintKitchen && editingOrder && editingOrder.status !== "Voided" && (
+            <button
+              onClick={onReprintKitchen}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 xl:h-10 xl:w-10 2xl:h-11 2xl:w-11 [&>svg]:size-5 hover:bg-neutral-50 hover:text-teal-600"
+              title="Reprint the kitchen tickets"
+              aria-label="Reprint kitchen tickets"
+            >
+              <ChefHat className="h-4 w-4" />
+            </button>
+          )}
           {editingOrder?.paymentMethod && editingOrder.status !== "Voided" && (
             <button
               onClick={() => handlePrint(true)}
