@@ -42,6 +42,8 @@ import { startTeyaChargeAction, pollTeyaChargeAction, cancelTeyaChargeAction } f
 import { businessDateKey, businessDayRange, shiftDateKey } from "@/lib/business-day";
 import { TableLayoutPicker } from "@/components/table-layout-picker";
 import { DineInPopup } from "@/components/dine-in-popup";
+import { EndShiftButton } from "@/app/dashboard/end-shift-button";
+import { OpenTillButton } from "@/app/dashboard/open-till-button";
 import { CategoryIconView } from "@/components/category-icon";
 import { StockCountModal } from "@/components/stock-count-modal";
 import { PrintFailureToast, PrintersPanel, PrintStatusButton } from "./print-center";
@@ -284,8 +286,18 @@ const EMPTY_CART: CartState = {
   channelChosen: false,
 };
 
+// Open Till (starting cash) and End Day, offered on the full Till to logins allowed to end the day.
+export interface ShiftControls {
+  pendingOpeningBalance: number | null;
+  openingBalanceSetByName: string | null;
+  terminalNames: string[];
+  // A PIN Till login can't open the report page — only the printed copy.
+  canViewReport: boolean;
+}
+
 export function OrderLineClient({
   onSwitchToMobile,
+  shiftControls,
   categories,
   dishes,
   tables,
@@ -324,6 +336,7 @@ export function OrderLineClient({
   variantsByDish = {},
   tradeAccounts = [],
 }: {
+  shiftControls?: ShiftControls;
   // Switches this device to the simple (phone-style) Till — shown as a button in the top bar.
   onSwitchToMobile?: () => void;
   categories: Category[];
@@ -395,6 +408,9 @@ export function OrderLineClient({
   // The order view opens on the categories, shown in full; tapping one opens its items. The
   // Categories button (or the ✕ on the open category) comes back here; All Menu shows every item.
   const [showCategories, setShowCategories] = useState(true);
+  // Open Till / End Day boxes (full Till only), opened from the top bar or the ⋯ menu.
+  const [openTillOpen, setOpenTillOpen] = useState(false);
+  const [endDayOpen, setEndDayOpen] = useState(false);
   // The Dine in table popup (table + guests + merge).
   const [dineInOpen, setDineInOpen] = useState(false);
   // Set when the popup was opened by Send to kitchen (no table yet): confirming a table sends the order.
@@ -1500,6 +1516,21 @@ export function OrderLineClient({
             </button>
             {/* The rest sit in the ⋯ menu when the bar is narrow, and inline when it has room. */}
             <div className="hidden items-center gap-1.5 @5xl:flex">
+              {shiftControls && (
+                <>
+                  <button
+                    onClick={() => shiftControls.pendingOpeningBalance === null && setOpenTillOpen(true)}
+                    title={shiftControls.pendingOpeningBalance === null ? "Open Till — enter the starting cash" : `Till is open with ${formatMoney(shiftControls.pendingOpeningBalance, currencySymbol)}`}
+                    aria-label="Open Till"
+                    className={`${TOOL_BTN} ${shiftControls.pendingOpeningBalance === null ? "!border-amber-300 !bg-amber-50 !text-amber-700" : "!border-emerald-200 !bg-emerald-50 !text-emerald-700"}`}
+                  >
+                    <Wallet className="h-4 w-4" /> <span className="hidden 2xl:inline">{shiftControls.pendingOpeningBalance === null ? "Open Till" : "Till open"}</span>
+                  </button>
+                  <button onClick={() => setEndDayOpen(true)} title="End Day — count the till and close the day" aria-label="End Day" className={TOOL_BTN}>
+                    <ClipboardList className="h-4 w-4" /> <span className="hidden 2xl:inline">End Day</span>
+                  </button>
+                </>
+              )}
               {printerList && (
                 <button onClick={() => setPrintersPanelOpen(true)} title="Printers — type each printer's IP and choose what prints where" aria-label="Printers" className={TOOL_BTN}>
                   <Printer className="h-4 w-4" /> <span className="hidden 2xl:inline">Printers</span>
@@ -1540,6 +1571,34 @@ export function OrderLineClient({
                       >
                         <Smartphone className="h-5 w-5" /> Mobile till (simple Till)
                       </button>
+                    )}
+                    {shiftControls && (
+                      <>
+                        {shiftControls.pendingOpeningBalance === null ? (
+                          <button
+                            onClick={() => {
+                              setMoreOpen(false);
+                              setOpenTillOpen(true);
+                            }}
+                            className={MENU_ROW}
+                          >
+                            <Wallet className="h-5 w-5" /> Open Till (starting cash)
+                          </button>
+                        ) : (
+                          <div className={`${MENU_ROW} cursor-default !text-emerald-700 hover:!bg-transparent`}>
+                            <Wallet className="h-5 w-5" /> Till open · {formatMoney(shiftControls.pendingOpeningBalance, currencySymbol)}
+                          </div>
+                        )}
+                        <button
+                          onClick={() => {
+                            setMoreOpen(false);
+                            setEndDayOpen(true);
+                          }}
+                          className={MENU_ROW}
+                        >
+                          <ClipboardList className="h-5 w-5" /> End Day
+                        </button>
+                      </>
                     )}
                     <SoundSettingsButton className={MENU_ROW} />
                     <FullscreenButton className={MENU_ROW} label="Full screen" />
@@ -2149,6 +2208,29 @@ export function OrderLineClient({
             setTableActionError(null);
           }}
         />
+      )}
+      {shiftControls && (
+        <>
+          {shiftControls.pendingOpeningBalance === null && (
+            <OpenTillButton
+              currencySymbol={currencySymbol}
+              pendingOpeningBalance={shiftControls.pendingOpeningBalance}
+              openingBalanceSetByName={shiftControls.openingBalanceSetByName}
+              controlledOpen={openTillOpen}
+              onControlledClose={() => setOpenTillOpen(false)}
+            />
+          )}
+          <EndShiftButton
+            currencySymbol={currencySymbol}
+            terminalNames={shiftControls.terminalNames}
+            restaurantName={restaurantName}
+            printTarget={localPrintTarget}
+            stayOnPage
+            canViewReport={shiftControls.canViewReport}
+            controlledOpen={endDayOpen}
+            onControlledClose={() => setEndDayOpen(false)}
+          />
+        </>
       )}
       {dineInOpen && (
         <DineInPopup

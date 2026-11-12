@@ -2,18 +2,45 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { endShiftAction } from "@/lib/actions/shifts";
-import { ClipboardCheck, X } from "lucide-react";
+import { sendPrintJob } from "@/lib/print-queue";
+import { buildShiftReportHex } from "@/lib/shift-ticket";
+import { formatMoney, shiftTotals, type Shift } from "@/lib/types";
+import { CheckCircle2, ClipboardCheck, Printer, X } from "lucide-react";
 
+// End Day Closing. Used on the Dashboard (opens the report page afterwards) and on the full Till
+// (stays on the Till, shows a "Day closed" box). Either way, once the day is closed the report is
+// sent to the receipt printer when this device has one set up (Settings → Printers → Till receipt
+// printer).
 export function EndShiftButton({
   currencySymbol,
   terminalNames,
+  restaurantName = "",
+  printTarget = null,
+  stayOnPage = false,
+  canViewReport = true,
+  controlledOpen,
+  onControlledClose,
 }: {
   currencySymbol: string;
   terminalNames: string[];
+  restaurantName?: string;
+  printTarget?: { ip: string; port: number | null } | null;
+  // On the Till: don't navigate away — show the result in a box.
+  stayOnPage?: boolean;
+  // Till (PIN) logins can't open the report page, only the printed copy.
+  canViewReport?: boolean;
+  // When set, the trigger button is not drawn: the parent (a menu) opens and closes it.
+  controlledOpen?: boolean;
+  onControlledClose?: () => void;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [ownOpen, setOpen] = useState(false);
+  const open = controlledOpen ?? ownOpen;
+  const closeForm = () => (onControlledClose ? onControlledClose() : setOpen(false));
+  const [done, setDone] = useState<{ shift: Shift; printed: "sent" | "failed" | "none"; error?: string } | null>(null);
+  const [printing, setPrinting] = useState(false);
   const [cashCounted, setCashCounted] = useState("");
   const [terminalAmounts, setTerminalAmounts] = useState<Record<string, string>>({});
   const [cashExpenses, setCashExpenses] = useState("");
@@ -47,32 +74,72 @@ export function EndShiftButton({
         setError(result.error);
         return;
       }
-      setOpen(false);
-      router.push(`/shift-report/${result.shiftId}`);
+      closeForm();
+      setCashCounted("");
+      setTerminalAmounts({});
+      setCashExpenses("");
+      setCardExpenses("");
+      setEnvelopeCash("");
+      setNotes("");
+      const shift = result.shift;
+      // Print the report as soon as the day is closed.
+      let printed: "sent" | "failed" | "none" = "none";
+      let printError: string | undefined;
+      if (shift && printTarget) {
+        const job = await printShift(shift);
+        printed = job.status;
+        printError = job.error;
+      }
+      if (stayOnPage && shift) {
+        setDone({ shift, printed, error: printError });
+        router.refresh();
+      } else {
+        router.push(`/shift-report/${result.shiftId}`);
+      }
     });
+  }
+
+  function printShift(shift: Shift) {
+    return sendPrintJob({
+      printer: "Receipt printer",
+      ip: printTarget!.ip,
+      port: printTarget!.port,
+      label: "End Day report",
+      hex: buildShiftReportHex({ restaurantName, currencySymbol, shift }),
+    });
+  }
+
+  async function printAgain() {
+    if (!done || !printTarget) return;
+    setPrinting(true);
+    const job = await printShift(done.shift);
+    setDone({ ...done, printed: job.status, error: job.error });
+    setPrinting(false);
   }
 
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        className="flex items-center gap-2 rounded-xl bg-neutral-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-neutral-800"
-      >
-        <ClipboardCheck className="h-4 w-4" /> End Day
-      </button>
+      {controlledOpen === undefined && (
+        <button
+          onClick={() => setOpen(true)}
+          className="flex items-center gap-2 rounded-xl bg-neutral-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-neutral-800"
+        >
+          <ClipboardCheck className="h-4 w-4" /> End Day
+        </button>
+      )}
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-bold text-neutral-900">End Day Closing</h2>
-              <button onClick={() => setOpen(false)} className="rounded-lg p-1 text-neutral-400 hover:bg-neutral-100">
+              <button onClick={closeForm} className="rounded-lg p-1 text-neutral-400 hover:bg-neutral-100">
                 <X className="h-5 w-5" />
               </button>
             </div>
             <p className="mb-4 text-xs text-neutral-400">
               Closes out sales since the last day-end and generates a report comparing what you counted against what
-              the system expects — print it, save as a PDF, and share with the owners.
+              the system expects.{printTarget ? " The report prints on the receipt printer when you close the day." : " Print it, save as a PDF, and share with the owners."}
             </p>
 
             <label className="mb-1 block text-xs font-semibold text-neutral-500">Cash Counted in Till ({currencySymbol})</label>
@@ -172,6 +239,39 @@ export function EndShiftButton({
             >
               {pending ? "Closing…" : "Close Day & Generate Report"}
             </button>
+          </div>
+        </div>
+      )}
+      {done && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
+            <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-500" />
+            <h2 className="mt-3 text-lg font-bold text-neutral-900">Day closed</h2>
+            <p className="mt-1 text-sm text-neutral-500">
+              Total taken {formatMoney(shiftTotals(done.shift).finalTotal, currencySymbol)} · {done.shift.orderCount} order{done.shift.orderCount === 1 ? "" : "s"}
+            </p>
+            {done.printed === "sent" && <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">The report was sent to the printer.</p>}
+            {done.printed === "failed" && (
+              <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">The report didn&rsquo;t print{done.error ? ` — ${done.error}` : ""}. Check the printer and try again.</p>
+            )}
+            {done.printed === "none" && (
+              <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700">No receipt printer is set up on this till, so nothing was printed.</p>
+            )}
+            <div className="mt-5 flex flex-col gap-2">
+              {printTarget && (
+                <button onClick={printAgain} disabled={printing} className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-neutral-200 px-4 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50">
+                  <Printer className="h-4 w-4" /> {printing ? "Printing…" : "Print again"}
+                </button>
+              )}
+              {canViewReport && (
+                <Link href={`/shift-report/${done.shift.id}`} className="flex min-h-11 items-center justify-center rounded-xl border border-neutral-200 px-4 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50">
+                  View full report
+                </Link>
+              )}
+              <button onClick={() => setDone(null)} className="min-h-11 rounded-xl bg-[var(--brand)] px-4 py-2.5 text-sm font-bold text-white hover:bg-[var(--brand-dark)]">
+                Done
+              </button>
+            </div>
           </div>
         </div>
       )}

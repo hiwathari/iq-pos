@@ -7,7 +7,7 @@ import { orders, restaurants, shifts } from "@/db/schema";
 import { assertPermission, requireRestaurantContext } from "@/lib/scope";
 import { summarizeShiftWindow } from "@/lib/data/shifts";
 import { createNotification } from "@/lib/data/notifications";
-import { formatMoney } from "@/lib/types";
+import { formatMoney, type Shift } from "@/lib/types";
 import { voidLeftoverOrders } from "@/lib/void-order";
 
 export interface OpenTillState {
@@ -46,6 +46,8 @@ export async function openTillAction(openingBalance: number): Promise<OpenTillSt
 export interface EndShiftState {
   error?: string;
   shiftId?: string;
+  // The closed shift, so the Till can print the report without another round trip.
+  shift?: Shift;
 }
 
 export interface EndShiftInput {
@@ -145,7 +147,7 @@ export async function endShiftAction(input: EndShiftInput): Promise<EndShiftStat
   revalidatePath("/kitchen");
   revalidatePath("/dashboard");
 
-  return { shiftId: shift.id };
+  return { shiftId: shift.id, shift };
 }
 
 // Flags it to the admin the moment a day's close doesn't tally — cash short/over, or any named

@@ -10,18 +10,25 @@ export function OpenTillButton({
   currencySymbol,
   pendingOpeningBalance,
   openingBalanceSetByName,
+  controlledOpen,
+  onControlledClose,
 }: {
   currencySymbol: string;
   pendingOpeningBalance: number | null;
   openingBalanceSetByName: string | null;
+  // When set, the trigger button is not drawn: the parent (a menu) opens and closes the box.
+  controlledOpen?: boolean;
+  onControlledClose?: () => void;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [ownOpen, setOpen] = useState(false);
+  const open = controlledOpen ?? ownOpen;
+  const closeForm = () => (onControlledClose ? onControlledClose() : setOpen(false));
   const [amount, setAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  if (pendingOpeningBalance !== null) {
+  if (pendingOpeningBalance !== null && controlledOpen === undefined) {
     return (
       <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-700">
         <Wallet className="h-4 w-4" />
@@ -44,26 +51,28 @@ export function OpenTillButton({
         setError(result.error);
         return;
       }
-      setOpen(false);
+      closeForm();
       router.refresh();
     });
   }
 
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        className="flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-700 hover:bg-amber-100"
-      >
-        <Wallet className="h-4 w-4" /> Open Till
-      </button>
+      {controlledOpen === undefined && (
+        <button
+          onClick={() => setOpen(true)}
+          className="flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-700 hover:bg-amber-100"
+        >
+          <Wallet className="h-4 w-4" /> Open Till
+        </button>
+      )}
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-bold text-neutral-900">Open Till</h2>
-              <button onClick={() => setOpen(false)} className="rounded-lg p-1 text-neutral-400 hover:bg-neutral-100">
+              <button onClick={closeForm} className="rounded-lg p-1 text-neutral-400 hover:bg-neutral-100">
                 <X className="h-5 w-5" />
               </button>
             </div>

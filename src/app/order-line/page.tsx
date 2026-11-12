@@ -145,6 +145,16 @@ export default async function OrderLinePage() {
         promotions={promotions}
         lastEndDayAt={lastEndDayAt}
         floors={floors}
+        shiftControls={
+          hasPermission(session.role, permissions, "end-day")
+            ? {
+                pendingOpeningBalance: restaurant?.pendingOpeningBalance ?? null,
+                openingBalanceSetByName: restaurant?.openingBalanceSetByName ?? null,
+                terminalNames: paymentTerminals.filter((t) => t.active).map((t) => t.name),
+                canViewReport: session.role !== "till",
+              }
+            : undefined
+        }
         kitchenPrinters={kitchenPrinters}
         printerList={canManagePrinters ? printers : undefined}
         variantsByDish={variantsByDish}

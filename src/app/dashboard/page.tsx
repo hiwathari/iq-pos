@@ -5,7 +5,7 @@ import { hasPermission } from "@/lib/permissions";
 import { listTables, listReservations } from "@/lib/data/tables";
 import { listOrders } from "@/lib/data/orders";
 import { getRestaurant } from "@/lib/data/restaurants";
-import { listPaymentTerminals } from "@/lib/data/printers";
+import { listPaymentTerminals, listPrinters } from "@/lib/data/printers";
 import { getReportData } from "@/lib/data/reports";
 import { listShifts } from "@/lib/data/shifts";
 import { listLowStockItems } from "@/lib/data/inventory";
@@ -55,7 +55,7 @@ function percentChange(current: number, previous: number): number | null {
 
 export default async function DashboardPage() {
   const { session, restaurantId } = await requirePermission("dashboard");
-  const [rawOrders, tables, rawReservations, restaurant, shifts, lowStockItems, paymentTerminals, permissions] = await Promise.all([
+  const [rawOrders, tables, rawReservations, restaurant, shifts, lowStockItems, paymentTerminals, permissions, printerRows] = await Promise.all([
     listOrders(restaurantId),
     listTables(restaurantId),
     listReservations(restaurantId),
@@ -64,7 +64,11 @@ export default async function DashboardPage() {
     listLowStockItems(restaurantId),
     listPaymentTerminals(restaurantId),
     session.role === "staff" ? getUserPermissions(session.userId) : Promise.resolve(null),
+    listPrinters(restaurantId),
   ]);
+  // The report printed when the day is closed goes to the Till's receipt printer, if one is set up.
+  const receiptPrinter = printerRows.find((p) => p.tillReceiptPrinter && p.active && p.localPrinterIp);
+  const printTarget = receiptPrinter ? { ip: receiptPrinter.localPrinterIp as string, port: receiptPrinter.localPrinterPort } : null;
   const currencySymbol = restaurant?.currencySymbol ?? "£";
   const profile = businessProfile(restaurant?.businessType, restaurant?.features);
   const canEndDay = hasPermission(session.role, permissions, "end-day");
@@ -179,7 +183,7 @@ export default async function DashboardPage() {
                 pendingOpeningBalance={restaurant?.pendingOpeningBalance ?? null}
                 openingBalanceSetByName={restaurant?.openingBalanceSetByName ?? null}
               />
-              <EndShiftButton currencySymbol={currencySymbol} terminalNames={paymentTerminals.filter((t) => t.active).map((t) => t.name)} />
+              <EndShiftButton currencySymbol={currencySymbol} terminalNames={paymentTerminals.filter((t) => t.active).map((t) => t.name)} restaurantName={restaurant?.name ?? ""} printTarget={printTarget} />
             </div>
           )}
         </div>

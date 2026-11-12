@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { OrderLineClient } from "./order-line-client";
+import { OrderLineClient, type ShiftControls } from "./order-line-client";
 import { MobileTillClient } from "./mobile-till-client";
 import type { Category, Dish, Order, OrderChannel, PaymentTerminal, RestaurantTable } from "@/lib/types";
 import type { EmbeddedFormat } from "@/lib/barcode";
@@ -53,6 +53,7 @@ export function TillModeSwitcher({
   promotions = [],
   lastEndDayAt = null,
   floors = ["Ground Floor"],
+  shiftControls,
   kitchenPrinters = [],
   printerList,
   variantsByDish = {},
@@ -101,6 +102,8 @@ export function TillModeSwitcher({
   lastEndDayAt?: number | null;
   // The restaurant's floors (Manage Table), in order.
   floors?: string[];
+  // Open Till / End Day on the full Till (not the mobile Till); left out when this login may not end the day.
+  shiftControls?: ShiftControls;
   kitchenPrinters?: KitchenPrinter[];
   // All printers, only for logins allowed to set printers up (Settings permission).
   printerList?: Printer[];
@@ -201,6 +204,7 @@ export function TillModeSwitcher({
       canRefund={canRefund}
       promotions={promotions}
       floors={floors}
+      shiftControls={shiftControls}
       lastEndDayAt={lastEndDayAt}
       kitchenPrinters={kitchenPrinters}
       printerList={printerList}
