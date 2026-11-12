@@ -6,7 +6,7 @@ import { Maximize, Minimize } from "lucide-react";
 // Wraps the Fullscreen API so the Till/Kitchen Display can go edge-to-edge on a shared
 // tablet/kiosk device — hiding the browser chrome (address bar, tabs) that eats into already
 // limited screen space and serves no purpose once a device is dedicated to this one page.
-export function FullscreenButton({ className }: { className?: string }) {
+export function FullscreenButton({ className, label }: { className?: string; label?: string }) {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
@@ -34,6 +34,7 @@ export function FullscreenButton({ className }: { className?: string }) {
       }
     >
       {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+      {label && <span>{label}</span>}
     </button>
   );
 }

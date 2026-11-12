@@ -36,19 +36,19 @@ export function useTillZoom() {
   return { scale: STEPS[index], index, canZoomIn: index < STEPS.length - 1, canZoomOut: index > 0, zoomIn: () => change(1), zoomOut: () => change(-1) };
 }
 
-export function ZoomButtons({ zoom, className = "" }: { zoom: ReturnType<typeof useTillZoom>; className?: string }) {
+export function ZoomButtons({ zoom, className = "", compact = false }: { zoom: ReturnType<typeof useTillZoom>; className?: string; compact?: boolean }) {
   return (
-    <div className={`flex items-center gap-0.5 rounded-xl border border-neutral-200 bg-white p-0.5 ${className}`} role="group" aria-label="Zoom">
+    <div className={`flex items-center gap-0.5 rounded-xl border border-neutral-200 bg-white p-0.5 ${className}`} role="group" aria-label="Zoom" title={`Zoom ${Math.round(zoom.scale * 100)}%`}>
       <button
         onClick={zoom.zoomOut}
         disabled={!zoom.canZoomOut}
         title="Zoom out"
         aria-label="Zoom out"
-        className="flex h-10 w-10 items-center justify-center rounded-lg text-neutral-600 hover:bg-neutral-50 active:bg-neutral-100 disabled:opacity-30"
+        className={`flex items-center justify-center rounded-lg text-neutral-600 hover:bg-neutral-50 active:bg-neutral-100 disabled:opacity-30 ${compact ? "h-10 w-10 @max-5xl:h-9 @max-5xl:w-9" : "h-10 w-10"}`}
       >
         <Minus className="h-5 w-5" />
       </button>
-      <span className="w-11 text-center text-xs font-semibold text-neutral-500" aria-live="polite">
+      <span className={`text-center text-xs font-semibold text-neutral-500 ${compact ? "w-11 @max-5xl:hidden" : "w-11"}`} aria-live="polite">
         {Math.round(zoom.scale * 100)}%
       </span>
       <button
@@ -56,7 +56,7 @@ export function ZoomButtons({ zoom, className = "" }: { zoom: ReturnType<typeof 
         disabled={!zoom.canZoomIn}
         title="Zoom in"
         aria-label="Zoom in"
-        className="flex h-10 w-10 items-center justify-center rounded-lg text-neutral-600 hover:bg-neutral-50 active:bg-neutral-100 disabled:opacity-30"
+        className={`flex items-center justify-center rounded-lg text-neutral-600 hover:bg-neutral-50 active:bg-neutral-100 disabled:opacity-30 ${compact ? "h-10 w-10 @max-5xl:h-9 @max-5xl:w-9" : "h-10 w-10"}`}
       >
         <Plus className="h-5 w-5" />
       </button>

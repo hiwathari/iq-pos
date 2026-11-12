@@ -66,6 +66,7 @@ import type { VariantLite } from "@/lib/variants";
 import {
   Boxes,
   ChefHat,
+  MoreHorizontal,
   Minus,
   Plus,
   Trash2,
@@ -116,6 +117,11 @@ function currentTimeMs() {
 
 // Ticket filter chips. Shops (no tables — see lib/business-profile.ts) get their own order types
 // instead of Dine in / Wait List / Take Away.
+// Look of the small buttons in the Till's top bar, and of the rows in its ⋯ menu.
+const TOOL_BTN =
+  "flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-2.5 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50 2xl:text-base [&>svg]:size-5";
+const MENU_ROW = "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium text-neutral-700 hover:bg-neutral-50 [&>svg]:size-5 [&>span]:inline";
+
 const QUEUE_TABS = ["All", "Dine in", "Wait List", "Take Away", "Delivery", "Served"] as const;
 const SHOP_QUEUE_TABS = ["All", "In store", "Click & collect", "Delivery", "Served"] as const;
 type QueueTab = (typeof QUEUE_TABS)[number] | (typeof SHOP_QUEUE_TABS)[number];
@@ -370,6 +376,7 @@ export function OrderLineClient({
   // The Stock panel (count each product, − / +, type a number) — open to every Till user.
   const [stockPanelOpen, setStockPanelOpen] = useState(false);
   const [printersPanelOpen, setPrintersPanelOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [scanNotice, setScanNotice] = useState<{ kind: "ok" | "error"; text: string; code?: string } | null>(null);
 
   const [cart, setCart] = useState<CartState>(() => {
@@ -1370,7 +1377,8 @@ export function OrderLineClient({
       {/* Main column — header, toolbars and the category row stay put; only the grid below
           them scrolls (each view wraps its content in its own scroll box). */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col px-6 pt-6 lg:pb-6">
-        <div className={`mb-3 shrink-0 flex-wrap items-center gap-2 ${searchMode ? "hidden" : "flex"}`}>
+        <div className={`@container mb-3 shrink-0 ${searchMode ? "hidden" : "block"}`}>
+        <div className="flex items-center gap-2">
           {view === "order" && (
             <button
               onClick={() => {
@@ -1382,11 +1390,11 @@ export function OrderLineClient({
               aria-label="New order"
               className="flex min-h-11 min-w-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-[var(--brand)] px-3 py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] 2xl:gap-2 2xl:px-5 2xl:text-base [&>svg]:size-5"
             >
-              <Plus className="h-3.5 w-3.5" /> <span className="hidden xl:inline 2xl:hidden">New</span>
+              <Plus className="h-3.5 w-3.5" /> <span className="hidden @5xl:inline 2xl:hidden">New</span>
               <span className="hidden 2xl:inline">New Order</span>
             </button>
           )}
-          <div className="flex items-center gap-1 rounded-2xl border border-neutral-200 bg-white p-1">
+          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto rounded-2xl border border-neutral-200 bg-white p-1 [scrollbar-width:none] @5xl:flex-none [&::-webkit-scrollbar]:hidden">
             <TopViewTab
               active={view === "order"}
               icon={ShoppingBag}
@@ -1417,37 +1425,55 @@ export function OrderLineClient({
               onClick={() => setView("history")}
             />
           </div>
-          <div className="ml-auto flex items-center gap-1.5">
-            <ZoomButtons zoom={zoom} />
-            <PrintStatusButton className="flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-2.5 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50 2xl:text-base [&>svg]:size-5" />
-            {printerList && (
-              <button
-                onClick={() => setPrintersPanelOpen(true)}
-                title="Printers — type each printer's IP and choose what prints where"
-                aria-label="Printers"
-                className="flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-2.5 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50 2xl:text-base [&>svg]:size-5"
-              >
-                <Printer className="h-4 w-4" /> <span className="hidden 2xl:inline">Printers</span>
-              </button>
-            )}
-            <button
-              onClick={() => setStockPanelOpen(true)}
-              title="Stock — count what is left of each item"
-              aria-label="Stock"
-              className="flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-2.5 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50 2xl:text-base [&>svg]:size-5"
-            >
+          <div className="ml-auto flex shrink-0 items-center gap-1.5">
+            <ZoomButtons zoom={zoom} compact />
+            <PrintStatusButton className={`${TOOL_BTN} gap-1.5`} />
+            <button onClick={() => setStockPanelOpen(true)} title="Stock — count what is left of each item" aria-label="Stock" className={TOOL_BTN}>
               <Boxes className="h-4 w-4" /> <span className="hidden 2xl:inline">Stock</span>
             </button>
-            <SoundSettingsButton className="flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-2.5 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50 2xl:text-base [&>svg]:size-5" />
-            <FullscreenButton className="hidden min-h-11 min-w-11 items-center xl:flex justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-2.5 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50 2xl:text-base [&>svg]:size-5" />
-            <button
-              onClick={() => window.location.reload()}
-              title="Refresh — reloads the page and clears any cached data"
-              className="flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-2.5 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50 2xl:text-base [&>svg]:size-5"
-            >
-              <RefreshCw className="h-4 w-4" /> <span className="hidden 2xl:inline">Refresh</span>
-            </button>
+            {/* The rest sit in the ⋯ menu when the bar is narrow, and inline when it has room. */}
+            <div className="hidden items-center gap-1.5 @5xl:flex">
+              {printerList && (
+                <button onClick={() => setPrintersPanelOpen(true)} title="Printers — type each printer's IP and choose what prints where" aria-label="Printers" className={TOOL_BTN}>
+                  <Printer className="h-4 w-4" /> <span className="hidden 2xl:inline">Printers</span>
+                </button>
+              )}
+              <SoundSettingsButton className={TOOL_BTN} />
+              <FullscreenButton className={TOOL_BTN} />
+              <button onClick={() => window.location.reload()} title="Refresh — reloads the page and clears any cached data" className={TOOL_BTN}>
+                <RefreshCw className="h-4 w-4" /> <span className="hidden 2xl:inline">Refresh</span>
+              </button>
+            </div>
+            <div className="relative @5xl:hidden">
+              <button onClick={() => setMoreOpen((o) => !o)} title="More" aria-label="More" aria-expanded={moreOpen} className={TOOL_BTN}>
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+              {moreOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setMoreOpen(false)} />
+                  <div className="absolute right-0 top-full z-50 mt-2 w-56 space-y-1 rounded-2xl border border-neutral-200 bg-white p-2 shadow-xl">
+                    {printerList && (
+                      <button
+                        onClick={() => {
+                          setMoreOpen(false);
+                          setPrintersPanelOpen(true);
+                        }}
+                        className={MENU_ROW}
+                      >
+                        <Printer className="h-5 w-5" /> Printers
+                      </button>
+                    )}
+                    <SoundSettingsButton className={MENU_ROW} />
+                    <FullscreenButton className={MENU_ROW} label="Full screen" />
+                    <button onClick={() => window.location.reload()} className={MENU_ROW}>
+                      <RefreshCw className="h-5 w-5" /> Refresh
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
+        </div>
         </div>
 
         {view === "incoming" && (
@@ -3592,14 +3618,17 @@ function TopViewTab({
       }`}
     >
       <Icon className="h-4 w-4" />
-      {shortLabel ? (
-        <>
-          <span className="2xl:hidden">{shortLabel}</span>
-          <span className="hidden 2xl:inline">{label}</span>
-        </>
-      ) : (
-        label
-      )}
+      {/* Below xl only the open tab keeps its name; the others are icon + count, so the bar fits one row. */}
+      <span className={active ? "" : "@max-5xl:hidden"}>
+        {shortLabel ? (
+          <>
+            <span className="2xl:hidden">{shortLabel}</span>
+            <span className="hidden 2xl:inline">{label}</span>
+          </>
+        ) : (
+          label
+        )}
+      </span>
       {typeof count === "number" && (
         <span
           className={`flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-xs font-semibold ${
@@ -3629,15 +3658,19 @@ function NewOrdersTab({ active, count, onClick }: { active: boolean; count: numb
       }`}
     >
       <BellRing className="h-4 w-4" />
-      <span className="2xl:hidden">Online</span>
-      <span className="hidden 2xl:inline">Online Orders</span>
-      <span
-        className={`flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-xs font-bold ${
-          waiting ? "bg-white text-rose-600" : active ? "bg-white/20 text-white" : "bg-neutral-100 text-neutral-500"
-        }`}
-      >
-        {count}
+      <span className={active || waiting ? "" : "@max-5xl:hidden"}>
+        <span className="2xl:hidden">Online</span>
+        <span className="hidden 2xl:inline">Online Orders</span>
       </span>
+      {(waiting || active) && (
+        <span
+          className={`flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-xs font-bold ${
+            waiting ? "bg-white text-rose-600" : "bg-white/20 text-white"
+          }`}
+        >
+          {count}
+        </span>
+      )}
     </button>
   );
 }
