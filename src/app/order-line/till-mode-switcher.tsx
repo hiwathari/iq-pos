@@ -122,6 +122,15 @@ export function TillModeSwitcher({
     setTimeout(() => setMode(resolved), 0);
   }, []);
 
+  function switchToSimple() {
+    setMode("simple");
+    try {
+      localStorage.setItem(MODE_KEY, "simple");
+    } catch {
+      // Ignore — the switch still applies for this session even if it can't be remembered.
+    }
+  }
+
   function switchToFull() {
     setMode("full");
     try {
@@ -159,6 +168,7 @@ export function TillModeSwitcher({
 
   return (
     <OrderLineClient
+      onSwitchToMobile={switchToSimple}
       categories={categories}
       dishes={dishes}
       tables={tables}

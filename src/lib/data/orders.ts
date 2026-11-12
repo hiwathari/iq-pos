@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import { db } from "@/db/client";
 import { orders, restaurants } from "@/db/schema";
-import { AUTO_VOID_REASON, freeTableIfNoLiveOrders } from "@/lib/order-helpers";
+import { AUTO_VOID_REASON, freeOrderTables } from "@/lib/order-helpers";
 import { businessDayStart } from "@/lib/business-day";
 import { returnStockForOrder } from "@/lib/stock";
 
@@ -21,7 +21,7 @@ async function autoVoidStaleOrders(restaurantId: string) {
     .limit(1);
   const dayStart = businessDayStart(Date.now(), restaurant?.openTime ?? null, restaurant?.timezone ?? "UTC");
   const stale = await db
-    .select({ id: orders.id, tableId: orders.tableId, status: orders.status, items: orders.items })
+    .select({ id: orders.id, tableId: orders.tableId, mergedTableNumbers: orders.mergedTableNumbers, status: orders.status, items: orders.items })
     .from(orders)
     .where(
       and(
@@ -43,7 +43,7 @@ async function autoVoidStaleOrders(restaurantId: string) {
       )
     );
   await Promise.all(
-    stale.filter((o) => o.tableId).map((o) => freeTableIfNoLiveOrders(restaurantId, o.tableId!, o.id))
+    stale.map((o) => freeOrderTables(restaurantId, o, o.id))
   );
   // Their stock goes back (a Pending one never took any — returnStockForOrder skips those).
   for (const o of stale) await returnStockForOrder(restaurantId, o, { note: AUTO_VOID_REASON });

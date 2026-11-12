@@ -41,6 +41,7 @@ import { startSumupChargeAction, pollSumupChargeAction, cancelSumupChargeAction 
 import { startTeyaChargeAction, pollTeyaChargeAction, cancelTeyaChargeAction } from "@/lib/actions/teya";
 import { businessDateKey, businessDayRange, shiftDateKey } from "@/lib/business-day";
 import { TableLayoutPicker } from "@/components/table-layout-picker";
+import { DineInPopup } from "@/components/dine-in-popup";
 import { CategoryIconView } from "@/components/category-icon";
 import { StockCountModal } from "@/components/stock-count-modal";
 import { PrintFailureToast, PrintersPanel, PrintStatusButton } from "./print-center";
@@ -109,6 +110,9 @@ import {
   Gift,
   Tag,
   RotateCcw,
+  UtensilsCrossed,
+  Store,
+  Smartphone,
 } from "lucide-react";
 
 // Module-level wrapper so components stay free of impure calls (react-hooks purity lint rule).
@@ -225,6 +229,10 @@ interface CartState {
   editingOrderId: string | null;
   tableId: string | null;
   tableNumber: number | null;
+  // Tables merged into this order (a big party): ids are saved when a new order is placed, numbers
+  // are shown ("Table 04 + 05"). Tables merged into an order that already exists are on the order.
+  mergedTableIds: string[];
+  mergedTableNumbers: number[];
   guests: number;
   channel: OrderChannel;
   thirdPartyProvider: ThirdPartyProvider;
@@ -255,6 +263,8 @@ const EMPTY_CART: CartState = {
   editingOrderId: null,
   tableId: null,
   tableNumber: null,
+  mergedTableIds: [],
+  mergedTableNumbers: [],
   guests: 2,
   channel: "Dine in",
   thirdPartyProvider: "Uber Eats",
@@ -275,6 +285,7 @@ const EMPTY_CART: CartState = {
 };
 
 export function OrderLineClient({
+  onSwitchToMobile,
   categories,
   dishes,
   tables,
@@ -313,6 +324,8 @@ export function OrderLineClient({
   variantsByDish = {},
   tradeAccounts = [],
 }: {
+  // Switches this device to the simple (phone-style) Till — shown as a button in the top bar.
+  onSwitchToMobile?: () => void;
   categories: Category[];
   dishes: Dish[];
   tables: RestaurantTable[];
@@ -382,6 +395,8 @@ export function OrderLineClient({
   // The order view opens on the categories, shown in full; tapping one opens its items. The
   // Categories button (or the ✕ on the open category) comes back here; All Menu shows every item.
   const [showCategories, setShowCategories] = useState(true);
+  // The Dine in table popup (table + guests + merge).
+  const [dineInOpen, setDineInOpen] = useState(false);
   const [scanNotice, setScanNotice] = useState<{ kind: "ok" | "error"; text: string; code?: string } | null>(null);
 
   const [cart, setCart] = useState<CartState>(() => {
@@ -806,6 +821,8 @@ export function OrderLineClient({
       editingOrderId: order.id,
       tableId: order.tableId,
       tableNumber: order.tableNumber,
+      mergedTableIds: [],
+      mergedTableNumbers: order.mergedTableNumbers ?? [],
       guests: order.guests,
       channel: order.channel,
       thirdPartyProvider: order.thirdPartyProvider ?? "Uber Eats",
@@ -1104,6 +1121,7 @@ export function OrderLineClient({
           editingOrderId: cart.editingOrderId,
           tableId: cart.tableId,
           tableNumber: cart.tableNumber,
+          mergedTableIds: cart.editingOrderId ? undefined : cart.mergedTableIds,
           guests: cart.guests,
           channel: cart.channel,
           thirdPartyProvider: cart.channel === "Third Party" ? cart.thirdPartyProvider : undefined,
@@ -1353,6 +1371,7 @@ export function OrderLineClient({
     onRefundClick: canRefund ? () => setRefundOpen(true) : undefined,
     onReprintKitchen: kitchenPrinters.length > 0 ? reprintKitchenTickets : undefined,
     floors,
+    onOpenDineIn: () => setDineInOpen(true),
     onPriceOverride: canOverridePrice ? (lineId: string) => setPriceOverrideFor(lineId) : undefined,
   };
 
@@ -1436,6 +1455,11 @@ export function OrderLineClient({
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-1.5">
             <ZoomButtons zoom={zoom} compact />
+            {onSwitchToMobile && (
+              <button onClick={onSwitchToMobile} title="Mobile till — switch this device to the simple phone-style Till" aria-label="Mobile till" className={TOOL_BTN}>
+                <Smartphone className="h-4 w-4" /> <span className="hidden 2xl:inline">Mobile till</span>
+              </button>
+            )}
             <PrintStatusButton className={`${TOOL_BTN} gap-1.5`} />
             <button onClick={() => setStockPanelOpen(true)} title="Stock — count what is left of each item" aria-label="Stock" className={TOOL_BTN}>
               <Boxes className="h-4 w-4" /> <span className="hidden 2xl:inline">Stock</span>
@@ -1542,11 +1566,13 @@ export function OrderLineClient({
                 </button>
               </div>
             ) : (
+              <>
+              {/* Row 1: Search, then the order types — Dine in, Take away, Online… — filling the row. */}
               <div className="mb-3 flex shrink-0 gap-2.5">
                 <button
                   onClick={() => setSearchOpen(true)}
                   aria-label="Search items"
-                  className="flex min-h-[76px] w-[170px] shrink-0 items-center justify-center gap-2.5 rounded-2xl border-2 border-neutral-300 bg-white px-3 text-neutral-600 hover:bg-neutral-50 active:scale-[0.97] 2xl:min-h-[92px] 2xl:w-[200px] [&>svg]:size-6"
+                  className="flex min-h-[76px] w-[150px] shrink-0 items-center justify-center gap-2 rounded-2xl border-2 border-neutral-300 bg-white px-3 text-neutral-600 hover:bg-neutral-50 active:scale-[0.97] 2xl:min-h-[92px] 2xl:w-[190px] [&>svg]:size-6"
                 >
                   <Search className="h-5 w-5" />
                   <span className="text-sm font-semibold">Search items</span>
@@ -1555,34 +1581,56 @@ export function OrderLineClient({
                   <button
                     onClick={() => setCameraOpen(true)}
                     title="Scan a barcode with the camera"
-                    className="flex min-h-[76px] w-[76px] shrink-0 flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-neutral-300 bg-white text-neutral-500 hover:bg-neutral-50 active:scale-[0.97] 2xl:min-h-[92px] 2xl:w-[92px] [&>svg]:size-6"
+                    className="flex min-h-[76px] w-[64px] shrink-0 flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-neutral-300 bg-white text-neutral-500 hover:bg-neutral-50 active:scale-[0.97] 2xl:min-h-[92px] 2xl:w-[80px] [&>svg]:size-6"
                   >
                     <Camera className="h-5 w-5" />
                     <span className="text-xs font-semibold">Camera</span>
                   </button>
                 )}
-                {showCategories ? (
-                  <div className="flex min-w-0 flex-1 items-center px-3 text-base font-semibold text-neutral-400">Choose a category</div>
-                ) : (
-                  <>
-                    <button
-                      onClick={() => setShowCategories(true)}
-                      aria-label="Show all categories"
-                      title="Back to the categories"
-                      className="flex min-h-[76px] w-[108px] shrink-0 flex-col items-center justify-center gap-1 rounded-2xl border-2 border-[var(--brand)] bg-white p-2 text-[var(--brand)] active:scale-[0.97] 2xl:min-h-[92px] 2xl:w-[128px] [&>svg]:size-6"
-                    >
-                      <LayoutGrid className="h-5 w-5" />
-                      <span className="text-sm font-bold leading-tight 2xl:text-base">Categories</span>
-                    </button>
-                    <div className="-mr-1 flex min-w-0 flex-1 snap-x gap-2.5 overflow-x-auto pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [mask-image:linear-gradient(to_right,black_88%,transparent)]">
-                      <CategoryBox active={menuCategory === "all"} label={channels.includes("Dine in") ? "All Menu" : "All Products"} icon="all" onClick={() => setMenuCategory("all")} onClose={() => setShowCategories(true)} />
-                      {categories.map((c) => (
-                        <CategoryBox key={c.id} active={menuCategory === c.id} label={c.name} icon={c.icon} onClick={() => setMenuCategory(c.id)} onClose={() => setShowCategories(true)} />
-                      ))}
-                    </div>
-                  </>
-                )}
+                <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {channels.map((c) => {
+                    const active = cart.channel === c;
+                    return (
+                      <button
+                        key={c}
+                        onClick={() => {
+                          setCart((prev) => ({ ...prev, channel: c, channelChosen: true }));
+                          if (c === "Dine in" && showTables && !cart.editingOrderId) setDineInOpen(true);
+                        }}
+                        aria-pressed={active}
+                        title={c === "Dine in" ? "Dine in — choose the table and guests" : c}
+                        className={`flex min-h-[76px] min-w-[84px] flex-1 shrink-0 flex-col items-center justify-center gap-1 rounded-2xl border p-2 text-center transition active:scale-[0.97] 2xl:min-h-[92px] 2xl:min-w-[104px] [&>svg]:size-6 ${
+                          active ? "border-[var(--brand)] bg-[var(--brand)] text-white shadow-sm" : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50"
+                        }`}
+                      >
+                        <ChannelIcon channel={c} className={`h-6 w-6 ${active ? "text-white" : "text-[var(--brand)]"}`} />
+                        <span className="text-sm font-bold leading-tight 2xl:text-base">{channelLabel(c)}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
+              {/* Row 2 (once a category is open): back to the categories, and the category chips. */}
+              {!showCategories && (
+                <div className="mb-3 flex shrink-0 gap-2.5">
+                  <button
+                    onClick={() => setShowCategories(true)}
+                    aria-label="Show all categories"
+                    title="Back to the categories"
+                    className="flex min-h-[64px] w-[108px] shrink-0 flex-col items-center justify-center gap-1 rounded-2xl border-2 border-[var(--brand)] bg-white p-2 text-[var(--brand)] active:scale-[0.97] 2xl:min-h-[76px] 2xl:w-[128px] [&>svg]:size-6"
+                  >
+                    <LayoutGrid className="h-5 w-5" />
+                    <span className="text-sm font-bold leading-tight 2xl:text-base">Categories</span>
+                  </button>
+                  <div className="-mr-1 flex min-w-0 flex-1 snap-x gap-2.5 overflow-x-auto pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [mask-image:linear-gradient(to_right,black_88%,transparent)]">
+                    <CategoryBox active={menuCategory === "all"} label={channels.includes("Dine in") ? "All Menu" : "All Products"} icon="all" onClick={() => setMenuCategory("all")} onClose={() => setShowCategories(true)} />
+                    {categories.map((c) => (
+                      <CategoryBox key={c.id} active={menuCategory === c.id} label={c.name} icon={c.icon} onClick={() => setMenuCategory(c.id)} onClose={() => setShowCategories(true)} />
+                    ))}
+                  </div>
+                </div>
+              )}
+              </>
             )}
 
             {showCategories && !searchOpen && !menuSearch ? (
@@ -2057,6 +2105,33 @@ export function OrderLineClient({
           }}
         />
       )}
+      {dineInOpen && (
+        <DineInPopup
+          floors={floors}
+          tables={tables}
+          activeOrderForTable={activeOrderForTable}
+          initial={{ tableId: cart.tableId, guests: cart.guests, mergedTableIds: cart.mergedTableIds }}
+          onConfirm={(choice) => {
+            setDineInOpen(false);
+            setCart((prev) => ({
+              ...prev,
+              channel: "Dine in",
+              channelChosen: true,
+              tableId: choice.tableId,
+              tableNumber: choice.tableNumber,
+              guests: choice.guests,
+              mergedTableIds: choice.mergedTableIds,
+              mergedTableNumbers: choice.mergedTableNumbers,
+            }));
+          }}
+          onOpenOrder={(order) => {
+            setDineInOpen(false);
+            loadOrderIntoCart(order);
+            setView("order");
+          }}
+          onClose={() => setDineInOpen(false)}
+        />
+      )}
       {tableActionError && (
         <div className="fixed inset-x-0 bottom-24 z-[60] flex justify-center px-4 lg:bottom-6">
           <div className="flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg">
@@ -2117,6 +2192,8 @@ interface CartPanelProps {
   handlePrint: (gift?: boolean) => void;
   onSwapTableClick: () => void;
   onMergeTableClick: () => void;
+  // Opens the Dine in table popup (table, guests, merge).
+  onOpenDineIn: () => void;
   onVoidClick: () => void;
   onShareInvoiceClick: () => void;
   onClose: () => void;
@@ -2180,6 +2257,7 @@ function CartPanel({
   handlePrint,
   onSwapTableClick,
   onMergeTableClick,
+  onOpenDineIn,
   onVoidClick,
   onShareInvoiceClick,
   onClose,
@@ -2206,7 +2284,7 @@ function CartPanel({
     cart.channel === "Dine in" || cart.channel === "Wait List"
       ? `${
           cart.tableNumber
-            ? `Table ${[cart.tableNumber, ...(editingOrder?.mergedTableNumbers ?? [])].map((n) => String(n).padStart(2, "0")).join(" + ")}`
+            ? `Table ${[cart.tableNumber, ...cart.mergedTableNumbers].map((n) => String(n).padStart(2, "0")).join(" + ")}`
             : "Choose table"
         } · ${cart.guests} ${cart.guests === 1 ? "guest" : "guests"}`
       : cart.channel === "Take Away" || cart.channel === "Delivery"
@@ -2306,20 +2384,11 @@ function CartPanel({
           customer summary sits under it, and the order number heads the tray — no separate
           title block, so the tray gets that height. */}
       <div className="mb-2 flex shrink-0 items-center gap-2">
-        <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [mask-image:linear-gradient(to_right,black_85%,transparent)]">
-          {channels.map((c) => (
-            <button
-              key={c}
-              onClick={() => setCart((prev) => ({ ...prev, channel: c, channelChosen: true }))}
-              className={`flex min-h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-2 text-sm font-semibold [&>svg]:size-4 ${
-                cart.channel === c ? "border-[var(--brand)] bg-[var(--brand)] text-white" : "border-neutral-200 bg-white text-neutral-500"
-              }`}
-            >
-              {c === "Delivery" && <Bike className="h-4 w-4" />}
-              {(c === "Take Away" || c === "Click & collect") && <ShoppingBag className="h-4 w-4" />}
-              {c}
-            </button>
-          ))}
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span className="flex min-h-11 min-w-0 items-center gap-2 rounded-lg bg-[var(--brand)]/10 px-3 py-2 text-sm font-bold text-[var(--brand-dark)] [&>svg]:size-4" title="Change the order type from the strip at the top">
+            <ChannelIcon channel={cart.channel} />
+            <span className="truncate">{channelLabel(cart.channel)}</span>
+          </span>
         </div>
         <div className="flex shrink-0 items-center gap-1 2xl:gap-1.5">
           {canManageTable && (
@@ -2531,7 +2600,7 @@ function CartPanel({
             </div>
           ) : (
             <button
-              onClick={() => setTableEditorOpen(true)}
+              onClick={() => (cart.channel === "Dine in" && !cart.editingOrderId ? onOpenDineIn() : setTableEditorOpen(true))}
               className="flex min-h-11 w-full items-center justify-between gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-left hover:border-[var(--brand)]"
             >
               <span className="flex min-w-0 items-center gap-2 text-[15px] text-neutral-700">
@@ -3962,6 +4031,34 @@ function TablesOverview({
       </div>
     </div>
   );
+}
+
+// The order types shown as tiles beside Search (and as the label on the order panel).
+const CHANNEL_SHORT: Partial<Record<OrderChannel, string>> = {
+  "Wait List": "Wait list",
+  "Take Away": "Take away",
+  "Third Party": "3rd party",
+  "Click & collect": "Collect",
+};
+function channelLabel(c: OrderChannel) {
+  return CHANNEL_SHORT[c] ?? c;
+}
+function ChannelIcon({ channel, className = "h-5 w-5" }: { channel: OrderChannel; className?: string }) {
+  const Icon =
+    channel === "Dine in"
+      ? UtensilsCrossed
+      : channel === "Wait List"
+        ? Clock
+        : channel === "Take Away" || channel === "Click & collect"
+          ? ShoppingBag
+          : channel === "Delivery"
+            ? Bike
+            : channel === "Online"
+              ? Globe
+              : channel === "In store"
+                ? Store
+                : Users;
+  return <Icon className={className} />;
 }
 
 function CategoryBox({ active, label, icon, onClick, onClose }: { active: boolean; label: string; icon: string; onClick: () => void; onClose?: () => void }) {

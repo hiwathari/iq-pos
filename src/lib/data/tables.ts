@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { db } from "@/db/client";
 import { orders, reservations, tables } from "@/db/schema";
 
@@ -10,22 +10,30 @@ const AUTO_RELEASE_DELAY_MS = 0;
 async function releaseStaleTables(restaurantId: string) {
   const cutoff = Date.now() - AUTO_RELEASE_DELAY_MS;
   const onDineTables = await db
-    .select({ id: tables.id })
+    .select({ id: tables.id, number: tables.number })
     .from(tables)
     .where(and(eq(tables.restaurantId, restaurantId), eq(tables.status, "on-dine")));
   if (onDineTables.length === 0) return;
 
   // A table gets reused many times over its life, so its *most recent* order is the only one
   // that matters here — an old, long-since-superseded order for the same table must never free
-  // whatever party is sitting there right now.
+  // whatever party is sitting there right now. A table merged into someone else's order counts
+  // that order as its latest one too (it has no order of its own while merged).
+  const mergedOrders = await db
+    .select({ merged: orders.mergedTableNumbers, closedOutAt: orders.closedOutAt, createdAt: orders.createdAt })
+    .from(orders)
+    .where(and(eq(orders.restaurantId, restaurantId), isNotNull(orders.mergedTableNumbers)))
+    .orderBy(desc(orders.createdAt));
   await Promise.all(
     onDineTables.map(async (table) => {
-      const [latestOrder] = await db
-        .select({ closedOutAt: orders.closedOutAt })
+      const [own] = await db
+        .select({ closedOutAt: orders.closedOutAt, createdAt: orders.createdAt })
         .from(orders)
         .where(and(eq(orders.restaurantId, restaurantId), eq(orders.tableId, table.id)))
         .orderBy(desc(orders.createdAt))
         .limit(1);
+      const viaMerge = mergedOrders.find((o) => o.merged?.includes(table.number));
+      const latestOrder = viaMerge && (!own || viaMerge.createdAt > own.createdAt) ? viaMerge : own;
       if (latestOrder?.closedOutAt && latestOrder.closedOutAt < cutoff) {
         await db.update(tables).set({ status: "available", seated: 0, seatedAt: null }).where(eq(tables.id, table.id));
       }

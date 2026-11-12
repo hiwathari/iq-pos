@@ -3,7 +3,7 @@ import { and, eq, inArray, lt, ne, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { orders, restaurants, tradeAccounts } from "@/db/schema";
 import { businessDayStart } from "@/lib/business-day";
-import { AUTO_VOID_REASON, freeTableIfNoLiveOrders } from "@/lib/order-helpers";
+import { AUTO_VOID_REASON, freeOrderTables } from "@/lib/order-helpers";
 import { releaseSerials, serialsOf } from "@/lib/data/serials";
 import { restoreStoreCredits } from "@/lib/data/store-credit";
 import { onAccountAmount } from "@/lib/data/trade-accounts";
@@ -14,7 +14,7 @@ import { returnStockForOrder } from "@/lib/stock";
 // Used by the Till's Void button and by the sweeps below.
 export async function voidOrderCore(restaurantId: string, orderId: string, reason: string, byName: string | null) {
   const [order] = await db
-    .select({ id: orders.id, tableId: orders.tableId, status: orders.status, items: orders.items, payments: orders.payments, paymentMethod: orders.paymentMethod, extraDiscount: orders.extraDiscount, couponDiscount: orders.couponDiscount, tradeAccountId: orders.tradeAccountId })
+    .select({ id: orders.id, tableId: orders.tableId, mergedTableNumbers: orders.mergedTableNumbers, status: orders.status, items: orders.items, payments: orders.payments, paymentMethod: orders.paymentMethod, extraDiscount: orders.extraDiscount, couponDiscount: orders.couponDiscount, tradeAccountId: orders.tradeAccountId })
     .from(orders)
     .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)))
     .limit(1);
@@ -29,7 +29,7 @@ export async function voidOrderCore(restaurantId: string, orderId: string, reaso
     .set({ status: "Voided", voidReason: reason || "No reason given", voidedAt: Date.now() })
     .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)));
   await returnStockForOrder(restaurantId, order, { byName, note: reason || null });
-  if (order.tableId) await freeTableIfNoLiveOrders(restaurantId, order.tableId, orderId);
+  await freeOrderTables(restaurantId, order, orderId);
   return true;
 }
 

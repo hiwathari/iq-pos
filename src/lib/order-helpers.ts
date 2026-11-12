@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/db/client";
 import { orderCounters, orders, tables } from "@/db/schema";
 import type { OrderStatus } from "@/lib/types";
@@ -29,6 +29,27 @@ export async function freeTableIfNoLiveOrders(restaurantId: string, tableId: str
     .update(tables)
     .set({ status: "available", seated: 0, seatedAt: null })
     .where(and(eq(tables.id, tableId), eq(tables.restaurantId, restaurantId)));
+}
+
+// Frees every table an order was holding — its own table and any merged into it — except those
+// another live order still holds. Used when an order is voided or rejected.
+export async function freeOrderTables(
+  restaurantId: string,
+  order: { tableId: string | null; mergedTableNumbers?: number[] | null },
+  excludeOrderId: string
+) {
+  if (order.tableId) await freeTableIfNoLiveOrders(restaurantId, order.tableId, excludeOrderId);
+  const numbers = order.mergedTableNumbers ?? [];
+  if (numbers.length === 0) return;
+  const merged = await db
+    .select({ id: tables.id, number: tables.number })
+    .from(tables)
+    .where(and(eq(tables.restaurantId, restaurantId), inArray(tables.number, numbers)));
+  const live = (await db.select().from(orders).where(and(eq(orders.restaurantId, restaurantId), ne(orders.id, excludeOrderId)))).filter(isOrderLive);
+  for (const t of merged) {
+    const held = live.some((o) => o.tableId === t.id || o.mergedTableNumbers?.includes(t.number));
+    if (!held) await db.update(tables).set({ status: "available", seated: 0, seatedAt: null }).where(and(eq(tables.id, t.id), eq(tables.restaurantId, restaurantId)));
+  }
 }
 
 // Deliberately a plain server-only module (no "use server") — these helpers trust their

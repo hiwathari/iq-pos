@@ -15,7 +15,7 @@ import { getUserPermissions, requireRestaurantContext } from "@/lib/scope";
 import { hasPermission } from "@/lib/permissions";
 import { findActiveCoupon } from "@/lib/data/coupons";
 import { findLoyaltyMemberById } from "@/lib/data/loyalty";
-import { freeTableIfNoLiveOrders, isOrderLive, nextOrderNumber } from "@/lib/order-helpers";
+import { freeOrderTables, freeTableIfNoLiveOrders, isOrderLive, nextOrderNumber } from "@/lib/order-helpers";
 import { businessProfile } from "@/lib/business-profile";
 import { adjustStockForEdit, negativeStockMode, stockShortfalls, stockUsageForItems, takeStockForOrder } from "@/lib/stock";
 
@@ -83,6 +83,9 @@ export interface PlaceOrderInput {
   editingOrderId: string | null;
   tableId: string | null;
   tableNumber: number | null;
+  // Other tables pushed together for this one order (a big party) — only read when a NEW order is
+  // placed; merging into an order that already exists is mergeTableIntoOrderAction.
+  mergedTableIds?: string[];
   guests: number;
   channel: OrderChannel;
   thirdPartyProvider?: ThirdPartyProvider;
@@ -306,6 +309,19 @@ export async function placeOrderAction(rawInput: PlaceOrderInput): Promise<Place
     );
     if (isDuplicate) return;
 
+    // Tables merged into this new order: they must exist and not already be held by a live order.
+    let mergedTables: { id: string; number: number }[] = [];
+    const mergeIds = [...new Set(input.mergedTableIds ?? [])].filter((id) => id && id !== input.tableId);
+    if (input.tableId && mergeIds.length > 0) {
+      mergedTables = await db
+        .select({ id: tables.id, number: tables.number })
+        .from(tables)
+        .where(and(eq(tables.restaurantId, restaurantId), inArray(tables.id, mergeIds)));
+      const liveOrders = (await db.select().from(orders).where(eq(orders.restaurantId, restaurantId))).filter(isOrderLive);
+      const clash = mergedTables.find((t) => liveOrders.some((o) => o.tableId === t.id || o.mergedTableNumbers?.includes(t.number)));
+      if (clash) return { error: `Table ${clash.number} already has an open order — pick another table to merge.` };
+    }
+
     newOrderNumber = await nextOrderNumber(restaurantId);
     newOrderId = crypto.randomUUID();
 
@@ -330,6 +346,7 @@ export async function placeOrderAction(rawInput: PlaceOrderInput): Promise<Place
       orderNumber: newOrderNumber,
       tableId: input.tableId,
       tableNumber: input.tableNumber,
+      mergedTableNumbers: mergedTables.length ? mergedTables.map((t) => t.number) : null,
       guests: input.guests,
       channel: input.channel,
       thirdPartyProvider: input.channel === "Third Party" ? input.thirdPartyProvider : null,
@@ -358,6 +375,12 @@ export async function placeOrderAction(rawInput: PlaceOrderInput): Promise<Place
         .update(tables)
         .set({ status: "on-dine", seated: input.guests, seatedAt: Date.now() })
         .where(and(eq(tables.id, input.tableId), eq(tables.restaurantId, restaurantId)));
+    }
+    if (mergedTables.length > 0) {
+      await db
+        .update(tables)
+        .set({ status: "on-dine", seatedAt: Date.now() })
+        .where(and(eq(tables.restaurantId, restaurantId), inArray(tables.id, mergedTables.map((t) => t.id))));
     }
 
     await takeStockForOrder(restaurantId, newOrderId, input.items, session.name);
@@ -544,9 +567,9 @@ export async function rejectOnlineOrderAction(orderId: string): Promise<{ error?
     .update(orders)
     .set({ status: "Voided", voidReason: "Online order not accepted", voidedAt: Date.now() })
     .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId), eq(orders.status, "Pending")))
-    .returning({ tableId: orders.tableId });
+    .returning({ tableId: orders.tableId, mergedTableNumbers: orders.mergedTableNumbers });
   if (rejected.length === 0) return { error: "Someone already handled this order." };
-  if (rejected[0].tableId) await freeTableIfNoLiveOrders(restaurantId, rejected[0].tableId, orderId);
+  await freeOrderTables(restaurantId, rejected[0], orderId);
   revalidatePath("/order-line");
   revalidatePath("/manage-table");
   revalidatePath("/dashboard");
