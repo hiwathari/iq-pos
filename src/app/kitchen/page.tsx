@@ -32,7 +32,7 @@ export default async function KitchenPage() {
   for (const item of stockItems) if (item.dishId && !item.variantId) stockCounts[item.dishId] = { qty: item.quantity, unit: item.unit };
 
   return (
-    <AppShell title="Kitchen Display">
+    <AppShell title="Kitchen Display" till>
       <KitchenClient
         orders={orders}
         categories={categories}

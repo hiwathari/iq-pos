@@ -17,10 +17,13 @@ export async function AppShell({
   children,
   title,
   headerExtra,
+  till = false,
 }: {
   children: React.ReactNode;
   title?: string;
   headerExtra?: React.ReactNode;
+  // The Till and Kitchen Display pass true: they follow the restaurant's Till dark mode setting.
+  till?: boolean;
 }) {
   const session = await getSession();
   if (!session) return null;
@@ -37,6 +40,7 @@ export async function AppShell({
         label={label}
         brandColor={restaurant?.brandColor}
         headerExtra={headerExtra}
+        dark={till && !!restaurant?.tillDarkMode}
       >
         {children}
       </LockedShell>
@@ -56,7 +60,7 @@ export async function AppShell({
     restaurant && profile.features.kitchenDisplay ? hasKitchenDisplay(await listPrinters(restaurant.id)) : false;
 
   return (
-    <div className="flex h-dvh w-full overflow-hidden bg-neutral-50" style={brandCssVars(restaurant?.brandColor)}>
+    <div className={`flex h-dvh w-full overflow-hidden bg-neutral-50 ${till && restaurant?.tillDarkMode ? "till-dark" : ""}`} style={brandCssVars(restaurant?.brandColor)}>
       <Sidebar
         role={session.role}
         name={session.name}

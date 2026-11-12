@@ -246,6 +246,16 @@ export async function updateNegativeStockAction(mode: "allow" | "warn" | "block"
   revalidatePath("/inventory");
 }
 
+// Dark mode for the Till and Kitchen Display — the restaurant admin's choice, same for every device.
+export async function updateTillDarkModeAction(enabled: boolean) {
+  const { session, restaurantId } = await requireRestaurantContext();
+  await assertPermission(session, "settings");
+  await db.update(restaurants).set({ tillDarkMode: !!enabled }).where(eq(restaurants.id, restaurantId));
+  revalidatePath("/settings");
+  revalidatePath("/order-line");
+  revalidatePath("/kitchen");
+}
+
 export async function updateRestaurantTaxEnabledAction(enabled: boolean) {
   const { session, restaurantId } = await requireRestaurantContext();
   await assertPermission(session, "settings");

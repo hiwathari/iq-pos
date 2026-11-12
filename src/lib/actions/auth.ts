@@ -4,7 +4,8 @@ import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db/client";
 import { users } from "@/db/schema";
-import { createSession, destroySession, getSession, verifyPassword } from "@/lib/auth";
+import { createSession, destroySession, getSession, rememberDeviceRestaurant, verifyPassword } from "@/lib/auth";
+import { requireRestaurantContext } from "@/lib/scope";
 
 export interface LoginState {
   error?: string;
@@ -53,4 +54,16 @@ export async function logoutAction() {
   if (session?.role === "till") redirect("/till-login");
   if (session?.role === "kitchen_display") redirect("/kitchen-login");
   redirect("/login");
+}
+
+// From the admin's Dashboard: turns the device you are on into a PIN-login screen for the Till or the
+// Kitchen Display. The restaurant is remembered on the device (so the PIN screen shows its name and
+// logo, and a staff PIN finds the right restaurant) and the admin's password session is closed, so
+// staff only ever see the PIN pad. Admin only.
+export async function startDeviceLoginAction(kind: "till" | "kitchen") {
+  const { session, restaurantId } = await requireRestaurantContext();
+  if (session.role !== "admin") return;
+  await rememberDeviceRestaurant(restaurantId);
+  await destroySession();
+  redirect(kind === "till" ? "/till-login" : "/kitchen-login");
 }

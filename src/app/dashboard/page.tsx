@@ -16,6 +16,7 @@ import { formatMoney, formatOrderTimestamp, isOffTerminalTender, orderTotal, shi
 import { DashboardCharts } from "./dashboard-charts";
 import { EndShiftButton } from "./end-shift-button";
 import { OpenTillButton } from "./open-till-button";
+import { DeviceLogins } from "./device-logins";
 import { AutoVoidNotice } from "./auto-void-notice";
 import { AUTO_VOID_REASON } from "@/lib/order-helpers";
 import {
@@ -184,6 +185,8 @@ export default async function DashboardPage() {
         </div>
 
         <AutoVoidNotice orders={carriedOverOrders} />
+
+        {session.role === "admin" && <DeviceLogins showKitchen={profile.features.kitchenDisplay} />}
 
         <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
           <StatCard icon={DollarSign} label="Today's Sale" value={formatMoney(todaySales, currencySymbol)} tint="bg-teal-50 text-teal-600" />

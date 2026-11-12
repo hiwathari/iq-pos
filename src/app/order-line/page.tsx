@@ -109,7 +109,7 @@ export default async function OrderLinePage() {
   const today = { cash: todaySales.cash - todayRefunds.cash, card: todaySales.card - todayRefunds.card };
 
   return (
-    <AppShell title="Till" headerExtra={<TodaySales cash={today.cash} card={today.card} currencySymbol={currencySymbol} />}>
+    <AppShell title="Till" till headerExtra={<TodaySales cash={today.cash} card={today.card} currencySymbol={currencySymbol} />}>
       <FloorIconsProvider icons={floorIcons}>
       <TillModeSwitcher
         categories={categories}

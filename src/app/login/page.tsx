@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { BrandLogo } from "@/components/brand-logo";
 import { getRememberedDeviceRestaurantId } from "@/lib/auth";
 import { getRestaurant } from "@/lib/data/restaurants";
@@ -16,30 +15,10 @@ export default async function LoginPage() {
         </div>
         <div className="rounded-2xl border border-neutral-200 bg-white p-7 shadow-sm">
           <h1 className="mb-1 text-lg font-semibold text-neutral-900">Sign in</h1>
-          <p className="mb-6 text-sm text-neutral-500">Multi-restaurant point of sale platform.</p>
+          <p className="mb-6 text-sm text-neutral-500">Enter your username and password.</p>
           <LoginForm />
         </div>
 
-        <div className="mt-5 flex flex-wrap gap-3 text-center text-xs">
-          <Link
-            href="/staff-login"
-            className="flex-1 rounded-xl border border-neutral-200 bg-white py-2.5 font-medium text-neutral-500 hover:bg-neutral-50"
-          >
-            Staff? Enter PIN →
-          </Link>
-          <Link
-            href="/till-login"
-            className="flex-1 rounded-xl border border-neutral-200 bg-white py-2.5 font-medium text-neutral-500 hover:bg-neutral-50"
-          >
-            Till device? Enter PIN →
-          </Link>
-          <Link
-            href="/kitchen-login"
-            className="flex-1 rounded-xl border border-neutral-200 bg-white py-2.5 font-medium text-neutral-500 hover:bg-neutral-50"
-          >
-            Kitchen screen? Enter PIN →
-          </Link>
-        </div>
       </div>
     </div>
   );

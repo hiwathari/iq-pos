@@ -50,3 +50,65 @@ body {
     @apply w-full rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5 text-[15px] text-white placeholder:text-white/25 focus:border-teal-300/60 focus:bg-white/[0.05] focus:outline-none;
   }
 }
+
+/* ---------------------------------------------------------------------------------------------
+   Till dark mode (Settings → Till dark mode). Applied as `.till-dark` on the Till / Kitchen
+   Display shell only. Tailwind's colour utilities read the --color-* variables at use time, so
+   redefining the neutral scale and the light tints inside this class re-colours every existing
+   screen without touching a single component. bg-white and the dark/bold text colours are set by
+   class because text-white (on brand buttons) shares a variable with bg-white and must stay white.
+--------------------------------------------------------------------------------------------- */
+.till-dark {
+  color-scheme: dark;
+  color: #f2f4f7;
+  --dk-surface: #181b20;
+  --dk-field: #1b1e24;
+
+  --color-neutral-50: #101216;
+  --color-neutral-100: #1b1e24;
+  --color-neutral-200: #2a2e36;
+  --color-neutral-300: #3a3f49;
+  --color-neutral-400: #7d8593;
+  --color-neutral-500: #9ba3b0;
+  --color-neutral-600: #b3bac6;
+  --color-neutral-700: #cdd2db;
+  --color-neutral-800: #e3e6eb;
+  --color-neutral-900: #f2f4f7;
+  --color-neutral-950: #ffffff;
+
+  --color-rose-50: #2b1216;  --color-rose-100: #3d1a20;  --color-rose-200: #5a2630;  --color-rose-300: #7a3442;
+  --color-red-50: #2b1216;   --color-red-100: #3d1a20;   --color-red-200: #5a2630;   --color-red-300: #7a3442;
+  --color-amber-50: #2b2110; --color-amber-100: #3d2f14; --color-amber-200: #5a4519; --color-amber-300: #7a5d22;
+  --color-yellow-50: #2b2110;--color-yellow-100: #3d2f14;--color-yellow-200: #5a4519;--color-yellow-300: #7a5d22;
+  --color-emerald-50: #0f2a20; --color-emerald-100: #143d2d; --color-emerald-200: #1d5a42; --color-emerald-300: #2a7a5a;
+  --color-green-50: #0f2a20; --color-green-100: #143d2d; --color-green-200: #1d5a42; --color-green-300: #2a7a5a;
+  --color-teal-50: #0d2a28;  --color-teal-100: #12403c;  --color-teal-200: #1b5b55;  --color-teal-300: #2c8077;
+  --color-orange-50: #2b1a0e;--color-orange-100: #3d2512;--color-orange-200: #5a3718;--color-orange-300: #7a4c20;
+  --color-indigo-50: #171a33;--color-indigo-100: #20254d;--color-indigo-200: #2e3570;--color-indigo-300: #414b99;
+  --color-purple-50: #25173a;--color-purple-100: #331f50;--color-purple-200: #4a2f75;--color-purple-300: #634098;
+  --color-blue-50: #0f2236;  --color-blue-100: #14324f;  --color-blue-200: #1d4a73;  --color-blue-300: #2a6399;
+  --color-sky-50: #0f2236;   --color-sky-100: #14324f;   --color-sky-200: #1d4a73;   --color-sky-300: #2a6399;
+}
+.till-dark .bg-white,
+.till-dark .hover\:bg-white:hover { background-color: var(--dk-surface); }
+.till-dark .border-white { border-color: var(--dk-surface); }
+/* Elements that are dark in the light theme stay dark (toasts, badges). */
+.till-dark .bg-neutral-900,
+.till-dark .bg-neutral-800,
+.till-dark .bg-neutral-950 { background-color: #05060a; }
+.till-dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+.till-dark select,
+.till-dark textarea { background-color: var(--dk-field); color: #f2f4f7; }
+.till-dark input::placeholder,
+.till-dark textarea::placeholder { color: #7d8593; }
+.till-dark ::-webkit-scrollbar-thumb { background-color: #3a3f49; }
+/* Coloured text that is dark in the light theme becomes light. */
+.till-dark .text-\[var\(--brand-dark\)\] { color: color-mix(in srgb, var(--brand) 55%, white); }
+.till-dark :is(.text-rose-400, .text-rose-500, .text-rose-600, .text-rose-700, .text-rose-800, .text-red-500, .text-red-600, .text-red-700) { color: #fda4af; }
+.till-dark :is(.text-amber-500, .text-amber-600, .text-amber-700, .text-amber-800, .text-yellow-700) { color: #fcd34d; }
+.till-dark :is(.text-emerald-600, .text-emerald-700, .text-emerald-800, .text-green-600, .text-green-700) { color: #6ee7b7; }
+.till-dark :is(.text-teal-500, .text-teal-600, .text-teal-700, .text-teal-800) { color: #5eead4; }
+.till-dark :is(.text-orange-600, .text-orange-700) { color: #fdba74; }
+.till-dark :is(.text-indigo-600, .text-indigo-700) { color: #a5b4fc; }
+.till-dark :is(.text-purple-600, .text-purple-700) { color: #d8b4fe; }
+.till-dark :is(.text-blue-500, .text-blue-700, .text-sky-600, .text-sky-700) { color: #93c5fd; }

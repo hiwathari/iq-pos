@@ -12,7 +12,7 @@ export function LoginForm() {
   return (
     <form action={formAction} className="space-y-4">
       <div>
-        <label className="mb-1.5 block text-xs font-medium text-neutral-500">Email</label>
+        <label className="mb-1.5 block text-xs font-medium text-neutral-500">Username (your email)</label>
         <div className="relative">
           <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
           <input
@@ -20,7 +20,7 @@ export function LoginForm() {
             type="email"
             required
             autoComplete="email"
-            placeholder="you@restaurant.com"
+            placeholder="you@restaurant.com" aria-label="Username"
             className="w-full rounded-xl border border-neutral-200 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
           />
         </div>

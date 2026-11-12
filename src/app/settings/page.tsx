@@ -43,6 +43,7 @@ export default async function SettingsPage() {
           currencySymbol={restaurant?.currencySymbol ?? "£"}
           kitchenTimerLimitMinutes={restaurant?.kitchenTimerLimitMinutes ?? 30}
           taxEnabled={restaurant?.taxEnabled ?? false}
+          tillDarkMode={restaurant?.tillDarkMode ?? false}
           openTime={restaurant?.openTime ?? null}
           closeTime={restaurant?.closeTime ?? null}
           timezone={restaurant?.timezone ?? "UTC"}
