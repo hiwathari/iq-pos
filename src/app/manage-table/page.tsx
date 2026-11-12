@@ -1,7 +1,8 @@
 import { AppShell } from "@/components/app-shell";
 import { requirePermission } from "@/lib/scope";
 import { listReservations, listTables } from "@/lib/data/tables";
-import { listFloors } from "@/lib/data/floors";
+import { listFloors, listFloorIcons } from "@/lib/data/floors";
+import { FloorIconsProvider } from "@/components/floor-icons";
 import { getRestaurant } from "@/lib/data/restaurants";
 import { tableQrToken } from "@/lib/table-qr-token";
 import { ManageTableClient } from "./manage-table-client";
@@ -9,11 +10,12 @@ import { ManageTableClient } from "./manage-table-client";
 export default async function ManageTablePage() {
   const { session, restaurantId } = await requirePermission("manage-table");
 
-  const [tables, reservations, restaurant, floors] = await Promise.all([
+  const [tables, reservations, restaurant, floors, floorIcons] = await Promise.all([
     listTables(restaurantId),
     listReservations(restaurantId),
     getRestaurant(restaurantId),
     listFloors(restaurantId),
+    listFloorIcons(restaurantId),
   ]);
 
   // Each table's signed QR path (see lib/table-qr-token.ts) — signed here on the server, since the
@@ -23,6 +25,7 @@ export default async function ManageTablePage() {
 
   return (
     <AppShell title="Manage Table">
+      <FloorIconsProvider icons={floorIcons}>
       <ManageTableClient
         tables={tables}
         floors={floors}
@@ -32,6 +35,7 @@ export default async function ManageTablePage() {
         tableQrPaths={tableQrPaths}
         qrTableOrderingEnabled={Boolean(restaurant?.onlineOrderingEnabled && restaurant?.qrTableOrderingEnabled)}
       />
+      </FloorIconsProvider>
     </AppShell>
   );
 }

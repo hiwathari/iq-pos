@@ -18,3 +18,11 @@ export async function listFloors(restaurantId: string): Promise<string[]> {
   for (const u of used) if (!names.includes(u.area)) names.push(u.area);
   return names;
 }
+
+// Each floor's chosen icon (a value in the format of lib/icon-value.ts), by floor name.
+export async function listFloorIcons(restaurantId: string): Promise<Record<string, string>> {
+  const rows = await db.select({ name: floors.name, icon: floors.icon }).from(floors).where(eq(floors.restaurantId, restaurantId));
+  const out: Record<string, string> = {};
+  for (const r of rows) if (r.icon) out[r.name] = r.icon;
+  return out;
+}

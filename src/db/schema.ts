@@ -318,6 +318,8 @@ export const floors = sqliteTable(
       .references(() => restaurants.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     sort: int("sort").notNull().default(0),
+    // Icon shown on the floor's tab (same value format as categories.icon — see lib/icon-value.ts).
+    icon: text("icon"),
     createdAt: timestamp("created_at"),
   },
   (table) => [uniqueIndex("floors_restaurant_name_idx").on(table.restaurantId, table.name)]

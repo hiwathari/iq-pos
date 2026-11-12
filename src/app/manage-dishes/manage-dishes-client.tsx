@@ -4,6 +4,7 @@ import type { VariantDetail } from "@/lib/data/menu";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CategoryIconView } from "@/components/category-icon";
+import { IconPicker } from "@/components/icon-picker";
 import { DishModal } from "@/components/dish-modal";
 import type { Category, CategoryDisplayOverride, Dish, InventoryItem, Printer, PrinterStation } from "@/lib/types";
 import { priceLabel } from "@/lib/units";
@@ -554,12 +555,15 @@ function CategoryModal({
   // before this field existed — only an explicit choice here (a station, or "None") overrides it.
   const [kitchenDisplayStation, setKitchenDisplayStation] = useState<string>(category?.kitchenDisplayStation ?? "auto");
   const [taxRatePercent, setTaxRatePercent] = useState(String(category?.taxRatePercent ?? 20));
+  // Only an icon the admin chose is stored in the "lucide:/emoji:/img:" format; an older category
+  // still on its built-in icon shows as "none chosen" (the Till then picks one from its name).
+  const [icon, setIcon] = useState(category && /^(lucide|emoji|img):/.test(category.icon) ? category.icon : "");
 
   const canSave = name.trim().length > 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+      <div className="max-h-[92vh] w-full max-w-sm overflow-y-auto rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-neutral-900">{category ? "Edit" : "Add New"} Category</h2>
           <button onClick={onClose} className="rounded-full p-1 text-neutral-400 hover:bg-neutral-100">
@@ -576,6 +580,11 @@ function CategoryModal({
               autoFocus
               className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
             />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-neutral-500">Icon</label>
+            <IconPicker value={icon} onChange={setIcon} nameHint={name} />
+            <p className="mt-1 text-xs text-neutral-400">Shown on this category&apos;s button on the Till. Pick an icon, an emoji or upload a photo — or leave it and one is chosen from the name.</p>
           </div>
           <div>
             <label className="mb-1.5 block text-xs font-medium text-neutral-500">Kitchen Printer</label>
@@ -650,6 +659,7 @@ function CategoryModal({
               canSave &&
               onSave({
                 name: name.trim(),
+                icon,
                 printerId: printerId || null,
                 kitchenDisplayStation: kitchenDisplayStation === "auto" ? null : (kitchenDisplayStation as CategoryDisplayOverride),
                 taxRatePercent: Math.max(0, Math.min(100, Number(taxRatePercent) || 0)),

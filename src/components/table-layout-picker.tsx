@@ -1,5 +1,6 @@
 "use client";
 
+import { FloorLabel } from "@/components/floor-icons";
 import { useMemo, useState } from "react";
 import { Armchair, Users, X } from "lucide-react";
 import type { RestaurantTable, TableArea } from "@/lib/types";
@@ -62,7 +63,7 @@ export function TableLayoutPicker({
                 area === a ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-white"
               }`}
             >
-              {a}
+              <FloorLabel name={a} />
             </button>
           ))}
         </div>

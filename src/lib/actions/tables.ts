@@ -3,6 +3,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
+import { cleanIconValue } from "@/lib/icon-value";
 import { floors, reservations, tables } from "@/db/schema";
 import { DEFAULT_FLOOR, listFloors } from "@/lib/data/floors";
 import type { ReservationSource, TableArea, TableStatus } from "@/lib/types";
@@ -47,14 +48,29 @@ export interface FloorActionState {
   error?: string;
 }
 
-export async function createFloorAction(name: string): Promise<FloorActionState> {
+export async function createFloorAction(name: string, icon?: string | null): Promise<FloorActionState> {
   const { session, restaurantId } = await requireRestaurantContext();
   if (session.role === "staff" || session.role === "accounts") return { error: "Only the restaurant admin can add floors." };
   const clean = String(name ?? "").trim().replace(/\s+/g, " ").slice(0, 40);
   if (!clean) return { error: "Enter a name for the floor." };
   const existing = await listFloors(restaurantId);
   if (existing.some((f) => f.toLowerCase() === clean.toLowerCase())) return { error: `There is already a floor called ${existing.find((f) => f.toLowerCase() === clean.toLowerCase())}.` };
-  await db.insert(floors).values({ restaurantId, name: clean, sort: existing.length });
+  await db.insert(floors).values({ restaurantId, name: clean, sort: existing.length, icon: cleanIconValue(icon) });
+  revalidatePath("/manage-table");
+  revalidatePath("/order-line");
+  return {};
+}
+
+// Changes (or clears) the icon on a floor's tab. Admin only, like adding and deleting floors.
+export async function setFloorIconAction(name: string, icon: string | null): Promise<FloorActionState> {
+  const { session, restaurantId } = await requireRestaurantContext();
+  if (session.role === "staff" || session.role === "accounts") return { error: "Only the restaurant admin can change a floor's icon." };
+  const existing = await listFloors(restaurantId);
+  if (!existing.includes(name)) return { error: "That floor no longer exists." };
+  const value = cleanIconValue(icon);
+  const updated = await db.update(floors).set({ icon: value }).where(and(eq(floors.restaurantId, restaurantId), eq(floors.name, name))).returning({ id: floors.id });
+  // A floor only known from its tables has no row yet — make one so the icon has somewhere to live.
+  if (updated.length === 0) await db.insert(floors).values({ restaurantId, name, sort: existing.indexOf(name), icon: value }).onConflictDoNothing();
   revalidatePath("/manage-table");
   revalidatePath("/order-line");
   return {};

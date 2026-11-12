@@ -8,6 +8,7 @@ import {
   setTableStatusAction,
   createReservationAction,
   createFloorAction,
+  setFloorIconAction,
   createTableAction,
   deleteFloorAction,
   deleteTableAction,
@@ -31,7 +32,10 @@ import {
   Download,
   Printer,
   AlertTriangle,
+  Shapes,
 } from "lucide-react";
+import { FloorLabel, useFloorIcons } from "@/components/floor-icons";
+import { IconPicker } from "@/components/icon-picker";
 import { downloadDataUrl, printTableQrCards, tableQrCardDataUrl } from "@/lib/table-qr";
 
 const STATUS_META: Record<TableStatus, { label: string; dot: string; card: string; text: string }> = {
@@ -76,8 +80,8 @@ export function ManageTableClient({
   // If the chosen floor was just deleted, fall back to the first one.
   const area = floors.includes(chosenArea) ? chosenArea : (floors[0] ?? "Ground Floor");
   const [floorError, setFloorError] = useState<string | null>(null);
-  const [addingFloor, setAddingFloor] = useState(false);
-  const [newFloor, setNewFloor] = useState("");
+  const [floorModal, setFloorModal] = useState<{ mode: "add" } | { mode: "icon"; name: string } | null>(null);
+  const floorIcons = useFloorIcons();
   const [query, setQuery] = useState("");
   const [resFilter, setResFilter] = useState<"All" | "Reservation" | "On Dine">("All");
   const [openTableId, setOpenTableId] = useState<string | null>(null);
@@ -117,19 +121,16 @@ export function ManageTableClient({
     setReservationModalOpen(false);
   }
 
-  function addFloor() {
-    const name = newFloor.trim();
-    if (!name) return;
+  function saveFloor(name: string, icon: string, existing?: string) {
     startTransition(async () => {
-      const res = await createFloorAction(name);
+      const res = existing ? await setFloorIconAction(existing, icon || null) : await createFloorAction(name, icon || null);
       if (res.error) {
         setFloorError(res.error);
         return;
       }
       setFloorError(null);
-      setNewFloor("");
-      setAddingFloor(false);
-      setArea(name);
+      setFloorModal(null);
+      if (!existing) setArea(name);
       router.refresh();
     });
   }
@@ -270,48 +271,35 @@ export function ManageTableClient({
                       area === a ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
                     } ${canManageFloors && area === a ? "rounded-l-lg" : "rounded-lg"}`}
                   >
-                    {a}
+                    <FloorLabel name={a} />
                   </button>
                   {canManageFloors && area === a && (
-                    <button
-                      onClick={() => removeFloor(a)}
-                      title={`Delete ${a}`}
-                      aria-label={`Delete floor ${a}`}
-                      className="flex h-9 w-8 items-center justify-center rounded-r-lg bg-[var(--brand)] text-white/80 hover:text-white"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
+                    <>
+                      <button
+                        onClick={() => setFloorModal({ mode: "icon", name: a })}
+                        title={`Change the icon of ${a}`}
+                        aria-label={`Change icon of floor ${a}`}
+                        className="flex h-9 w-8 items-center justify-center bg-[var(--brand)] text-white/80 hover:text-white"
+                      >
+                        <Shapes className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => removeFloor(a)}
+                        title={`Delete ${a}`}
+                        aria-label={`Delete floor ${a}`}
+                        className="flex h-9 w-8 items-center justify-center rounded-r-lg bg-[var(--brand)] text-white/80 hover:text-white"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </>
                   )}
                 </span>
               ))}
-              {canManageFloors &&
-                (addingFloor ? (
-                  <span className="flex items-center gap-1 pl-1">
-                    <input
-                      autoFocus
-                      value={newFloor}
-                      onChange={(e) => setNewFloor(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") addFloor();
-                        if (e.key === "Escape") setAddingFloor(false);
-                      }}
-                      maxLength={40}
-                      placeholder="Floor name"
-                      aria-label="New floor name"
-                      className="w-32 rounded-lg border border-neutral-200 px-2.5 py-1.5 text-sm outline-none focus:border-teal-500"
-                    />
-                    <button onClick={addFloor} disabled={!newFloor.trim()} className="rounded-lg bg-[var(--brand)] px-2.5 py-1.5 text-sm font-semibold text-white disabled:opacity-40">
-                      Add
-                    </button>
-                    <button onClick={() => { setAddingFloor(false); setNewFloor(""); setFloorError(null); }} aria-label="Cancel" className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100">
-                      <X className="h-4 w-4" />
-                    </button>
-                  </span>
-                ) : (
-                  <button onClick={() => setAddingFloor(true)} className="flex items-center gap-1 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-neutral-500 hover:bg-neutral-50">
-                    <Plus className="h-4 w-4" /> Add floor
-                  </button>
-                ))}
+              {canManageFloors && (
+                <button onClick={() => setFloorModal({ mode: "add" })} className="flex items-center gap-1 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-neutral-500 hover:bg-neutral-50">
+                  <Plus className="h-4 w-4" /> Add floor
+                </button>
+              )}
             </div>
             {tables.some((t) => t.status !== "available") && (
               <button
@@ -461,6 +449,19 @@ export function ManageTableClient({
 
       {reservationModalOpen && (
         <AddReservationModal onClose={() => setReservationModalOpen(false)} tables={tables} onSave={handleAddReservation} />
+      )}
+      {floorModal && (
+        <FloorModal
+          key={floorModal.mode === "icon" ? floorModal.name : "new"}
+          existing={floorModal.mode === "icon" ? floorModal.name : undefined}
+          initialIcon={floorModal.mode === "icon" ? (floorIcons[floorModal.name] ?? "") : ""}
+          error={floorError}
+          onClose={() => {
+            setFloorModal(null);
+            setFloorError(null);
+          }}
+          onSave={saveFloor}
+        />
       )}
       {addTableModalOpen && <AddTableModal onClose={() => setAddTableModalOpen(false)} defaultArea={area} floors={floors} />}
       {qrForTable && (
@@ -892,6 +893,74 @@ function AddReservationModal({
             className="flex-1 rounded-xl bg-[var(--brand)] py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             Save Reservation
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Adds a floor (name + icon) or, for an existing floor, changes its icon.
+function FloorModal({
+  existing,
+  initialIcon,
+  error,
+  onClose,
+  onSave,
+}: {
+  existing?: string;
+  initialIcon: string;
+  error: string | null;
+  onClose: () => void;
+  onSave: (name: string, icon: string, existing?: string) => void;
+}) {
+  const [name, setName] = useState(existing ?? "");
+  const [icon, setIcon] = useState(initialIcon);
+  const canSave = existing ? true : name.trim().length > 0;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
+      <div className="max-h-[92vh] w-full max-w-sm overflow-y-auto rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-neutral-900">{existing ? `Icon for ${existing}` : "Add floor"}</h2>
+          <button onClick={onClose} aria-label="Close" className="rounded-full p-1 text-neutral-400 hover:bg-neutral-100">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="space-y-4">
+          {!existing && (
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-neutral-500">Floor name</label>
+              <input
+                autoFocus
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && canSave) onSave(name.trim(), icon);
+                }}
+                maxLength={40}
+                placeholder="e.g. Rooftop"
+                aria-label="New floor name"
+                className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+              />
+            </div>
+          )}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-neutral-500">Icon</label>
+            <IconPicker value={icon} onChange={setIcon} nameHint={name} />
+            <p className="mt-1 text-xs text-neutral-400">Shown on this floor&apos;s tab here and on the Till. Pick an icon, an emoji or upload a photo.</p>
+          </div>
+          {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-medium text-rose-600">{error}</p>}
+        </div>
+        <div className="mt-5 flex gap-3">
+          <button onClick={onClose} className="flex-1 rounded-xl border border-neutral-200 py-2.5 text-sm font-medium text-neutral-600 hover:bg-neutral-50">
+            Cancel
+          </button>
+          <button
+            disabled={!canSave}
+            onClick={() => canSave && onSave(name.trim(), icon, existing)}
+            className="flex-1 rounded-xl bg-[var(--brand)] py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {existing ? "Save icon" : "Add floor"}
           </button>
         </div>
       </div>

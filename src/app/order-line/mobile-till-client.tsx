@@ -1,5 +1,6 @@
 "use client";
 
+import { FloorLabel } from "@/components/floor-icons";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { placeOrderAction, voidOrderAction } from "@/lib/actions/orders";
@@ -487,7 +488,7 @@ export function MobileTillClient({
                   tablesArea === a ? "border-[var(--brand)] bg-[var(--brand)] text-white" : "border-neutral-200 bg-white text-neutral-600"
                 }`}
               >
-                {a}
+                <FloorLabel name={a} />
               </button>
             ))}
           </div>
@@ -583,12 +584,17 @@ export function MobileTillClient({
                       dish.outOfStock ? "opacity-60" : qty > 0 ? "border-teal-400 ring-1 ring-teal-100" : "border-neutral-200"
                     }`}
                   >
-                    <div
-                      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-xl"
-                      style={{ backgroundColor: dish.color }}
-                    >
-                      {dish.emoji}
-                    </div>
+                    {dish.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={dish.imageUrl} alt={dish.name} className="h-12 w-12 shrink-0 rounded-full object-cover" />
+                    ) : (
+                      <div
+                        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-xl"
+                        style={{ backgroundColor: dish.color }}
+                      >
+                        {dish.emoji}
+                      </div>
+                    )}
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-semibold text-neutral-900">{dish.name}</div>
                       <div className="text-sm text-neutral-500">

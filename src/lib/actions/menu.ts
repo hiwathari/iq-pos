@@ -7,6 +7,7 @@ import { categories, dishes, inventoryItems, productBarcodes, restaurants, suppl
 import { assertPermission, requireRestaurantContext } from "@/lib/scope";
 import type { CategoryDisplayOverride } from "@/lib/types";
 import { checkBarcode, makeInternalEan13 } from "@/lib/barcode";
+import { cleanIconValue } from "@/lib/icon-value";
 import { isSellBy, isUnitFor, stockUnitFor, type SellBy } from "@/lib/units";
 import { applyStockChanges } from "@/lib/stock";
 import { saveVariantsForDish, type VariantInput } from "@/lib/variants-server";
@@ -14,6 +15,8 @@ import { cleanOptions, combinations } from "@/lib/variants";
 
 export interface CreateCategoryInput {
   name: string;
+  // Icon in the format of lib/icon-value.ts; "" / null = none chosen (the Till picks one from the name).
+  icon?: string | null;
   printerId: string | null;
   kitchenDisplayStation: CategoryDisplayOverride;
   taxRatePercent: number;
@@ -27,7 +30,7 @@ export async function createCategoryAction(input: CreateCategoryInput) {
     id: crypto.randomUUID(),
     restaurantId,
     name: input.name.trim(),
-    icon: "all",
+    icon: cleanIconValue(input.icon) ?? "all",
     printerId: input.printerId,
     kitchenDisplayStation: input.kitchenDisplayStation,
     taxRatePercent: input.taxRatePercent,
@@ -38,6 +41,8 @@ export async function createCategoryAction(input: CreateCategoryInput) {
 
 export interface UpdateCategoryInput {
   name: string;
+  // Left out = keep the current icon (the Printers panel saves a category without touching it).
+  icon?: string | null;
   printerId: string | null;
   kitchenDisplayStation: CategoryDisplayOverride;
   taxRatePercent: number;
@@ -51,6 +56,7 @@ export async function updateCategoryAction(categoryId: string, input: UpdateCate
     .update(categories)
     .set({
       name: input.name.trim(),
+      ...(input.icon !== undefined ? { icon: cleanIconValue(input.icon) ?? "all" } : {}),
       printerId: input.printerId,
       kitchenDisplayStation: input.kitchenDisplayStation,
       taxRatePercent: input.taxRatePercent,

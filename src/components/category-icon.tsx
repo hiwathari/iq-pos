@@ -26,8 +26,64 @@ import {
   Fish,
   Croissant,
   Cookie,
+  Wine,
+  Beer,
+  Candy,
+  Apple,
+  Carrot,
+  Cherry,
+  Grape,
+  Banana,
+  Wheat,
+  Bean,
+  Nut,
+  Leaf,
+  Flame,
+  ShoppingBasket,
+  ShoppingBag,
+  Tag,
+  Gift,
+  Shirt,
+  Smartphone,
+  Laptop,
+  Headphones,
+  Wrench,
+  Hammer,
+  House,
+  Bath,
+  Sparkles,
+  Baby,
+  Dog,
+  PawPrint,
+  BookOpen,
+  Pen,
+  Heart,
+  Star,
+  Zap,
+  Snowflake,
+  Sun,
+  Armchair,
+  Bed,
+  Building2,
+  TreePine,
+  Umbrella,
+  Sofa,
+  Lamp,
+  Layers,
+  Warehouse,
+  Store,
+  Pill,
+  Music,
+  Gamepad2,
+  Flower2,
+  Bike,
+  Car,
+  Scissors,
+  Droplets,
+  Utensils,
   type LucideIcon,
 } from "lucide-react";
+import { parseIconValue } from "@/lib/icon-value";
 import type { CategoryIcon } from "@/lib/types";
 
 const map: Record<CategoryIcon, LucideIcon> = {
@@ -78,9 +134,114 @@ const NAME_ICONS: [RegExp, LucideIcon][] = [
   [/platter/, Rows3],
 ];
 
+// The icon library the pickers offer (stored as "lucide:<key>"). Keys are lower-case and never change.
+export const ICON_LIBRARY: Record<string, LucideIcon> = {
+  utensils: UtensilsCrossed,
+  fork: Utensils,
+  coffee: Coffee,
+  cup: CupSoda,
+  glass: GlassWater,
+  wine: Wine,
+  beer: Beer,
+  martini: Martini,
+  milk: Milk,
+  citrus: Citrus,
+  icecream: IceCreamCone,
+  cake: CakeSlice,
+  cookie: Cookie,
+  croissant: Croissant,
+  candy: Candy,
+  pizza: Pizza,
+  burger: Hamburger,
+  sandwich: Sandwich,
+  salad: Salad,
+  soup: Soup,
+  egg: EggFried,
+  fish: Fish,
+  drumstick: Drumstick,
+  beef: Beef,
+  popcorn: Popcorn,
+  apple: Apple,
+  carrot: Carrot,
+  cherry: Cherry,
+  grape: Grape,
+  banana: Banana,
+  wheat: Wheat,
+  bean: Bean,
+  nut: Nut,
+  leaf: Leaf,
+  flame: Flame,
+  jar: Amphora,
+  package: Package,
+  basket: ShoppingBasket,
+  bag: ShoppingBag,
+  tag: Tag,
+  gift: Gift,
+  shirt: Shirt,
+  phone: Smartphone,
+  laptop: Laptop,
+  headphones: Headphones,
+  wrench: Wrench,
+  hammer: Hammer,
+  home: House,
+  bath: Bath,
+  sparkles: Sparkles,
+  baby: Baby,
+  dog: Dog,
+  paw: PawPrint,
+  book: BookOpen,
+  pen: Pen,
+  pill: Pill,
+  music: Music,
+  games: Gamepad2,
+  flower: Flower2,
+  bike: Bike,
+  car: Car,
+  scissors: Scissors,
+  drops: Droplets,
+  heart: Heart,
+  star: Star,
+  zap: Zap,
+  snow: Snowflake,
+  sun: Sun,
+  moon: Moon,
+  armchair: Armchair,
+  sofa: Sofa,
+  bed: Bed,
+  lamp: Lamp,
+  building: Building2,
+  tree: TreePine,
+  umbrella: Umbrella,
+  layers: Layers,
+  warehouse: Warehouse,
+  store: Store,
+  grid: LayoutGrid,
+};
+
+// Shows an icon stored in the format of lib/icon-value.ts: a library icon, an emoji or a photo. A
+// category left on its old built-in icon still gets a better one picked from its name (so a menu
+// full of drinks categories isn't all the same cup); anything the admin chose themselves wins.
 export function CategoryIconView({ icon, name, className }: { icon: string; name?: string; className?: string }) {
+  const parsed = parseIconValue(icon);
+  if (parsed.kind === "image") {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={parsed.url} alt="" className={`${className ?? ""} rounded-md object-cover`} />;
+  }
+  if (parsed.kind === "emoji") {
+    return (
+      <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+        <text x="12" y="12.5" fontSize="19" textAnchor="middle" dominantBaseline="central">
+          {parsed.emoji}
+        </text>
+      </svg>
+    );
+  }
+  if (parsed.kind === "lucide") {
+    const Chosen = ICON_LIBRARY[parsed.key] ?? LayoutGrid;
+    return <Chosen className={className} />;
+  }
   const lower = name?.toLowerCase();
   const byName = lower ? NAME_ICONS.find(([re]) => re.test(lower))?.[1] : undefined;
-  const Icon = byName ?? map[icon as CategoryIcon] ?? LayoutGrid;
+  const Icon = byName ?? map[parsed.key as CategoryIcon] ?? LayoutGrid;
   return <Icon className={className} />;
 }

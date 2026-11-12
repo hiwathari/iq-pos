@@ -7,6 +7,7 @@ import { Barcode, ChevronDown, Plus, Trash2, X } from "lucide-react";
 import type { Category, Dish, InventoryItem, Printer } from "@/lib/types";
 import type { DishInput } from "@/lib/actions/menu";
 import { nextInternalBarcodeAction } from "@/lib/actions/menu";
+import { PhotoUpload } from "@/components/icon-picker";
 import { SYMBOLOGY_LABEL, checkBarcode } from "@/lib/barcode";
 import { SELL_BY_OPTIONS, UNITS_BY_SELL_BY, unitPriceLabel, type SellBy } from "@/lib/units";
 
@@ -330,6 +331,39 @@ export function DishModal({
             </button>
           </div>
 
+          {/* Photo and icon — always visible, so every item has one */}
+      <div>
+        <label className={LABEL}>Photo</label>
+        <PhotoUpload url={imageUrl.trim()} onChange={setImageUrl} />
+        <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="…or paste a photo link https://…/photo.jpg" aria-label="Photo link" className={`${INPUT} mt-2`} />
+        <p className="mt-1 text-xs text-neutral-400">Shown instead of the icon below when set.</p>
+      </div>
+
+      <div>
+        <label className={LABEL}>Icon (shown when there is no photo)</label>
+        <div className="grid grid-cols-10 gap-1.5 rounded-xl border border-neutral-200 p-2">
+          {EMOJI_PRESETS.map((e) => (
+            <button
+              key={e}
+              type="button"
+              onClick={() => setEmoji(e)}
+              className={`flex h-7 w-7 items-center justify-center rounded-lg text-base transition-colors ${
+                emoji === e ? "bg-teal-100 ring-2 ring-teal-500" : "hover:bg-neutral-100"
+              }`}
+            >
+              {e}
+            </button>
+          ))}
+        </div>
+        <input
+          value={EMOJI_PRESETS.includes(emoji) ? "" : emoji}
+          onChange={(e) => e.target.value.trim() && setEmoji([...e.target.value.trim()].slice(0, 4).join(""))}
+          placeholder="Or type / paste your own emoji"
+          aria-label="Your own emoji"
+          className={`${INPUT} mt-2`}
+        />
+      </div>
+
           {/* Variants — sizes, colours… (shops) */}
           {isShop && !measured && (
             <VariantsEditor state={variantsState} onChange={setVariantsState} currencySymbol={currencySymbol} basePrice={Number(price) || 0} />
@@ -405,7 +439,7 @@ export function DishModal({
             className="flex w-full items-center justify-between rounded-xl bg-neutral-50 px-3.5 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-100"
             aria-expanded={moreOpen}
           >
-            More details — SKU, cost, VAT, age, photo, printer
+            More details — SKU, cost, VAT, age, printer
             <ChevronDown className={`h-4 w-4 transition-transform ${moreOpen ? "rotate-180" : ""}`} />
           </button>
           {moreOpen && (
@@ -509,30 +543,6 @@ export function DishModal({
                     </div>
                   </div>
                 )}
-              </div>
-
-              <div>
-                <label className={LABEL}>Photo URL (optional)</label>
-                <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://…/photo.jpg" className={INPUT} />
-                <p className="mt-1 text-xs text-neutral-400">Shown instead of the icon below when set.</p>
-              </div>
-
-              <div>
-                <label className={LABEL}>Icon</label>
-                <div className="grid grid-cols-10 gap-1.5 rounded-xl border border-neutral-200 p-2">
-                  {EMOJI_PRESETS.map((e) => (
-                    <button
-                      key={e}
-                      type="button"
-                      onClick={() => setEmoji(e)}
-                      className={`flex h-7 w-7 items-center justify-center rounded-lg text-base transition-colors ${
-                        emoji === e ? "bg-teal-100 ring-2 ring-teal-500" : "hover:bg-neutral-100"
-                      }`}
-                    >
-                      {e}
-                    </button>
-                  ))}
-                </div>
               </div>
 
               {printers.length > 0 && (

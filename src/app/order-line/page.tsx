@@ -11,7 +11,8 @@ import { businessProfile } from "@/lib/business-profile";
 import { listBarcodesByDish } from "@/lib/data/menu";
 import { listRefundsBetween, refundsByTender } from "@/lib/data/refunds";
 import { lastShiftClosedAt } from "@/lib/data/shifts";
-import { listFloors } from "@/lib/data/floors";
+import { listFloors, listFloorIcons } from "@/lib/data/floors";
+import { FloorIconsProvider } from "@/components/floor-icons";
 import { listInventoryItems } from "@/lib/data/inventory";
 import { DEFAULT_EMBEDDED_FORMATS } from "@/lib/barcode";
 import { hasKitchen, salesByTender } from "@/lib/types";
@@ -48,7 +49,7 @@ async function listTradeAccountsIfOn(restaurantId: string) {
 export default async function OrderLinePage() {
   const { session, restaurantId } = await requirePermission("order-line");
 
-  const [categories, dishes, tables, orders, paymentTerminals, printers, restaurant, permissions, barcodesByDish, stockItems, promotions, variantDetails, tradeAccountRows, lastEndDayAt, floors] = await Promise.all([
+  const [categories, dishes, tables, orders, paymentTerminals, printers, restaurant, permissions, barcodesByDish, stockItems, promotions, variantDetails, tradeAccountRows, lastEndDayAt, floors, floorIcons] = await Promise.all([
     listCategories(restaurantId),
     listDishes(restaurantId),
     listTables(restaurantId),
@@ -64,6 +65,7 @@ export default async function OrderLinePage() {
     listTradeAccountsIfOn(restaurantId),
     lastShiftClosedAt(restaurantId),
     listFloors(restaurantId),
+    listFloorIcons(restaurantId),
   ]);
   const variantsByDish: Record<string, { id: string; name: string; price: number | null; qty: number | null; low: number }[]> = {};
   for (const [dishId, list] of Object.entries(variantDetails)) {
@@ -108,6 +110,7 @@ export default async function OrderLinePage() {
 
   return (
     <AppShell title="Till" headerExtra={<TodaySales cash={today.cash} card={today.card} currencySymbol={currencySymbol} />}>
+      <FloorIconsProvider icons={floorIcons}>
       <TillModeSwitcher
         categories={categories}
         dishes={dishes}
@@ -147,6 +150,7 @@ export default async function OrderLinePage() {
         variantsByDish={variantsByDish}
         tradeAccounts={tradeAccountRows.map((a) => ({ id: a.id, companyName: a.companyName, priceTier: a.priceTier, onHold: a.onHold, creditLimit: a.creditLimit, balance: a.balance }))}
       />
+      </FloorIconsProvider>
     </AppShell>
   );
 }

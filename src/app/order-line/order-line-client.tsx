@@ -1,5 +1,6 @@
 "use client";
 
+import { FloorLabel } from "@/components/floor-icons";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type {
@@ -3869,7 +3870,7 @@ function TablesOverview({
               area === a ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
             }`}
           >
-            {a}
+            <FloorLabel name={a} className="h-5 w-5" />
           </button>
         ))}
       </div>
