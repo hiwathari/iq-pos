@@ -19,14 +19,17 @@ import {
   Bike,
   ChevronRight,
   Globe,
+  MessageSquarePlus,
   Minus,
   Plus,
+  Search,
   ShoppingBag,
   ShoppingCart,
   Store,
   Users,
   UtensilsCrossed,
   Wallet,
+  X,
 } from "lucide-react";
 
 const TABLE_AREAS = ["Ground Floor", "1st Floor", "Basement"] as const;
@@ -126,10 +129,25 @@ export function MobileTillClient({
   const [sending, setSending] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
-  const menuDishes = useMemo(
-    () => dishes.filter((d) => menuCategory === "all" || d.categoryId === menuCategory),
-    [dishes, menuCategory]
-  );
+  // Search (the magnifier in the menu header): by name, SKU or barcode; while there is text it
+  // looks across every category.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  // The line whose kitchen note is being typed (lineId, or dishId for a counted line).
+  const [noteFor, setNoteFor] = useState<string | null>(null);
+  const menuDishes = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return dishes.filter((d) => {
+      if (query) {
+        return (
+          d.name.toLowerCase().includes(query) ||
+          (d.sku ?? "").toLowerCase() === query ||
+          (barcodesByDish[d.id] ?? []).some((b) => b.code === query)
+        );
+      }
+      return menuCategory === "all" || d.categoryId === menuCategory;
+    });
+  }, [dishes, menuCategory, search, barcodesByDish]);
   const areaTables = useMemo(() => tables.filter((t) => t.area === tablesArea), [tables, tablesArea]);
 
   const priceFor = (dish: Dish) => {
@@ -143,6 +161,11 @@ export function MobileTillClient({
     const category = categories.find((c) => c.id === dish.categoryId);
     return category?.taxRatePercent ?? 0;
   };
+  // A note for the kitchen on a line ("no onions") — kept on the line itself, so it is sent with
+  // the order and shown on the kitchen ticket.
+  function updateItemNote(key: string, note: string) {
+    setCart((prev) => ({ ...prev, items: prev.items.map((i) => ((i.lineId ?? i.dishId) === key ? { ...i, note: note || undefined } : i)) }));
+  }
   const qtyFor = (dishId: string) => cart.items.find((i) => i.dishId === dishId)?.qty ?? 0;
   // Promotions (step 5.3): totals use the basket priced with every live promotion; the server
   // recomputes the same when the order is sent.
@@ -485,7 +508,36 @@ export function MobileTillClient({
               <span className="text-sm font-semibold text-neutral-700">
                 {cart.tableNumber ? `Table ${cart.tableNumber}` : cart.channel}
               </span>
+              <button
+                onClick={() => {
+                  setSearchOpen((o) => !o);
+                  if (searchOpen) setSearch("");
+                }}
+                aria-label="Search items"
+                title="Search items"
+                className={`flex h-9 w-9 items-center justify-center rounded-full border ${searchOpen || search ? "border-[var(--brand)] bg-[var(--brand)] text-white" : "border-neutral-200 text-neutral-500"}`}
+              >
+                <Search className="h-4 w-4" />
+              </button>
             </div>
+            {searchOpen && (
+              <div className="relative mb-2">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-300" />
+                <input
+                  autoFocus
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search items, SKU or barcode…"
+                  aria-label="Search items"
+                  className="w-full rounded-xl border border-neutral-200 py-2.5 pl-9 pr-9 text-base outline-none focus:border-[var(--brand)]"
+                />
+                {search && (
+                  <button onClick={() => setSearch("")} aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-neutral-400">
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            )}
             <div className="flex gap-2 overflow-x-auto pb-1">
               <CategoryPill active={menuCategory === "all"} label="All" onClick={() => setMenuCategory("all")} />
               {categories.map((c) => (
@@ -499,9 +551,11 @@ export function MobileTillClient({
               {menuDishes.map((dish) => {
                 const qty = qtyFor(dish.id);
                 const price = priceFor(dish);
+                // The counted line of this dish (a note goes on the whole line); weighed items get theirs in Review Order.
+                const line = dish.sellBy === "unit" ? cart.items.find((i) => i.dishId === dish.id && !i.lineId) : undefined;
                 return (
+                  <div key={dish.id}>
                   <div
-                    key={dish.id}
                     className={`flex items-center gap-3 rounded-2xl border bg-white p-3 ${
                       dish.outOfStock ? "opacity-60" : qty > 0 ? "border-teal-400 ring-1 ring-teal-100" : "border-neutral-200"
                     }`}
@@ -539,13 +593,38 @@ export function MobileTillClient({
                         >
                           <Plus className="h-4 w-4" />
                         </button>
+                        {line && (
+                          <button
+                            onClick={() => setNoteFor(noteFor === dish.id ? null : dish.id)}
+                            aria-label={`Add a note to ${dish.name}`}
+                            title="Add a note for the kitchen"
+                            className={`flex h-9 w-9 items-center justify-center rounded-full border ${line.note ? "border-amber-300 bg-amber-50 text-amber-600" : "border-neutral-200 text-neutral-400"}`}
+                          >
+                            <MessageSquarePlus className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
                     )}
+                  </div>
+                  {line?.note && noteFor !== dish.id && <div className="mx-2 mt-1 truncate text-sm italic text-amber-600">↳ {line.note}</div>}
+                  {line && noteFor === dish.id && (
+                    <input
+                      autoFocus
+                      value={line.note ?? ""}
+                      onChange={(e) => updateItemNote(dish.id, e.target.value)}
+                      onBlur={() => setNoteFor(null)}
+                      onKeyDown={(e) => e.key === "Enter" && setNoteFor(null)}
+                      maxLength={120}
+                      placeholder="e.g. no onions, extra spicy…"
+                      aria-label={`Note for ${dish.name}`}
+                      className="mt-1.5 w-full rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-base outline-none focus:border-amber-400"
+                    />
+                  )}
                   </div>
                 );
               })}
               {menuDishes.length === 0 && (
-                <div className="py-16 text-center text-sm text-neutral-400">No dishes in this category.</div>
+                <div className="py-16 text-center text-sm text-neutral-400">{search ? "Nothing matches your search." : "No dishes in this category."}</div>
               )}
             </div>
           </div>
@@ -573,8 +652,11 @@ export function MobileTillClient({
               <p className="py-10 text-center text-sm text-neutral-400">No items yet.</p>
             ) : (
               <div className="mb-5 space-y-2">
-                {pricedItems.map((item) => (
-                  <div key={item.lineId ?? item.dishId} className="flex items-center justify-between rounded-xl border border-neutral-200 bg-white p-3">
+                {pricedItems.map((item) => {
+                  const key = item.lineId ?? item.dishId;
+                  return (
+                  <div key={key} className="rounded-xl border border-neutral-200 bg-white p-3">
+                  <div className="flex items-center justify-between">
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-semibold text-neutral-800">{item.name}</div>
                       {item.promo && (
@@ -587,6 +669,14 @@ export function MobileTillClient({
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setNoteFor(noteFor === key ? null : key)}
+                        aria-label={`Add a note to ${item.name}`}
+                        title="Add a note for the kitchen"
+                        className={`flex h-8 w-8 items-center justify-center rounded-full border ${item.note ? "border-amber-300 bg-amber-50 text-amber-600" : "border-neutral-200 text-neutral-400"}`}
+                      >
+                        <MessageSquarePlus className="h-3.5 w-3.5" />
+                      </button>
                       <button
                         onClick={() => decrementCartItem(item.dishId, item.lineId)}
                         className="flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 text-neutral-500"
@@ -605,7 +695,23 @@ export function MobileTillClient({
                       </button>
                     </div>
                   </div>
-                ))}
+                  {item.note && noteFor !== key && <div className="mt-1 truncate text-sm italic text-amber-600">↳ {item.note}</div>}
+                  {noteFor === key && (
+                    <input
+                      autoFocus
+                      value={item.note ?? ""}
+                      onChange={(e) => updateItemNote(key, e.target.value)}
+                      onBlur={() => setNoteFor(null)}
+                      onKeyDown={(e) => e.key === "Enter" && setNoteFor(null)}
+                      maxLength={120}
+                      placeholder="e.g. no onions, extra spicy…"
+                      aria-label={`Note for ${item.name}`}
+                      className="mt-2 w-full rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-base outline-none focus:border-amber-400"
+                    />
+                  )}
+                  </div>
+                  );
+                })}
               </div>
             )}
 
