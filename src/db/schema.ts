@@ -293,7 +293,8 @@ export const tables = sqliteTable(
       .notNull()
       .references(() => restaurants.id, { onDelete: "cascade" }),
     number: int("number").notNull(),
-    area: text("area", { enum: ["Ground Floor", "1st Floor", "Basement"] }).notNull(),
+    // The floor (see the floors table) — free text, so an admin can add floors of their own.
+    area: text("area").notNull(),
     capacity: int("capacity").notNull(),
     status: text("status", { enum: ["available", "reserved", "on-dine"] })
       .notNull()
@@ -304,6 +305,22 @@ export const tables = sqliteTable(
     seatedAt: int("seated_at"),
   },
   (table) => [uniqueIndex("tables_restaurant_number_idx").on(table.restaurantId, table.number)]
+);
+
+// The floors a restaurant's tables are grouped on ("Ground Floor", "Terrace"…). Admins add and
+// remove them in Manage Table; every restaurant always has at least "Ground Floor".
+export const floors = sqliteTable(
+  "floors",
+  {
+    id: id(),
+    restaurantId: text("restaurant_id")
+      .notNull()
+      .references(() => restaurants.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    sort: int("sort").notNull().default(0),
+    createdAt: timestamp("created_at"),
+  },
+  (table) => [uniqueIndex("floors_restaurant_name_idx").on(table.restaurantId, table.name)]
 );
 
 export const reservations = sqliteTable("reservations", {

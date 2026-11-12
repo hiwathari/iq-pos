@@ -33,8 +33,6 @@ import {
   X,
 } from "lucide-react";
 
-const TABLE_AREAS = ["Ground Floor", "1st Floor", "Basement"] as const;
-
 type Screen = "channel" | "third-party" | "table" | "menu" | "cart";
 
 interface SimpleCart {
@@ -102,6 +100,7 @@ export function MobileTillClient({
   embeddedFormats,
   promotions = [],
   variantsByDish = {},
+  floors = ["Ground Floor"],
 }: {
   categories: Category[];
   dishes: Dish[];
@@ -120,13 +119,15 @@ export function MobileTillClient({
   embeddedFormats: EmbeddedFormat[];
   promotions?: PromotionDef[];
   variantsByDish?: Record<string, unknown[]>;
+  floors?: string[];
 }) {
   const router = useRouter();
   const zoom = useTillZoom();
   const [, startTransition] = useTransition();
   const [screen, setScreen] = useState<Screen>("channel");
   const [cart, setCart] = useState<SimpleCart>(emptyCart);
-  const [tablesArea, setTablesArea] = useState<(typeof TABLE_AREAS)[number]>("Ground Floor");
+  const [tablesAreaChosen, setTablesArea] = useState<string>(floors[0] ?? "Ground Floor");
+  const tablesArea = floors.includes(tablesAreaChosen) ? tablesAreaChosen : (floors[0] ?? "Ground Floor");
   const [menuCategory, setMenuCategory] = useState("all");
   const [sending, setSending] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -478,7 +479,7 @@ export function MobileTillClient({
         <div className="flex flex-1 flex-col p-4">
           <BackHeader label="Pick a Table" onBack={() => setScreen("channel")} />
           <div className="mb-4 mt-3 flex gap-2 overflow-x-auto">
-            {TABLE_AREAS.map((a) => (
+            {floors.map((a) => (
               <button
                 key={a}
                 onClick={() => setTablesArea(a)}

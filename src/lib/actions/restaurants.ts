@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/db/client";
-import { categories, paymentTerminals, printers, restaurants, users } from "@/db/schema";
+import { categories, floors, paymentTerminals, printers, restaurants, users } from "@/db/schema";
 import { hashPassword, setImpersonatedRestaurant } from "@/lib/auth";
 import { assertPermission, assertRestaurantAccess, requireRestaurantContext, requireSession } from "@/lib/scope";
 import { isValidHexColor } from "@/lib/color";
@@ -89,6 +89,9 @@ export async function createRestaurantAction(
     invoiceFooterText: profile.receiptFooter,
     negativeStock: profile.negativeStock,
   });
+
+  // Every restaurant starts with a Ground Floor for its tables (admins add more in Manage Table).
+  await db.insert(floors).values({ restaurantId, name: "Ground Floor", sort: 0 });
 
   const passwordHash = await hashPassword(adminPassword);
   await db.insert(users).values({

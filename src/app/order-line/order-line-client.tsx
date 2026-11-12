@@ -143,7 +143,6 @@ function wasOrderUpdated(o: Order) {
   return !!o.updatedAt && o.status !== "Served" && o.status !== "Voided";
 }
 
-const TABLE_AREAS = ["Ground Floor", "1st Floor", "Basement"] as const;
 
 // An order is fully wrapped up once it's been served AND paid — at that point it no longer
 // needs attention from the Till, so it drops out of the active ticket views (still visible
@@ -307,6 +306,7 @@ export function OrderLineClient({
   canRefund,
   promotions = [],
   lastEndDayAt = null,
+  floors = ["Ground Floor"],
   kitchenPrinters = [],
   printerList,
   variantsByDish = {},
@@ -347,6 +347,7 @@ export function OrderLineClient({
   canRefund: boolean;
   promotions?: PromotionDef[];
   lastEndDayAt?: number | null;
+  floors?: string[];
   kitchenPrinters?: KitchenPrinter[];
   printerList?: PrinterRow[];
   // Active variants (size / colour…) per product, with their own stock (step 5.1).
@@ -377,6 +378,9 @@ export function OrderLineClient({
   const [stockPanelOpen, setStockPanelOpen] = useState(false);
   const [printersPanelOpen, setPrintersPanelOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  // The order view opens on the categories, shown in full; tapping one opens its items. The
+  // Categories button (or the ✕ on the open category) comes back here; All Menu shows every item.
+  const [showCategories, setShowCategories] = useState(true);
   const [scanNotice, setScanNotice] = useState<{ kind: "ok" | "error"; text: string; code?: string } | null>(null);
 
   const [cart, setCart] = useState<CartState>(() => {
@@ -399,7 +403,8 @@ export function OrderLineClient({
   // a previous day's closed-out/voided orders without the list growing unbounded forever.
   const [historyDateStr, setHistoryDateStr] = useState(() => currentBusinessDateKey(openTime, timezone));
   const [queueTab, setQueueTab] = useState<QueueTab>("All");
-  const [tablesArea, setTablesArea] = useState<(typeof TABLE_AREAS)[number]>("Ground Floor");
+  const [tablesAreaChosen, setTablesArea] = useState<string>(floors[0] ?? "Ground Floor");
+  const tablesArea = floors.includes(tablesAreaChosen) ? tablesAreaChosen : (floors[0] ?? "Ground Floor");
   const [menuCategory, setMenuCategory] = useState<string>("all");
   const [menuSearch, setMenuSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -1118,6 +1123,7 @@ export function OrderLineClient({
         }
         setStockNotice(result?.stockWarnings?.length ? { kind: "warn", text: `Sold with stock below zero: ${result.stockWarnings.join(", ")}.` } : null);
         setCart(emptyCart);
+        setShowCategories(true);
         setCouponError(null);
         setLoyaltyError(null);
         setTableEditorOpen(false);
@@ -1345,6 +1351,7 @@ export function OrderLineClient({
     onEditLineQty: openLinePad,
     onRefundClick: canRefund ? () => setRefundOpen(true) : undefined,
     onReprintKitchen: kitchenPrinters.length > 0 ? reprintKitchenTickets : undefined,
+    floors,
     onPriceOverride: canOverridePrice ? (lineId: string) => setPriceOverrideFor(lineId) : undefined,
   };
 
@@ -1383,6 +1390,7 @@ export function OrderLineClient({
             <button
               onClick={() => {
                 setCart(emptyCart);
+                setShowCategories(true);
                 setTableEditorOpen(false);
                 setMobileCartOpen(false);
               }}
@@ -1552,16 +1560,59 @@ export function OrderLineClient({
                     <span className="text-xs font-semibold">Camera</span>
                   </button>
                 )}
-                <div className="-mr-1 flex min-w-0 flex-1 snap-x gap-2.5 overflow-x-auto pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [mask-image:linear-gradient(to_right,black_88%,transparent)]">
-                  <CategoryBox active={menuCategory === "all"} label={channels.includes("Dine in") ? "All Menu" : "All Products"} icon="all" onClick={() => setMenuCategory("all")} />
-                  {categories.map((c) => (
-                    <CategoryBox key={c.id} active={menuCategory === c.id} label={c.name} icon={c.icon} onClick={() => setMenuCategory(c.id)} />
-                  ))}
-                </div>
+                {showCategories ? (
+                  <div className="flex min-w-0 flex-1 items-center px-3 text-base font-semibold text-neutral-400">Choose a category</div>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => setShowCategories(true)}
+                      aria-label="Show all categories"
+                      title="Back to the categories"
+                      className="flex min-h-[76px] w-[108px] shrink-0 flex-col items-center justify-center gap-1 rounded-2xl border-2 border-[var(--brand)] bg-white p-2 text-[var(--brand)] active:scale-[0.97] 2xl:min-h-[92px] 2xl:w-[128px] [&>svg]:size-6"
+                    >
+                      <LayoutGrid className="h-5 w-5" />
+                      <span className="text-sm font-bold leading-tight 2xl:text-base">Categories</span>
+                    </button>
+                    <div className="-mr-1 flex min-w-0 flex-1 snap-x gap-2.5 overflow-x-auto pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [mask-image:linear-gradient(to_right,black_88%,transparent)]">
+                      <CategoryBox active={menuCategory === "all"} label={channels.includes("Dine in") ? "All Menu" : "All Products"} icon="all" onClick={() => setMenuCategory("all")} onClose={() => setShowCategories(true)} />
+                      {categories.map((c) => (
+                        <CategoryBox key={c.id} active={menuCategory === c.id} label={c.name} icon={c.icon} onClick={() => setMenuCategory(c.id)} onClose={() => setShowCategories(true)} />
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
-            {/* Dish grid — its own box; the only part of the order view that scrolls. */}
+            {showCategories && !searchOpen && !menuSearch ? (
+              /* The categories in full — the opening view of the order screen. */
+              <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-neutral-200 bg-neutral-100/70 p-3 pb-24 lg:pb-3 2xl:p-4">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3 2xl:grid-cols-[repeat(auto-fill,minmax(190px,1fr))] 2xl:gap-4">
+                  <CategoryTile
+                    label={channels.includes("Dine in") ? "All Menu" : "All Products"}
+                    icon="all"
+                    count={dishes.length}
+                    onClick={() => {
+                      setMenuCategory("all");
+                      setShowCategories(false);
+                    }}
+                  />
+                  {categories.map((c) => (
+                    <CategoryTile
+                      key={c.id}
+                      label={c.name}
+                      icon={c.icon}
+                      count={dishes.filter((d) => d.categoryId === c.id).length}
+                      onClick={() => {
+                        setMenuCategory(c.id);
+                        setShowCategories(false);
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : (
+            /* Dish grid — its own box; the only part of the order view that scrolls. */
             <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-neutral-200 bg-neutral-100/70 p-2.5 pb-24 lg:pb-2.5 2xl:p-3">
             <div className="grid grid-cols-[repeat(auto-fill,minmax(130px,1fr))] gap-2.5 2xl:grid-cols-[repeat(auto-fill,minmax(168px,1fr))] 2xl:gap-3">
               {menuDishes.map((dish) => {
@@ -1664,6 +1715,7 @@ export function OrderLineClient({
               )}
             </div>
             </div>
+            )}
           </>
         )}
 
@@ -1717,6 +1769,7 @@ export function OrderLineClient({
 
         {view === "tables" && (
           <TablesOverview
+            floors={floors}
             tables={tables}
             orders={orders}
             area={tablesArea}
@@ -1991,6 +2044,7 @@ export function OrderLineClient({
       )}
       {tableActionMode && (
         <TableLayoutPicker
+          floors={floors}
           tables={tables}
           selectedTableId={cart.tableId}
           allowOccupied={tableActionMode === "merge"}
@@ -2076,6 +2130,7 @@ interface CartPanelProps {
   onRefundClick?: () => void;
   // Reprint the kitchen tickets of the open order (shown only when kitchen printers are set up).
   onReprintKitchen?: () => void;
+  floors: string[];
 }
 
 function CartPanel({
@@ -2135,6 +2190,7 @@ function CartPanel({
   onPriceOverride,
   onRefundClick,
   onReprintKitchen,
+  floors,
 }: CartPanelProps) {
   const canManageTable = !!cart.editingOrderId && !!cart.tableId && editingOrder?.status !== "Voided";
   // onPaid is set when the charge was started from the Split popup, so it can mark that share paid.
@@ -2495,6 +2551,7 @@ function CartPanel({
 
       {tablePickerOpen && (
         <TableLayoutPicker
+          floors={floors}
           tables={tables}
           selectedTableId={cart.tableId}
           onSelect={(table) => {
@@ -3772,6 +3829,7 @@ const TABLE_STATUS_CARD: Record<RestaurantTable["status"], string> = {
 };
 
 function TablesOverview({
+  floors,
   tables,
   orders,
   area,
@@ -3783,8 +3841,9 @@ function TablesOverview({
 }: {
   tables: RestaurantTable[];
   orders: Order[];
-  area: (typeof TABLE_AREAS)[number];
-  setArea: (a: (typeof TABLE_AREAS)[number]) => void;
+  floors: string[];
+  area: string;
+  setArea: (a: string) => void;
   cartTableId: string | null;
   onSelect: (table: RestaurantTable) => void;
   onClear: (table: RestaurantTable) => void;
@@ -3802,7 +3861,7 @@ function TablesOverview({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="mb-4 flex shrink-0 items-center gap-2 rounded-xl border border-neutral-200 bg-white p-1">
-        {TABLE_AREAS.map((a) => (
+        {floors.map((a) => (
           <button
             key={a}
             onClick={() => setArea(a)}
@@ -3904,18 +3963,51 @@ function TablesOverview({
   );
 }
 
-function CategoryBox({ active, label, icon, onClick }: { active: boolean; label: string; icon: string; onClick: () => void }) {
+function CategoryBox({ active, label, icon, onClick, onClose }: { active: boolean; label: string; icon: string; onClick: () => void; onClose?: () => void }) {
+  // The selected category scrolls into view in the chip row, so its ✕ is always reachable.
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (active) ref.current?.scrollIntoView({ inline: "center", block: "nearest" });
+  }, [active]);
+  return (
+    <div ref={ref} className="relative shrink-0 snap-start">
+      <button
+        onClick={onClick}
+        className={`flex min-h-[76px] w-[108px] flex-col items-center justify-center gap-1 rounded-2xl border p-2 text-center transition active:scale-[0.97] 2xl:min-h-[92px] 2xl:w-[128px] ${
+          active
+            ? "border-[var(--brand)] bg-[var(--brand)] text-white shadow-sm"
+            : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50"
+        }`}
+      >
+        <CategoryIconView icon={icon} name={icon === "all" ? undefined : label} className={`h-6 w-6 shrink-0 ${active ? "text-white" : "text-[var(--brand)]"}`} />
+        <span className="line-clamp-2 break-words text-sm font-bold leading-tight 2xl:text-base">{label}</span>
+      </button>
+      {active && onClose && (
+        <button
+          onClick={onClose}
+          aria-label="Close — show all categories"
+          title="Close — show all categories"
+          className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-white/25 text-white hover:bg-white/40"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+// A big category tile on the opening view of the order screen.
+function CategoryTile({ label, icon, count, onClick }: { label: string; icon: string; count: number; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className={`flex min-h-[76px] w-[108px] shrink-0 snap-start flex-col items-center justify-center gap-1 rounded-2xl border p-2 text-center transition active:scale-[0.97] 2xl:min-h-[92px] 2xl:w-[128px] ${
-        active
-          ? "border-[var(--brand)] bg-[var(--brand)] text-white shadow-sm"
-          : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50"
-      }`}
+      className="flex min-h-[120px] flex-col items-center justify-center gap-2 rounded-2xl border border-neutral-200 bg-white p-3 text-center shadow-sm transition hover:border-[var(--brand)] hover:shadow-md active:scale-[0.97] 2xl:min-h-[150px]"
     >
-      <CategoryIconView icon={icon} name={icon === "all" ? undefined : label} className={`h-6 w-6 shrink-0 ${active ? "text-white" : "text-[var(--brand)]"}`} />
-      <span className="line-clamp-2 break-words text-sm font-bold leading-tight 2xl:text-base">{label}</span>
+      <CategoryIconView icon={icon} name={icon === "all" ? undefined : label} className="h-9 w-9 shrink-0 text-[var(--brand)] 2xl:h-11 2xl:w-11" />
+      <span className="line-clamp-2 break-words text-base font-bold leading-tight text-neutral-800 2xl:text-lg">{label}</span>
+      <span className="text-xs text-neutral-400">
+        {count} item{count === 1 ? "" : "s"}
+      </span>
     </button>
   );
 }

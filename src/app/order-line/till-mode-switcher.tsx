@@ -52,6 +52,7 @@ export function TillModeSwitcher({
   canRefund,
   promotions = [],
   lastEndDayAt = null,
+  floors = ["Ground Floor"],
   kitchenPrinters = [],
   printerList,
   variantsByDish = {},
@@ -98,6 +99,8 @@ export function TillModeSwitcher({
   promotions?: PromotionDef[];
   // When the last End Day happened — finished orders from before it live in History, not Tickets.
   lastEndDayAt?: number | null;
+  // The restaurant's floors (Manage Table), in order.
+  floors?: string[];
   kitchenPrinters?: KitchenPrinter[];
   // All printers, only for logins allowed to set printers up (Settings permission).
   printerList?: Printer[];
@@ -148,6 +151,7 @@ export function TillModeSwitcher({
         barcodesByDish={barcodesByDish}
         embeddedFormats={embeddedFormats}
         promotions={promotions}
+      floors={floors}
         variantsByDish={variantsByDish}
       />
     );
@@ -186,6 +190,7 @@ export function TillModeSwitcher({
       canAddProducts={canAddProducts}
       canRefund={canRefund}
       promotions={promotions}
+      floors={floors}
       lastEndDayAt={lastEndDayAt}
       kitchenPrinters={kitchenPrinters}
       printerList={printerList}

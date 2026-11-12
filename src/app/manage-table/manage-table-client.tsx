@@ -7,8 +7,11 @@ import {
   freeTablesAction,
   setTableStatusAction,
   createReservationAction,
+  createFloorAction,
   createTableAction,
+  deleteFloorAction,
   deleteTableAction,
+  moveTableToFloorAction,
   type ReservationInput,
   type CreateTableState,
 } from "@/lib/actions/tables";
@@ -31,8 +34,6 @@ import {
 } from "lucide-react";
 import { downloadDataUrl, printTableQrCards, tableQrCardDataUrl } from "@/lib/table-qr";
 
-const AREAS: TableArea[] = ["Ground Floor", "1st Floor", "Basement"];
-
 const STATUS_META: Record<TableStatus, { label: string; dot: string; card: string; text: string }> = {
   available: { label: "Available", dot: "bg-indigo-400", card: "bg-indigo-50 border-indigo-100", text: "text-indigo-700" },
   reserved: { label: "Reserved", dot: "bg-orange-400", card: "bg-orange-50 border-orange-200", text: "text-orange-700" },
@@ -48,12 +49,17 @@ const RES_STATUS_META: Record<string, { label: string; className: string }> = {
 };
 
 export function ManageTableClient({
+  floors,
+  canManageFloors,
   tables,
   reservations,
   restaurantName,
   tableQrPaths,
   qrTableOrderingEnabled,
 }: {
+  floors: string[];
+  // Adding and deleting floors is the restaurant admin's job (not staff).
+  canManageFloors: boolean;
   tables: RestaurantTable[];
   reservations: Reservation[];
   restaurantName: string;
@@ -66,7 +72,12 @@ export function ManageTableClient({
   const [allQrOpen, setAllQrOpen] = useState(false);
   const [, startTransition] = useTransition();
 
-  const [area, setArea] = useState<TableArea>("Ground Floor");
+  const [chosenArea, setArea] = useState<TableArea>(floors[0] ?? "Ground Floor");
+  // If the chosen floor was just deleted, fall back to the first one.
+  const area = floors.includes(chosenArea) ? chosenArea : (floors[0] ?? "Ground Floor");
+  const [floorError, setFloorError] = useState<string | null>(null);
+  const [addingFloor, setAddingFloor] = useState(false);
+  const [newFloor, setNewFloor] = useState("");
   const [query, setQuery] = useState("");
   const [resFilter, setResFilter] = useState<"All" | "Reservation" | "On Dine">("All");
   const [openTableId, setOpenTableId] = useState<string | null>(null);
@@ -104,6 +115,42 @@ export function ManageTableClient({
       router.refresh();
     });
     setReservationModalOpen(false);
+  }
+
+  function addFloor() {
+    const name = newFloor.trim();
+    if (!name) return;
+    startTransition(async () => {
+      const res = await createFloorAction(name);
+      if (res.error) {
+        setFloorError(res.error);
+        return;
+      }
+      setFloorError(null);
+      setNewFloor("");
+      setAddingFloor(false);
+      setArea(name);
+      router.refresh();
+    });
+  }
+
+  function removeFloor(name: string) {
+    const count = tables.filter((t) => t.area === name).length;
+    if (!window.confirm(count > 0 ? `${name} has ${count} table${count === 1 ? "" : "s"} on it — move them to another floor first.` : `Delete the floor "${name}"?`)) return;
+    startTransition(async () => {
+      const res = await deleteFloorAction(name);
+      setFloorError(res.error ?? null);
+      router.refresh();
+    });
+  }
+
+  function moveTable(tableId: string, floor: string) {
+    setOpenTableId(null);
+    startTransition(async () => {
+      const res = await moveTableToFloorAction(tableId, floor);
+      setFloorError(res.error ?? null);
+      router.refresh();
+    });
   }
 
   function handleDeleteTable(tableId: string) {
@@ -214,18 +261,57 @@ export function ManageTableClient({
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-xl font-semibold text-neutral-900">Manage Tables</h1>
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <div className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white p-1">
-              {AREAS.map((a) => (
-                <button
-                  key={a}
-                  onClick={() => setArea(a)}
-                  className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                    area === a ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
-                  }`}
-                >
-                  {a}
-                </button>
+            <div className="flex flex-wrap items-center gap-1 rounded-xl border border-neutral-200 bg-white p-1">
+              {floors.map((a) => (
+                <span key={a} className="flex items-center">
+                  <button
+                    onClick={() => setArea(a)}
+                    className={`whitespace-nowrap px-3 py-2 text-sm font-medium transition-colors ${
+                      area === a ? "bg-[var(--brand)] text-white" : "text-neutral-500 hover:bg-neutral-50"
+                    } ${canManageFloors && area === a ? "rounded-l-lg" : "rounded-lg"}`}
+                  >
+                    {a}
+                  </button>
+                  {canManageFloors && area === a && (
+                    <button
+                      onClick={() => removeFloor(a)}
+                      title={`Delete ${a}`}
+                      aria-label={`Delete floor ${a}`}
+                      className="flex h-9 w-8 items-center justify-center rounded-r-lg bg-[var(--brand)] text-white/80 hover:text-white"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </span>
               ))}
+              {canManageFloors &&
+                (addingFloor ? (
+                  <span className="flex items-center gap-1 pl-1">
+                    <input
+                      autoFocus
+                      value={newFloor}
+                      onChange={(e) => setNewFloor(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") addFloor();
+                        if (e.key === "Escape") setAddingFloor(false);
+                      }}
+                      maxLength={40}
+                      placeholder="Floor name"
+                      aria-label="New floor name"
+                      className="w-32 rounded-lg border border-neutral-200 px-2.5 py-1.5 text-sm outline-none focus:border-teal-500"
+                    />
+                    <button onClick={addFloor} disabled={!newFloor.trim()} className="rounded-lg bg-[var(--brand)] px-2.5 py-1.5 text-sm font-semibold text-white disabled:opacity-40">
+                      Add
+                    </button>
+                    <button onClick={() => { setAddingFloor(false); setNewFloor(""); setFloorError(null); }} aria-label="Cancel" className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </span>
+                ) : (
+                  <button onClick={() => setAddingFloor(true)} className="flex items-center gap-1 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-neutral-500 hover:bg-neutral-50">
+                    <Plus className="h-4 w-4" /> Add floor
+                  </button>
+                ))}
             </div>
             {tables.some((t) => t.status !== "available") && (
               <button
@@ -257,6 +343,7 @@ export function ManageTableClient({
           </div>
         </div>
 
+        {floorError && <p className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-sm font-medium text-rose-600">{floorError}</p>}
         <div className="mb-6 flex items-center gap-5 text-sm text-neutral-500">
           {(Object.keys(STATUS_META) as TableStatus[]).map((s) => (
             <span key={s} className="flex items-center gap-1.5">
@@ -308,6 +395,23 @@ export function ManageTableClient({
                       </button>
                     </div>
                     <div className="mb-3 text-xs text-neutral-400">Capacity: {table.capacity} guests</div>
+                    {floors.length > 1 && (
+                      <label className="mb-3 block text-xs font-medium text-neutral-500">
+                        Floor
+                        <select
+                          value={table.area}
+                          onChange={(e) => moveTable(table.id, e.target.value)}
+                          aria-label={`Floor of table ${table.number}`}
+                          className="mt-1 w-full rounded-lg border border-neutral-200 px-2 py-1.5 text-xs text-neutral-700"
+                        >
+                          {floors.map((f) => (
+                            <option key={f} value={f}>
+                              {f}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                     <div className="mb-3 space-y-1.5">
                       {(Object.keys(STATUS_META) as TableStatus[]).map((s) => (
                         <button
@@ -358,7 +462,7 @@ export function ManageTableClient({
       {reservationModalOpen && (
         <AddReservationModal onClose={() => setReservationModalOpen(false)} tables={tables} onSave={handleAddReservation} />
       )}
-      {addTableModalOpen && <AddTableModal onClose={() => setAddTableModalOpen(false)} defaultArea={area} />}
+      {addTableModalOpen && <AddTableModal onClose={() => setAddTableModalOpen(false)} defaultArea={area} floors={floors} />}
       {qrForTable && (
         <TableQrModal
           table={qrForTable}
@@ -574,7 +678,7 @@ function AllTablesQrModal({
 
 const initialCreateTableState: CreateTableState = {};
 
-function AddTableModal({ onClose, defaultArea }: { onClose: () => void; defaultArea: TableArea }) {
+function AddTableModal({ onClose, defaultArea, floors }: { onClose: () => void; defaultArea: TableArea; floors: string[] }) {
   const router = useRouter();
   const [state, formAction, pending] = useActionState(createTableAction, initialCreateTableState);
   const formRef = useRef<HTMLFormElement>(null);
@@ -609,13 +713,13 @@ function AddTableModal({ onClose, defaultArea }: { onClose: () => void; defaultA
             />
           </div>
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-neutral-500">Area</label>
+            <label className="mb-1.5 block text-xs font-medium text-neutral-500">Floor</label>
             <select
               name="area"
               defaultValue={defaultArea}
               className="w-full rounded-xl border border-neutral-200 px-3.5 py-2.5 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
             >
-              {AREAS.map((a) => (
+              {floors.map((a) => (
                 <option key={a} value={a}>
                   {a}
                 </option>

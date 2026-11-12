@@ -4,8 +4,6 @@ import { useMemo, useState } from "react";
 import { Armchair, Users, X } from "lucide-react";
 import type { RestaurantTable, TableArea } from "@/lib/types";
 
-const AREAS: TableArea[] = ["Ground Floor", "1st Floor", "Basement"];
-
 const STATUS_DOT: Record<RestaurantTable["status"], string> = {
   available: "bg-indigo-400",
   reserved: "bg-orange-400",
@@ -21,6 +19,7 @@ const STATUS_CARD: Record<RestaurantTable["status"], string> = {
 // The visual floor-plan table picker used from the Till when starting a Dine-in order —
 // same layout language as Manage Table, but for selection rather than status management.
 export function TableLayoutPicker({
+  floors,
   tables,
   selectedTableId,
   onSelect,
@@ -28,6 +27,7 @@ export function TableLayoutPicker({
   title = "Select a Table",
   allowOccupied = false,
 }: {
+  floors: string[];
   tables: RestaurantTable[];
   selectedTableId: string | null;
   onSelect: (table: RestaurantTable) => void;
@@ -36,7 +36,8 @@ export function TableLayoutPicker({
   // For merging a table into an order, an already-occupied table is a valid (expected) pick.
   allowOccupied?: boolean;
 }) {
-  const [area, setArea] = useState<TableArea>("Ground Floor");
+  const [chosen, setArea] = useState<TableArea>(floors[0] ?? "Ground Floor");
+  const area = floors.includes(chosen) ? chosen : (floors[0] ?? "Ground Floor");
   const areaTables = useMemo(() => tables.filter((t) => t.area === area), [tables, area]);
 
   return (
@@ -53,7 +54,7 @@ export function TableLayoutPicker({
         </div>
 
         <div className="mb-4 flex items-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 p-1">
-          {AREAS.map((a) => (
+          {floors.map((a) => (
             <button
               key={a}
               onClick={() => setArea(a)}

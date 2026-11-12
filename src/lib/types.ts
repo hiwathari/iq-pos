@@ -134,7 +134,8 @@ export interface PaymentLine {
   creditCode?: string;
 }
 
-export type TableArea = "Ground Floor" | "1st Floor" | "Basement";
+// A floor name — restaurants add their own (Manage Table), "Ground Floor" is always there.
+export type TableArea = string;
 export type TableStatus = "available" | "reserved" | "on-dine";
 export type ReservationStatus = "upcoming" | "on-dine" | "paid" | "unpaid" | "available";
 export type ReservationSource = "walk-in" | "phone" | "online";

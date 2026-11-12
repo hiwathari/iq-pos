@@ -3,7 +3,8 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
-import { reservations, tables } from "@/db/schema";
+import { floors, reservations, tables } from "@/db/schema";
+import { DEFAULT_FLOOR, listFloors } from "@/lib/data/floors";
 import type { ReservationSource, TableArea, TableStatus } from "@/lib/types";
 import { assertPermission, requireRestaurantContext } from "@/lib/scope";
 
@@ -19,7 +20,9 @@ export async function createTableAction(
   await assertPermission(session, "manage-table");
 
   const number = Number(formData.get("number"));
-  const area = String(formData.get("area") || "Ground Floor") as TableArea;
+  const known = await listFloors(restaurantId);
+  const asked = String(formData.get("area") || "").trim();
+  const area: TableArea = known.includes(asked) ? asked : (known[0] ?? DEFAULT_FLOOR);
   const capacity = Math.max(1, Number(formData.get("capacity")) || 1);
 
   if (!Number.isInteger(number) || number <= 0) return { error: "Enter a valid table number." };
@@ -32,6 +35,52 @@ export async function createTableAction(
   if (existing) return { error: `Table ${number} already exists.` };
 
   await db.insert(tables).values({ id: crypto.randomUUID(), restaurantId, number, area, capacity });
+  revalidatePath("/manage-table");
+  revalidatePath("/order-line");
+  return {};
+}
+
+// ---- Floors ---------------------------------------------------------------------------------
+// Adding and deleting floors is for the restaurant's admin (not staff). Moving a table between
+// floors is table management, so it follows the Manage Table permission.
+export interface FloorActionState {
+  error?: string;
+}
+
+export async function createFloorAction(name: string): Promise<FloorActionState> {
+  const { session, restaurantId } = await requireRestaurantContext();
+  if (session.role === "staff" || session.role === "accounts") return { error: "Only the restaurant admin can add floors." };
+  const clean = String(name ?? "").trim().replace(/\s+/g, " ").slice(0, 40);
+  if (!clean) return { error: "Enter a name for the floor." };
+  const existing = await listFloors(restaurantId);
+  if (existing.some((f) => f.toLowerCase() === clean.toLowerCase())) return { error: `There is already a floor called ${existing.find((f) => f.toLowerCase() === clean.toLowerCase())}.` };
+  await db.insert(floors).values({ restaurantId, name: clean, sort: existing.length });
+  revalidatePath("/manage-table");
+  revalidatePath("/order-line");
+  return {};
+}
+
+export async function deleteFloorAction(name: string): Promise<FloorActionState> {
+  const { session, restaurantId } = await requireRestaurantContext();
+  if (session.role === "staff" || session.role === "accounts") return { error: "Only the restaurant admin can delete floors." };
+  const existing = await listFloors(restaurantId);
+  if (!existing.includes(name)) return { error: "That floor no longer exists." };
+  if (existing.length <= 1) return { error: "A restaurant needs at least one floor." };
+  const onIt = await db.select({ id: tables.id }).from(tables).where(and(eq(tables.restaurantId, restaurantId), eq(tables.area, name)));
+  if (onIt.length > 0) return { error: `${name} still has ${onIt.length} table${onIt.length === 1 ? "" : "s"} on it. Move or delete them first.` };
+  await db.delete(floors).where(and(eq(floors.restaurantId, restaurantId), eq(floors.name, name)));
+  revalidatePath("/manage-table");
+  revalidatePath("/order-line");
+  return {};
+}
+
+// A table changes floor; its number, seats, status and orders stay as they are.
+export async function moveTableToFloorAction(tableId: string, floor: string): Promise<FloorActionState> {
+  const { session, restaurantId } = await requireRestaurantContext();
+  await assertPermission(session, "manage-table");
+  const existing = await listFloors(restaurantId);
+  if (!existing.includes(floor)) return { error: "That floor doesn't exist." };
+  await db.update(tables).set({ area: floor }).where(and(eq(tables.id, tableId), eq(tables.restaurantId, restaurantId)));
   revalidatePath("/manage-table");
   revalidatePath("/order-line");
   return {};
