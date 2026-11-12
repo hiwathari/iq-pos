@@ -1457,7 +1457,7 @@ export function OrderLineClient({
             <ZoomButtons zoom={zoom} compact />
             {onSwitchToMobile && (
               <button onClick={onSwitchToMobile} title="Mobile till — switch this device to the simple phone-style Till" aria-label="Mobile till" className={TOOL_BTN}>
-                <Smartphone className="h-4 w-4" /> <span className="hidden 2xl:inline">Mobile till</span>
+                <Smartphone className="h-4 w-4" /> <span className="hidden text-sm font-semibold @5xl:inline">Mobile till</span>
               </button>
             )}
             <PrintStatusButton className={`${TOOL_BTN} gap-1.5`} />
@@ -1494,6 +1494,17 @@ export function OrderLineClient({
                         className={MENU_ROW}
                       >
                         <Printer className="h-5 w-5" /> Printers
+                      </button>
+                    )}
+                    {onSwitchToMobile && (
+                      <button
+                        onClick={() => {
+                          setMoreOpen(false);
+                          onSwitchToMobile();
+                        }}
+                        className={MENU_ROW}
+                      >
+                        <Smartphone className="h-5 w-5" /> Mobile till (simple Till)
                       </button>
                     )}
                     <SoundSettingsButton className={MENU_ROW} />
