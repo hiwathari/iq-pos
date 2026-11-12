@@ -5,11 +5,23 @@
   "start_url": "/till-login",
   "scope": "/",
   "display": "standalone",
+  "display_override": [
+    "fullscreen",
+    "standalone"
+  ],
   "orientation": "any",
   "background_color": "#0d9488",
   "theme_color": "#0d9488",
   "icons": [
-    { "src": "/api/pwa-icon/till?size=192", "sizes": "192x192", "type": "image/png" },
-    { "src": "/api/pwa-icon/till?size=512", "sizes": "512x512", "type": "image/png" }
+    {
+      "src": "/api/pwa-icon/till?size=192",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/api/pwa-icon/till?size=512",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
   ]
 }
