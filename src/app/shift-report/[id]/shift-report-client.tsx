@@ -110,6 +110,7 @@ export function ShiftReportClient({
           {shift.orderCount} order{shift.orderCount === 1 ? "" : "s"}
           {shift.voidCount > 0 ? ` · ${shift.voidCount} voided (${formatMoney(shift.voidAmount, currencySymbol)})` : ""}
         </div>
+        {shift.tipTotal > 0 && <div className="mt-1 text-xs font-semibold text-teal-700">Tips included in the takings: {formatMoney(shift.tipTotal, currencySymbol)}</div>}
       </div>
 
       <h2 className="mb-2 text-sm font-bold text-neutral-900">Takings vs POS</h2>

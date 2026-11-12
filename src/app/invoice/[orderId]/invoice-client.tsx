@@ -14,6 +14,7 @@ type InvoiceOrder = Pick<
   | "channel"
   | "items"
   | "extraDiscount"
+  | "tip"
   | "couponCode"
   | "couponDiscount"
   | "payments"
@@ -152,6 +153,12 @@ export function InvoiceClient({
         {discount > 0 && <Row label={order.couponCode ? `Discount (${order.couponCode})` : "Discount"} value={-discount} currencySymbol={currencySymbol} />}
         <Row label="Tax" value={tax} currencySymbol={currencySymbol} />
         <Row label="Total" value={total} currencySymbol={currencySymbol} emphasize />
+        {(order.tip ?? 0) > 0 && (
+          <>
+            <Row label="Tip" value={order.tip} currencySymbol={currencySymbol} />
+            <Row label="Total paid" value={total + order.tip} currencySymbol={currencySymbol} emphasize />
+          </>
+        )}
       </div>
 
       {saved > 0.004 && <div className="mb-6 rounded-xl bg-emerald-50 px-4 py-2.5 text-center text-sm font-semibold text-emerald-700">You saved {formatMoney(saved, currencySymbol)}</div>}

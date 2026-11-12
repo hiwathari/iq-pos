@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { IMPERSONATION_COOKIE_NAME, SESSION_COOKIE_NAME, verifySessionToken, type Role } from "@/lib/session";
 import { getRestaurantByCustomDomain } from "@/lib/data/restaurants";
+import { landingFor } from "@/lib/device";
 
 const PUBLIC_PATHS = ["/login", "/till-login", "/kitchen-login", "/staff-login"];
 
@@ -83,11 +84,8 @@ function isPublic(pathname: string) {
   return PUBLIC_PATHS.some((p) => pathname === p);
 }
 
-function homeFor(role: Role) {
-  if (role === "super_admin" || role === "regional_admin") return "/super-admin";
-  if (role === "till") return "/order-line";
-  if (role === "kitchen_display") return "/kitchen";
-  return "/dashboard";
+function homeFor(role: Role, userAgent: string | null) {
+  return landingFor(role, userAgent);
 }
 
 export async function proxy(request: NextRequest) {
@@ -116,7 +114,7 @@ export async function proxy(request: NextRequest) {
 
   if (isPublic(pathname)) {
     if (session) {
-      return NextResponse.redirect(new URL(homeFor(session.role), request.url));
+      return NextResponse.redirect(new URL(homeFor(session.role, request.headers.get("user-agent")), request.url));
     }
     return NextResponse.next();
   }

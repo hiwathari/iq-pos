@@ -213,6 +213,11 @@ export function orderTotal(order: Pick<Order, "items" | "extraDiscount" | "coupo
   return orderBreakdown(order).total;
 }
 
+// What the customer actually pays: the sales total plus any tip. Payment lines add up to this.
+export function orderPayable(order: Pick<Order, "items" | "extraDiscount" | "couponDiscount"> & { tip?: number | null }) {
+  return roundMoney(orderBreakdown(order).total + (order.tip ?? 0));
+}
+
 // Same per-item, proportional-discount math as orderTotal, but exposing every component — used
 // wherever a full breakdown needs to be displayed (e.g. a printed/shared invoice) rather than
 // just the bottom-line figure.

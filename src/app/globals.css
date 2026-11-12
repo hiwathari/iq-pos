@@ -92,6 +92,8 @@ body {
 .till-dark .bg-white,
 .till-dark .hover\:bg-white:hover { background-color: var(--dk-surface); }
 .till-dark .border-white { border-color: var(--dk-surface); }
+/* The "current" highlight tiles use a pale brand tint — keep it a dark tint here so their text stays readable. */
+.till-dark .bg-\[var\(--brand-light\)\] { background-color: color-mix(in srgb, var(--brand) 22%, var(--dk-surface)); }
 /* Elements that are dark in the light theme stay dark (toasts, badges). */
 .till-dark .bg-neutral-900,
 .till-dark .bg-neutral-800,

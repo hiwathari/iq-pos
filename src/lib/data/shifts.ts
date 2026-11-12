@@ -2,7 +2,7 @@ import { and, desc, eq, gt, lte } from "drizzle-orm";
 import { listRefundsBetween, refundsByTender } from "@/lib/data/refunds";
 import { db } from "@/db/client";
 import { orders, shifts } from "@/db/schema";
-import { orderTotal, salesByTender } from "@/lib/types";
+import { orderTotal, roundMoney, salesByTender } from "@/lib/types";
 
 export async function listShifts(restaurantId: string) {
   return db.select().from(shifts).where(eq(shifts.restaurantId, restaurantId)).orderBy(desc(shifts.closedAt));
@@ -57,6 +57,7 @@ export async function summarizeShiftWindow(restaurantId: string, sinceTs: number
     orderCount: liveOrders.length,
     voidCount: voidedOrders.length,
     voidAmount,
+    tipTotal: roundMoney(liveOrders.reduce((sum, o) => sum + (o.tip ?? 0), 0)),
     expectedCash: cashSales,
     terminalSales,
   };

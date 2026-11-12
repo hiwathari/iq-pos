@@ -441,6 +441,9 @@ export const orders = sqliteTable("orders", {
   // entry they used) — frozen at order time so a later edit to how discounts work never
   // reaches back into old orders.
   extraDiscount: real("extra_discount").notNull().default(0),
+  // A tip added at payment. Not part of the order's sales total (reports, tax); it is part of what the
+  // customer paid, so the payment lines include it. See lib/types.ts orderPayable.
+  tip: real("tip").notNull().default(0),
   // Snapshot of the coupon code used, if any — plain text rather than a foreign key, so
   // deleting or editing a coupon later never disturbs the historical orders that used it.
   couponCode: text("coupon_code"),
@@ -774,6 +777,8 @@ export const shifts = sqliteTable("shifts", {
   // for cash needs) — subtracted from expected cash same as cashExpenses, and added to the
   // restaurant's running envelopeCashBalance (see restaurants above) when this shift closes.
   envelopeCash: real("envelope_cash").notNull().default(0),
+  // Tips taken in this shift (included in the cash/card takings above, not in sales).
+  tipTotal: real("tip_total").notNull().default(0),
   // Per-payment-method breakdown computed from this window's orders — e.g.
   // [{ method: "Cash", amount: 120 }, { method: "Card 1", amount: 80 }] — one entry per named
   // payment terminal plus "Cash", so a restaurant with several card machines gets each one

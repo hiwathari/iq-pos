@@ -12,6 +12,7 @@ import {
   Settings,
   LifeBuoy,
   LogOut,
+  LayoutGrid,
   ShieldCheck,
   ChefHat as KitchenIcon,
   BarChart3,
@@ -236,6 +237,12 @@ export function Sidebar({
           <div className="mb-1 px-3 text-xs text-neutral-400">
             Signed in as <span className="font-medium text-neutral-600">{name}</span>
           </div>
+        )}
+        {(role === "admin" || role === "staff") && (
+          <Link href="/start" title={collapsed ? "Switch screen" : undefined} className={clsx(linkClass(false), "w-full")}>
+            <LayoutGrid className="h-[18px] w-[18px] shrink-0" strokeWidth={2} />
+            {!collapsed && "Switch screen"}
+          </Link>
         )}
         <form action={logoutAction}>
           <button type="submit" title={collapsed ? "Logout" : undefined} className={clsx(linkClass(false), "w-full")}>

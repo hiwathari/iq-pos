@@ -86,6 +86,8 @@ export interface PlaceOrderInput {
   // Other tables pushed together for this one order (a big party) — only read when a NEW order is
   // placed; merging into an order that already exists is mergeTableIntoOrderAction.
   mergedTableIds?: string[];
+  // A tip added at payment (money, on top of the order total).
+  tip?: number;
   guests: number;
   channel: OrderChannel;
   thirdPartyProvider?: ThirdPartyProvider;
@@ -115,12 +117,16 @@ export async function placeOrderAction(rawInput: PlaceOrderInput): Promise<Place
   // client sent are thrown away and recomputed, like coupons.
   const input: PlaceOrderInput = { ...rawInput, items: await priceItemsWithPromotions(restaurantId, rawInput.items, rawInput.channel) };
 
+  // A tip is never negative, is rounded to the penny, and only exists once something has been paid; it is
+  // part of what the customer paid (the payment lines include it), not of the sales total.
+  const tip = input.payments.length === 0 ? 0 : Math.max(0, Math.min(100000, Math.round((Number(input.tip) || 0) * 100) / 100));
   const hasCustomerInfo = input.channel === "Take Away" || input.channel === "Delivery";
   const paymentMethod =
     input.payments.length === 0 ? null : input.payments.length === 1 ? input.payments[0].method : "Split";
   // A part paid with a store-credit slip keeps its payment line (with the slip's code) even when
   // it is the only one, so a void can give the balance back.
-  const payments = input.payments.length > 1 || input.payments.some((p) => p.creditCode || p.method === "On account") ? input.payments : null;
+  // With a tip the lines are always kept: they carry the tip, so every report that reads the lines sees money taken.
+  const payments = input.payments.length > 1 || tip > 0 || input.payments.some((p) => p.creditCode || p.method === "On account") ? input.payments : null;
 
   const existing = input.editingOrderId
     ? (
@@ -250,7 +256,7 @@ export async function placeOrderAction(rawInput: PlaceOrderInput): Promise<Place
       !!existing &&
       (existing.status === "In Kitchen" || existing.status === "Wait List") &&
       !!paymentMethod &&
-      paidNow >= orderBreakdown({ items: editedItems, extraDiscount, couponDiscount }).total - 0.01 &&
+      paidNow >= orderBreakdown({ items: editedItems, extraDiscount, couponDiscount }).total + tip - 0.01 &&
       !(await kitchenInUse(restaurantId));
     const statusAfter: OrderStatus | undefined = reopensKitchen ? "In Kitchen" : finishesNow ? "Served" : existing?.status;
     const closedOutAt =
@@ -270,6 +276,7 @@ export async function placeOrderAction(rawInput: PlaceOrderInput): Promise<Place
         payments,
         cashReceived: input.cashReceived ?? null,
         extraDiscount,
+        tip,
         couponCode,
         couponDiscount,
         tradeAccountId,
@@ -333,7 +340,7 @@ export async function placeOrderAction(rawInput: PlaceOrderInput): Promise<Place
     let servedAt: number | null = null;
     let closedOutAt: number | null = null;
     const paidTotal = input.payments.reduce((sum, p) => sum + p.amount, 0);
-    const orderTotal = orderBreakdown({ items: input.items, extraDiscount, couponDiscount }).total;
+    const orderTotal = orderBreakdown({ items: input.items, extraDiscount, couponDiscount }).total + tip;
     if (status === "In Kitchen" && paymentMethod && paidTotal >= orderTotal - 0.01 && (await finishesWhenPaid(restaurantId))) {
       status = "Served";
       servedAt = Date.now();
@@ -358,6 +365,7 @@ export async function placeOrderAction(rawInput: PlaceOrderInput): Promise<Place
       payments,
       cashReceived: input.cashReceived ?? null,
       extraDiscount,
+      tip,
       couponCode,
       couponDiscount,
       tradeAccountId,

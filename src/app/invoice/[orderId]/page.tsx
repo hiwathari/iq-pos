@@ -26,6 +26,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ orderI
           channel: order.channel,
           items: order.items,
           extraDiscount: order.extraDiscount,
+          tip: order.tip,
           couponCode: order.couponCode,
           couponDiscount: order.couponDiscount,
           payments: order.payments,

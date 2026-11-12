@@ -115,6 +115,7 @@ import {
   UtensilsCrossed,
   Store,
   Smartphone,
+  HandCoins,
 } from "lucide-react";
 
 // Module-level wrapper so components stay free of impure calls (react-hooks purity lint rule).
@@ -179,7 +180,8 @@ function computeCartTotals(cart: CartState, items: OrderItem[] = cart.items) {
   const discountFactor = subtotal > 0 ? discountedSubtotal / subtotal : 0;
   const tax = roundMoney(itemsRawTax(items) * discountFactor);
   const total = roundMoney(discountedSubtotal + tax);
-  return { subtotal, extraDiscountAmount, couponDiscountAmount, tax, total };
+  const tip = roundMoney(Math.max(0, Number(cart.tip) || 0));
+  return { subtotal, extraDiscountAmount, couponDiscountAmount, tax, total, tip, payable: roundMoney(total + tip) };
 }
 
 function groupItemsByCategory(items: OrderItem[], dishes: Dish[], categories: Category[]) {
@@ -250,6 +252,8 @@ interface CartState {
   // the computed flat amount, so an order reopened for editing always starts back in "amount"
   // mode regardless of how the discount was originally entered.
   extraDiscountMode: "amount" | "percent";
+  // A tip added at payment (money, typed as text like the discount). Part of what is paid, not of the sales total.
+  tip: string;
   couponCode: string;
   appliedCoupon: { code: string; discount: number } | null;
   loyaltyContact: string;
@@ -278,6 +282,7 @@ const EMPTY_CART: CartState = {
   cashReceived: "",
   extraDiscount: "",
   extraDiscountMode: "amount",
+  tip: "",
   couponCode: "",
   appliedCoupon: null,
   loyaltyContact: "",
@@ -655,7 +660,8 @@ export function OrderLineClient({
     [cart.items, cart.channel, promotions, promoNow, categoryByDish]
   );
 
-  const { subtotal, extraDiscountAmount, couponDiscountAmount, tax, total } = computeCartTotals(cart, priced.items);
+  // `total` is what the customer pays (sales total + tip): payments are measured against it. `saleTotal` is the sales total alone.
+  const { subtotal, extraDiscountAmount, couponDiscountAmount, tax, total: saleTotal, tip: tipAmount, payable: total } = computeCartTotals(cart, priced.items);
 
   function applyCoupon() {
     const code = cart.couponCode.trim();
@@ -854,6 +860,7 @@ export function OrderLineClient({
       cashReceived: order.cashReceived ? String(order.cashReceived) : "",
       extraDiscount: order.extraDiscount ? String(order.extraDiscount) : "",
       extraDiscountMode: "amount",
+      tip: order.tip ? String(order.tip) : "",
       couponCode: order.couponCode ?? "",
       appliedCoupon: order.couponCode ? { code: order.couponCode, discount: order.couponDiscount ?? 0 } : null,
       loyaltyContact: "",
@@ -1172,6 +1179,7 @@ export function OrderLineClient({
           tableId: cartNow.tableId,
           tableNumber: cartNow.tableNumber,
           mergedTableIds: cartNow.editingOrderId ? undefined : cartNow.mergedTableIds,
+          tip: computeCartTotals(cartNow).tip || undefined,
           guests: cartNow.guests,
           channel: cartNow.channel,
           thirdPartyProvider: cartNow.channel === "Third Party" ? cartNow.thirdPartyProvider : undefined,
@@ -1305,6 +1313,7 @@ export function OrderLineClient({
       couponDiscount: totals.couponDiscountAmount || undefined,
       tax: totals.tax,
       total: totals.total,
+      tip: totals.tip || undefined,
       currencySymbol,
       payments: receiptCart.payments.length > 0 ? receiptCart.payments : undefined,
       footerText: invoiceFooterText,
@@ -1337,7 +1346,8 @@ export function OrderLineClient({
       extraDiscount: extraDiscountAmount || undefined,
       couponCode: cart.appliedCoupon?.code,
       couponDiscount: couponDiscountAmount || undefined,
-      total,
+      total: saleTotal,
+      tip: tipAmount || undefined,
       currencySymbol,
       customerName: cart.customerName || undefined,
       customerPhone: cart.customerPhone || undefined,
@@ -1386,6 +1396,8 @@ export function OrderLineClient({
     findOrEnrollLoyalty,
     removeLoyalty,
     total,
+    saleTotal,
+    tipAmount,
     paymentsTotal,
     paymentsRemaining,
     isFullyPaid,
@@ -2308,6 +2320,9 @@ interface CartPanelProps {
   findOrEnrollLoyalty: () => void;
   removeLoyalty: () => void;
   total: number;
+  // The sales total without the tip, and the tip taken at payment (total above includes it).
+  saleTotal: number;
+  tipAmount: number;
   paymentsTotal: number;
   paymentsRemaining: number;
   isFullyPaid: boolean;
@@ -2373,6 +2388,8 @@ function CartPanel({
   findOrEnrollLoyalty,
   removeLoyalty,
   total,
+  saleTotal,
+  tipAmount,
   paymentsTotal,
   paymentsRemaining,
   isFullyPaid,
@@ -2413,6 +2430,7 @@ function CartPanel({
   // Discounts & Loyalty and Split each open as a popup over the cart.
   const [extrasOpen, setExtrasOpen] = useState(false);
   const [splitOpen, setSplitOpen] = useState(false);
+  const [tipOpen, setTipOpen] = useState(false);
   const discountTotal = couponDiscountAmount + extraDiscountAmount;
   const itemCount = cart.items.reduce((s, i) => s + i.qty, 0);
   const setupSummary =
@@ -2437,6 +2455,19 @@ function CartPanel({
 
   function removePaymentLine(method: string) {
     setCart((prev) => ({ ...prev, payments: prev.payments.filter((p) => p.method !== method) }));
+  }
+
+  // Sets the tip on the order. If the bill was already paid in full with one payment, that payment grows
+  // (or shrinks) by the tip's change, so it stays paid in full.
+  function applyTip(amount: number) {
+    const next = Math.max(0, Math.round(amount * 100) / 100);
+    const delta = Math.round((next - tipAmount) * 100) / 100;
+    const wasPaidInFull = cart.items.length > 0 && cart.payments.length === 1 && Math.abs(paymentsTotal - total) < 0.01;
+    setCart((prev) => ({
+      ...prev,
+      tip: next > 0 ? String(next) : "",
+      payments: wasPaidInFull ? prev.payments.map((p) => ({ ...p, amount: Math.max(0, Math.round((p.amount + delta) * 100) / 100) })) : prev.payments,
+    }));
   }
 
   function remainingAmount() {
@@ -2883,11 +2914,12 @@ function CartPanel({
               <span className="text-[15px] font-bold text-neutral-900 2xl:text-base">Total Payable</span>
               <span className="text-xl font-bold text-neutral-900 2xl:text-2xl">{formatMoney(total, currencySymbol)}</span>
             </div>
-            {(discountTotal > 0 || tax > 0) && (
+            {(discountTotal > 0 || tax > 0 || tipAmount > 0) && (
               <div className="truncate text-xs text-neutral-500">
                 Subtotal {formatMoney(subtotal, currencySymbol)}
                 {discountTotal > 0 && <span className="text-emerald-600"> · −{formatMoney(discountTotal, currencySymbol)}</span>}
                 {tax > 0 && <> · Tax {formatMoney(tax, currencySymbol)}</>}
+                {tipAmount > 0 && <span className="text-teal-600"> · Tip {formatMoney(tipAmount, currencySymbol)}</span>}
               </div>
             )}
           </div>
@@ -2902,6 +2934,20 @@ function CartPanel({
             Offers
             {(discountTotal > 0 || cart.loyaltyMember) && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-emerald-500" />}
           </button>
+          {!paymentLocked && (
+            <button
+              onClick={() => setTipOpen(true)}
+              disabled={cart.items.length === 0 || saleTotal <= 0}
+              title="Add a tip"
+              aria-label="Add a tip"
+              className={`relative flex h-12 w-14 shrink-0 flex-col items-center justify-center rounded-xl border text-[11px] font-semibold leading-tight hover:bg-neutral-50 disabled:opacity-40 [&>svg]:size-5 ${
+                tipAmount > 0 ? "border-teal-300 bg-teal-50 text-teal-700" : "border-neutral-200 text-neutral-500"
+              }`}
+            >
+              <HandCoins className="h-4 w-4" />
+              Tip
+            </button>
+          )}
           {!paymentLocked && (
             <button
               onClick={() => setSplitOpen(true)}
@@ -3129,6 +3175,18 @@ function CartPanel({
           onClose={() => setExtrasOpen(false)}
         />
       )}
+      {tipOpen && (
+        <TipModal
+          saleTotal={saleTotal}
+          tip={tipAmount}
+          currencySymbol={currencySymbol}
+          onApply={(amount) => {
+            applyTip(amount);
+            setTipOpen(false);
+          }}
+          onClose={() => setTipOpen(false)}
+        />
+      )}
       {splitOpen && (
         <SplitBillModal
           items={cart.items}
@@ -3139,6 +3197,7 @@ function CartPanel({
           paymentTerminals={paymentTerminals}
           currencySymbol={currencySymbol}
           onPay={paySplitShare}
+          onAddTip={(amount) => setCart((prev) => ({ ...prev, tip: String(Math.round(((Number(prev.tip) || 0) + amount) * 100) / 100) }))}
           onClose={() => setSplitOpen(false)}
           onFullyPaid={() => {
             setSplitOpen(false);
@@ -3326,6 +3385,72 @@ function DiscountsModal({
 
 type SplitShare = { label: string; amount: number; paidWith: string | null };
 
+// Add (or change, or remove) a tip: a percentage of the bill, round up to a whole amount, or typed.
+function TipModal({ saleTotal, tip, currencySymbol, onApply, onClose }: { saleTotal: number; tip: number; currencySymbol: string; onApply: (amount: number) => void; onClose: () => void }) {
+  const [typed, setTyped] = useState(tip > 0 ? tip.toFixed(2) : "");
+  const amount = Math.max(0, Math.round((Number(typed) || 0) * 100) / 100);
+  const presets = [10, 12.5, 15, 20];
+  const roundUp = Math.round((Math.ceil(saleTotal - 1e-9) - saleTotal) * 100) / 100;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-1 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-neutral-900">Add a tip</h2>
+          <button onClick={onClose} aria-label="Close" className="rounded-full p-1 text-neutral-400 hover:bg-neutral-100">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <p className="mb-4 text-sm text-neutral-500">Bill {formatMoney(saleTotal, currencySymbol)} — the tip is added on top.</p>
+        <div className="mb-3 grid grid-cols-4 gap-2">
+          {presets.map((pct) => {
+            const value = Math.round(saleTotal * pct) / 100;
+            return (
+              <button
+                key={pct}
+                onClick={() => setTyped(value.toFixed(2))}
+                className={`min-h-14 rounded-xl border px-1 py-2 text-center ${Math.abs(amount - value) < 0.005 ? "border-[var(--brand)] bg-[var(--brand)] text-white" : "border-neutral-200 text-neutral-700 hover:bg-neutral-50"}`}
+              >
+                <div className="text-sm font-bold">{pct}%</div>
+                <div className="text-xs opacity-80">{formatMoney(value, currencySymbol)}</div>
+              </button>
+            );
+          })}
+        </div>
+        {roundUp > 0.004 && (
+          <button onClick={() => setTyped(roundUp.toFixed(2))} className="mb-3 w-full rounded-xl border border-neutral-200 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50">
+            Round up to {formatMoney(saleTotal + roundUp, currencySymbol)} (tip {formatMoney(roundUp, currencySymbol)})
+          </button>
+        )}
+        <label className="mb-1 block text-xs font-medium text-neutral-500">Or type the tip</label>
+        <div className="relative mb-4">
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">{currencySymbol}</span>
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            inputMode="decimal"
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            placeholder="0.00"
+            aria-label="Tip amount"
+            className="w-full rounded-xl border border-neutral-200 py-3 pl-8 pr-3 text-lg outline-none focus:border-teal-500"
+          />
+        </div>
+        <div className="flex gap-3">
+          {tip > 0 && (
+            <button onClick={() => onApply(0)} className="flex-1 rounded-xl border border-rose-200 py-3 text-sm font-semibold text-rose-600 hover:bg-rose-50">
+              Remove tip
+            </button>
+          )}
+          <button onClick={() => onApply(amount)} disabled={amount <= 0} className="flex-1 rounded-xl bg-[var(--brand)] py-3 text-sm font-bold text-white hover:bg-[var(--brand-dark)] disabled:opacity-40">
+            Add {amount > 0 ? formatMoney(amount, currencySymbol) : "tip"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Split the bill: equally between a number of guests (defaulting to the table's guest count), or
 // by items — pick what one guest had and take their payment, then the next. Each share is paid
 // right here; when nothing's left, the popup closes itself and the order is completed with the
@@ -3339,6 +3464,7 @@ function SplitBillModal({
   paymentTerminals,
   currencySymbol,
   onPay,
+  onAddTip,
   onClose,
   onFullyPaid,
 }: {
@@ -3350,15 +3476,14 @@ function SplitBillModal({
   paymentTerminals: PaymentTerminal[];
   currencySymbol: string;
   onPay: (method: string, amount: number, cashReceived: number | null, onPaid: () => void) => void;
+  // A guest's tip is added to the order's tip (their payment already includes it).
+  onAddTip: (amount: number) => void;
   onClose: () => void;
   onFullyPaid: () => void;
 }) {
   const remaining = Math.max(0, Math.round((total - paymentsTotal) * 100) / 100);
   const fullyPaid = remaining < 0.01;
   const [mode, setMode] = useState<"equal" | "items">("equal");
-  // Equal split is of what's still owed when the popup opens, so a part-payment taken before
-  // (e.g. a deposit on one card) is respected.
-  const [startRemaining] = useState(remaining);
   const [ways, setWays] = useState(Math.max(2, guests));
   const [shares, setShares] = useState<SplitShare[]>([]);
   // By items: how many of each line are already paid for, and how many the current guest is taking.
@@ -3366,14 +3491,29 @@ function SplitBillModal({
   const [picked, setPicked] = useState<Record<string, number>>({});
   const [cashGiven, setCashGiven] = useState("");
   const [busy, setBusy] = useState(false);
+  // Equal split: an amount typed for the guest paying now (the rest is shared by the other guests), and a tip for their share.
+  const [typedAmount, setTypedAmount] = useState("");
+  const [tipInput, setTipInput] = useState("");
 
   // Discounts and tax spread over every item in proportion, so item shares add up to the total.
   const factor = subtotal > 0 ? total / subtotal : 0;
   const lineKey = (i: OrderItem) => i.lineId ?? i.dishId;
   const equalPaidCount = shares.length;
+  // What is still owed is shared between the guests who haven't paid: the one paying now may have typed
+  // their own amount, and whatever is left is split equally between the rest (the last takes the odd penny).
+  const unpaidGuests = Math.max(1, ways - equalPaidCount);
+  const othersAfter = unpaidGuests - 1;
+  const autoShare = unpaidGuests <= 1 ? remaining : Math.floor((remaining / unpaidGuests) * 100) / 100;
+  const typedNumber = Math.round((Number(typedAmount) || 0) * 100) / 100;
+  // Typing is allowed until the last guest, who always pays what is left; it can't leave nothing for the others.
+  const typedUsable = typedAmount !== "" && typedNumber > 0 && othersAfter > 0;
+  const currentEqualAmount = typedUsable ? Math.min(typedNumber, Math.round((remaining - othersAfter * 0.01) * 100) / 100) : autoShare;
+  const restAfterCurrent = Math.round((remaining - currentEqualAmount) * 100) / 100;
   const equalShareAmount = (index: number) => {
-    const each = Math.floor((startRemaining / ways) * 100) / 100;
-    return index === ways - 1 ? Math.round((startRemaining - each * (ways - 1)) * 100) / 100 : each;
+    if (index === equalPaidCount) return currentEqualAmount;
+    const position = index - equalPaidCount - 1; // 0 = the next guest after the one paying now
+    const each = Math.floor((restAfterCurrent / Math.max(1, othersAfter)) * 100) / 100;
+    return position === othersAfter - 1 ? Math.round((restAfterCurrent - each * (othersAfter - 1)) * 100) / 100 : each;
   };
 
   const unpaidUnits = items.reduce((n, i) => n + i.qty - (paidQty[lineKey(i)] ?? 0), 0);
@@ -3383,8 +3523,11 @@ function SplitBillModal({
   const pickedAmount = pickedUnits > 0 && pickedUnits === unpaidUnits ? remaining : Math.min(remaining, Math.round(pickedAmountRaw * 100) / 100);
 
   const currentAmount = mode === "equal" ? (equalPaidCount < ways ? Math.min(remaining, equalShareAmount(equalPaidCount)) : remaining) : pickedAmount;
+  // This guest's tip is on top of their share; what they pay now is share + tip.
+  const shareTip = Math.max(0, Math.round((Number(tipInput) || 0) * 100) / 100);
+  const payAmount = Math.round((currentAmount + shareTip) * 100) / 100;
   const cashGivenAmount = Number(cashGiven) || 0;
-  const change = cashGivenAmount > currentAmount ? cashGivenAmount - currentAmount : 0;
+  const change = cashGivenAmount > payAmount ? cashGivenAmount - payAmount : 0;
 
   useEffect(() => {
     if (!fullyPaid) return;
@@ -3397,12 +3540,16 @@ function SplitBillModal({
 
   function pay(method: string) {
     if (currentAmount <= 0 || busy) return;
-    const amount = currentAmount;
+    const amount = payAmount;
+    const tipTaken = shareTip;
     const label = mode === "equal" ? `Guest ${equalPaidCount + 1}` : `${pickedUnits} item${pickedUnits === 1 ? "" : "s"}`;
     const takenPicks = picked;
     setBusy(true);
     onPay(method, amount, method === "Cash" && cashGivenAmount > 0 ? cashGivenAmount : null, () => {
-      setShares((prev) => [...prev, { label, amount, paidWith: method }]);
+      if (tipTaken > 0) onAddTip(tipTaken);
+      setShares((prev) => [...prev, { label: tipTaken > 0 ? `${label} + tip` : label, amount, paidWith: method }]);
+      setTypedAmount("");
+      setTipInput("");
       if (mode === "items") {
         setPaidQty((prev) => {
           const next = { ...prev };
@@ -3587,11 +3734,32 @@ function SplitBillModal({
 
             <div className="shrink-0 space-y-3 border-t border-neutral-100 p-5 pt-4">
               <div className="flex items-center justify-between gap-3">
-                <div>
+                <div className="min-w-0">
                   <div className="text-xs font-medium text-neutral-500">
                     {mode === "equal" ? `Guest ${Math.min(equalPaidCount + 1, ways)} pays` : pickedUnits > 0 ? `This guest pays (${pickedUnits} item${pickedUnits === 1 ? "" : "s"})` : "Pick items to pay for"}
                   </div>
-                  <div className="text-2xl font-bold text-neutral-900">{formatMoney(currentAmount, currencySymbol)}</div>
+                  {mode === "equal" && othersAfter > 0 ? (
+                    <div className="relative mt-0.5 w-36">
+                      <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-lg font-bold text-neutral-400">{currencySymbol}</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        inputMode="decimal"
+                        value={typedAmount !== "" ? typedAmount : currentAmount.toFixed(2)}
+                        onChange={(e) => setTypedAmount(e.target.value)}
+                        aria-label="Amount this guest pays"
+                        className="w-full rounded-lg border border-neutral-200 py-1.5 pl-7 pr-2 text-xl font-bold text-neutral-900 outline-none focus:border-teal-500"
+                      />
+                    </div>
+                  ) : (
+                    <div className="text-2xl font-bold text-neutral-900">{formatMoney(currentAmount, currencySymbol)}</div>
+                  )}
+                  {mode === "equal" && othersAfter > 0 && (
+                    <div className="mt-1 text-xs text-neutral-400">
+                      {typedUsable ? `The other ${formatMoney(restAfterCurrent, currencySymbol)} is shared by the other ${othersAfter} guest${othersAfter === 1 ? "" : "s"}` : "Type an amount to change it — the rest is shared by the others"}
+                    </div>
+                  )}
                 </div>
                 <div className="w-40">
                   <label className="mb-1 block text-xs font-medium text-neutral-500">Cash given (optional)</label>
@@ -3603,12 +3771,50 @@ function SplitBillModal({
                       step="0.01"
                       value={cashGiven}
                       onChange={(e) => setCashGiven(e.target.value)}
-                      placeholder={currentAmount.toFixed(2)}
+                      placeholder={payAmount.toFixed(2)}
                       className="w-full rounded-lg border border-neutral-200 py-2 pl-7 pr-2 text-base outline-none focus:border-teal-500"
                     />
                   </div>
                   {change > 0 && <div className="mt-1 text-right text-xs font-semibold text-emerald-600">Change {formatMoney(change, currencySymbol)}</div>}
                 </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="flex items-center gap-1 text-xs font-medium text-neutral-500">
+                  <HandCoins className="h-4 w-4" /> Tip
+                </span>
+                {[10, 15, 20].map((pct) => {
+                  const value = Math.round(currentAmount * pct) / 100;
+                  return (
+                    <button
+                      key={pct}
+                      type="button"
+                      disabled={currentAmount <= 0}
+                      onClick={() => setTipInput(value > 0 ? value.toFixed(2) : "")}
+                      className={`h-9 rounded-lg border px-2.5 text-xs font-semibold disabled:opacity-40 ${Math.abs(shareTip - value) < 0.005 && shareTip > 0 ? "border-[var(--brand)] bg-[var(--brand)] text-white" : "border-neutral-200 text-neutral-600 hover:bg-neutral-50"}`}
+                    >
+                      {pct}%
+                    </button>
+                  );
+                })}
+                <div className="relative w-24">
+                  <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs text-neutral-400">{currencySymbol}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    inputMode="decimal"
+                    value={tipInput}
+                    onChange={(e) => setTipInput(e.target.value)}
+                    placeholder="0.00"
+                    aria-label="Tip for this guest"
+                    className="h-9 w-full rounded-lg border border-neutral-200 pl-5 pr-1.5 text-sm outline-none focus:border-teal-500"
+                  />
+                </div>
+                {shareTip > 0 && (
+                  <span className="ml-auto text-sm font-semibold text-teal-700">
+                    Pays {formatMoney(payAmount, currencySymbol)}
+                  </span>
+                )}
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <PaymentButton icon={Wallet} label="Cash" active={false} onClick={() => pay("Cash")} disabled={currentAmount <= 0 || busy} />

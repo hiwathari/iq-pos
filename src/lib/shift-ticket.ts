@@ -69,6 +69,7 @@ export function buildShiftReportHex(input: { restaurantName: string; currencySym
   b.push(...row("Difference", diffText(totals.difference, cs), true));
   b.push(...row("Orders", String(shift.orderCount)));
   if (shift.voidCount > 0) b.push(...row("Voided", `${shift.voidCount} (${formatMoney(shift.voidAmount, cs)})`));
+  if (shift.tipTotal > 0) b.push(...row("Tips (included above)", formatMoney(shift.tipTotal, cs)));
   b.push(...hr());
 
   b.push(...bold(true), ...text("TAKINGS VS POS"), ...bold(false), ...lines());

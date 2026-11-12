@@ -17,6 +17,7 @@ export interface TicketData {
   couponDiscount?: number;
   tax: number;
   total: number;
+  tip?: number;
   currencySymbol: string;
   customerName?: string;
   customerPhone?: string;
@@ -135,6 +136,7 @@ export async function printTicket(ticket: TicketData) {
     ${ticket.couponDiscount ? `<tr><td>Coupon${ticket.couponCode ? ` (${escapeHtml(ticket.couponCode)})` : ""}</td><td class="right">-${money(ticket.couponDiscount)}</td></tr>` : ""}
     <tr><td>Tax</td><td class="right">${money(ticket.tax)}</td></tr>
     <tr class="total"><td>Total</td><td class="right">${money(ticket.total)}</td></tr>
+    ${ticket.tip ? `<tr><td>Tip</td><td class="right">${money(ticket.tip)}</td></tr><tr class="total"><td>Total paid</td><td class="right">${money(ticket.total + ticket.tip)}</td></tr>` : ""}
   </table>${ticket.saved && ticket.saved > 0.004 ? `<div class="saved">You saved ${money(ticket.saved)}</div>` : ""}${
     ticket.vat && ticket.vat.some((v) => v.rate > 0)
       ? `<table class="vat"><tr><td colspan="2"><b>VAT summary</b></td></tr>${ticket.vat.map((v) => `<tr><td>${v.rate}% on ${money(v.net)}</td><td class="right">${money(v.tax)}</td></tr>`).join("")}</table>`

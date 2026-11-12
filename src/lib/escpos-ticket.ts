@@ -174,6 +174,8 @@ export interface SunmiTicketData {
   couponDiscount?: number;
   tax: number;
   total: number;
+  // A tip taken at payment — shown under the total, with the total actually paid.
+  tip?: number;
   currencySymbol: string;
   payments?: { method: string; amount: number }[];
   footerText: string;
@@ -285,6 +287,10 @@ export async function buildEscPosTicket(t: SunmiTicketData): Promise<{ hex: stri
   bytes.push(...hr());
   // Total payable — bold, per the restaurant's requirement.
   bytes.push(...moneyRow("TOTAL PAYABLE", money(t.total), true));
+  if (t.tip && t.tip > 0) {
+    bytes.push(...moneyRow("Tip", money(t.tip)));
+    bytes.push(...moneyRow("TOTAL PAID", money(t.total + t.tip), true));
+  }
   if (t.saved && t.saved > 0.004) bytes.push(...setAlign(1), ...setMode(0x08), ...textBytes(`You saved ${money(t.saved)}`), ...setMode(0x00), ...feed(), ...setAlign(0));
   // Tax by rate — only worth printing when some of the sale is taxed.
   if (t.vat && t.vat.some((v) => v.rate > 0)) {
