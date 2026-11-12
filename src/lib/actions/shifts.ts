@@ -8,6 +8,7 @@ import { assertPermission, requireRestaurantContext } from "@/lib/scope";
 import { summarizeShiftWindow } from "@/lib/data/shifts";
 import { createNotification } from "@/lib/data/notifications";
 import { formatMoney } from "@/lib/types";
+import { voidLeftoverOrders } from "@/lib/void-order";
 
 export interface OpenTillState {
   error?: string;
@@ -26,6 +27,8 @@ export async function openTillAction(openingBalance: number): Promise<OpenTillSt
     return { error: "Enter a valid opening balance." };
   }
 
+  // A new day's till starts clean: unpaid orders left over from a previous day are voided.
+  await voidLeftoverOrders(restaurantId, session.name);
   await db
     .update(restaurants)
     .set({
@@ -36,6 +39,7 @@ export async function openTillAction(openingBalance: number): Promise<OpenTillSt
     .where(eq(restaurants.id, restaurantId));
 
   revalidatePath("/dashboard");
+  revalidatePath("/order-line");
   return {};
 }
 
@@ -91,6 +95,9 @@ export async function endShiftAction(input: EndShiftInput): Promise<EndShiftStat
     sinceTs = (firstOrder?.createdAt ?? restaurant?.createdAt ?? Date.now()) - 1;
   }
 
+  // Unpaid orders left over from a previous day are voided first, so the shift report counts them
+  // as voids rather than leaving them open.
+  await voidLeftoverOrders(restaurantId, session.name);
   const uptoTs = Date.now();
   const summary = await summarizeShiftWindow(restaurantId, sinceTs, uptoTs);
 
@@ -134,6 +141,9 @@ export async function endShiftAction(input: EndShiftInput): Promise<EndShiftStat
     .where(eq(restaurants.id, restaurantId));
 
   await notifyIfShiftDidNotBalance(shift, restaurant?.currencySymbol ?? "£", session.name);
+  revalidatePath("/order-line");
+  revalidatePath("/kitchen");
+  revalidatePath("/dashboard");
 
   return { shiftId: shift.id };
 }

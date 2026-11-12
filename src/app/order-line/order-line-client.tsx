@@ -43,6 +43,7 @@ import { TableLayoutPicker } from "@/components/table-layout-picker";
 import { CategoryIconView } from "@/components/category-icon";
 import { StockCountModal } from "@/components/stock-count-modal";
 import { PrintFailureToast, PrintersPanel, PrintStatusButton } from "./print-center";
+import { useTillZoom, useTouchScreen, useVisibleArea, useWideLayout, ZoomButtons } from "./till-zoom";
 import { buildKitchenTicketHex, diffForKitchen, itemsForKitchen, routeKitchenItems, type KitchenPrinter, type RoutedItem } from "@/lib/kitchen-ticket";
 import { sendPrintJob } from "@/lib/print-queue";
 import type { Printer as PrinterRow } from "@/lib/types";
@@ -395,6 +396,13 @@ export function OrderLineClient({
   const [menuCategory, setMenuCategory] = useState<string>("all");
   const [menuSearch, setMenuSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
+  const zoom = useTillZoom();
+  const wideLayout = useWideLayout(zoom.scale);
+  // On a touch screen the on-screen keyboard covers half the page while searching: the Till then
+  // shows just the search box and the matching items, fitted into the part above the keyboard.
+  const touchScreen = useTouchScreen();
+  const searchMode = touchScreen && (searchOpen || menuSearch.length > 0);
+  const visibleArea = useVisibleArea(searchMode);
   const [noteEditorFor, setNoteEditorFor] = useState<string | null>(null);
   const [customItemModalOpen, setCustomItemModalOpen] = useState(false);
   // Open by default for a brand-new order so Order Type/table selection is the first thing
@@ -1334,7 +1342,10 @@ export function OrderLineClient({
   };
 
   return (
-    <div className="flex h-full min-h-0 overflow-hidden">
+    <div
+      className={`flex min-h-0 overflow-hidden ${visibleArea ? "fixed inset-x-0 z-40 bg-neutral-50" : "h-full"}`}
+      style={visibleArea ? { top: visibleArea.top, height: visibleArea.height } : undefined}
+    >
       {/* Order status notifications */}
       {notifications.length > 0 && (
         <div className="pointer-events-none fixed right-4 top-4 z-[60] flex w-72 flex-col gap-2">
@@ -1354,10 +1365,12 @@ export function OrderLineClient({
         </div>
       )}
 
+      {/* The Till proper is what the zoom buttons scale; pop-ups and the floating cart stay outside it so they always fit the screen. */}
+      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden" style={{ zoom: zoom.scale }}>
       {/* Main column — header, toolbars and the category row stay put; only the grid below
           them scrolls (each view wraps its content in its own scroll box). */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col px-6 pt-6 lg:pb-6">
-        <div className="mb-3 flex shrink-0 flex-wrap items-center gap-2">
+        <div className={`mb-3 shrink-0 flex-wrap items-center gap-2 ${searchMode ? "hidden" : "flex"}`}>
           {view === "order" && (
             <button
               onClick={() => {
@@ -1405,6 +1418,7 @@ export function OrderLineClient({
             />
           </div>
           <div className="ml-auto flex items-center gap-1.5">
+            <ZoomButtons zoom={zoom} />
             <PrintStatusButton className="flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-2.5 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50 2xl:text-base [&>svg]:size-5" />
             {printerList && (
               <button
@@ -1476,6 +1490,11 @@ export function OrderLineClient({
                     {menuDishes.length} result{menuDishes.length === 1 ? "" : "s"}
                   </span>
                 )}
+                {searchMode && cart.items.length > 0 && (
+                  <span className="shrink-0 rounded-xl bg-[var(--brand)] px-3 py-2 text-sm font-bold text-white">
+                    {cart.items.reduce((s, i) => s + i.qty, 0)} · {formatMoney(total, currencySymbol)}
+                  </span>
+                )}
                 <button
                   onClick={() => {
                     setMenuSearch("");
@@ -1491,10 +1510,11 @@ export function OrderLineClient({
               <div className="mb-3 flex shrink-0 gap-2.5">
                 <button
                   onClick={() => setSearchOpen(true)}
-                  className="flex min-h-[76px] w-[76px] shrink-0 flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-neutral-300 bg-white text-neutral-500 hover:bg-neutral-50 active:scale-[0.97] 2xl:min-h-[92px] 2xl:w-[92px] [&>svg]:size-6"
+                  aria-label="Search items"
+                  className="flex min-h-[76px] w-[170px] shrink-0 items-center justify-center gap-2.5 rounded-2xl border-2 border-neutral-300 bg-white px-3 text-neutral-600 hover:bg-neutral-50 active:scale-[0.97] 2xl:min-h-[92px] 2xl:w-[200px] [&>svg]:size-6"
                 >
                   <Search className="h-5 w-5" />
-                  <span className="text-xs font-semibold">Search</span>
+                  <span className="text-sm font-semibold">Search items</span>
                 </button>
                 {!channels.includes("Dine in") && (
                   <button
@@ -1753,15 +1773,19 @@ export function OrderLineClient({
       </div>
 
       {/* Desktop cart panel — same light theme as the menu area, just a border to separate it. */}
-      <div className="hidden w-[380px] shrink-0 xl:w-[400px] flex-col overflow-hidden border-l border-neutral-200 bg-white px-4 py-3 lg:flex min-h-0 2xl:w-[460px] 2xl:p-5">
-        <CartPanel {...cartPanelProps} showClose={false} />
+      {wideLayout && !searchMode && (
+        <div className="flex w-[380px] shrink-0 xl:w-[400px] flex-col overflow-hidden border-l border-neutral-200 bg-white px-4 py-3 min-h-0 2xl:w-[460px] 2xl:p-5">
+          <CartPanel {...cartPanelProps} showClose={false} />
+        </div>
+      )}
+
       </div>
 
       {/* Mobile / handheld floating cart button */}
-      {!mobileCartOpen && (
+      {!mobileCartOpen && !wideLayout && (
         <button
           onClick={() => setMobileCartOpen(true)}
-          className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-[var(--brand)] px-5 py-3.5 text-sm font-semibold text-white shadow-lg lg:hidden"
+          className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-[var(--brand)] px-5 py-3.5 text-sm font-semibold text-white shadow-lg"
         >
           <ShoppingBag className="h-4 w-4" />
           {cart.items.reduce((s, i) => s + i.qty, 0)} · {formatMoney(total, currencySymbol)}
@@ -1769,8 +1793,8 @@ export function OrderLineClient({
       )}
 
       {/* Mobile cart drawer */}
-      {mobileCartOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-white p-5 lg:hidden">
+      {mobileCartOpen && !wideLayout && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-white p-5">
           <CartPanel {...cartPanelProps} showClose />
         </div>
       )}
@@ -2267,6 +2291,24 @@ function CartPanel({
               title="Share invoice QR"
             >
               <QrCode className="h-4 w-4" />
+            </button>
+          )}
+          {/* Void order — cancels every item of this order at once: an order already sent asks for a
+              reason and is voided (stock returned); a new one still being built is just cleared. */}
+          {(editingOrder ? editingOrder.status !== "Voided" && !(editingOrder.status === "Served" && editingOrder.paymentMethod) : cart.items.length > 0) && (
+            <button
+              onClick={() => {
+                if (editingOrder) onVoidClick();
+                else if (window.confirm(`Cancel all ${cart.items.length} item${cart.items.length === 1 ? "" : "s"} in this order?`)) {
+                  setCart(emptyCart);
+                  setTableEditorOpen(false);
+                }
+              }}
+              className="flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 text-sm font-semibold text-rose-600 hover:bg-rose-100 xl:h-10 2xl:h-11 [&>svg]:size-4"
+              title="Void order — cancel all the items in this order"
+              aria-label="Void order"
+            >
+              <Ban className="h-4 w-4" /> <span className="hidden 2xl:inline">Void order</span>
             </button>
           )}
           <button

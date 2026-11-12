@@ -28,7 +28,9 @@ export const metadata: Metadata = {
   icons: { icon: "/api/pwa-icon/till?size=64", apple: "/api/pwa-icon/till?size=180" },
 };
 
-export const viewport: Viewport = { themeColor: "#0d9488" };
+// resizes-content: when the on-screen keyboard opens (searching on a tablet) the page shrinks to the
+// part above it instead of being covered.
+export const viewport: Viewport = { themeColor: "#0d9488", interactiveWidget: "resizes-content" };
 
 // Top-level wrapper around Date.now() so the page component itself stays free of impure calls
 // (react-hooks purity lint rule) — same pattern as dashboard/page.tsx.

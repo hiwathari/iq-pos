@@ -1,9 +1,10 @@
 "use server";
 
 import { priceItemsWithPromotions } from "@/lib/data/promotions";
-import { redeemStoreCredits, restoreStoreCredits } from "@/lib/data/store-credit";
+import { redeemStoreCredits } from "@/lib/data/store-credit";
 import { releaseSerials, sellSerials, serialsOf } from "@/lib/data/serials";
 import { onAccountAmount } from "@/lib/data/trade-accounts";
+import { voidOrderCore } from "@/lib/void-order";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db/client";
@@ -16,7 +17,7 @@ import { findActiveCoupon } from "@/lib/data/coupons";
 import { findLoyaltyMemberById } from "@/lib/data/loyalty";
 import { freeTableIfNoLiveOrders, isOrderLive, nextOrderNumber } from "@/lib/order-helpers";
 import { businessProfile } from "@/lib/business-profile";
-import { adjustStockForEdit, negativeStockMode, returnStockForOrder, stockShortfalls, stockUsageForItems, takeStockForOrder } from "@/lib/stock";
+import { adjustStockForEdit, negativeStockMode, stockShortfalls, stockUsageForItems, takeStockForOrder } from "@/lib/stock";
 
 // An order is "closed out" once it's both served and paid — matches the Till's own
 // definition (see isOrderClosedOut in order-line-client.tsx). closedOutAt records the moment
@@ -509,28 +510,7 @@ export async function setOrderStatusAction(orderId: string, status: OrderStatus)
 
 export async function voidOrderAction(orderId: string, reason: string) {
   const { session, restaurantId } = await requireRestaurantContext();
-  const [order] = await db
-    .select({ id: orders.id, tableId: orders.tableId, status: orders.status, items: orders.items, payments: orders.payments, paymentMethod: orders.paymentMethod, extraDiscount: orders.extraDiscount, couponDiscount: orders.couponDiscount, tradeAccountId: orders.tradeAccountId })
-    .from(orders)
-    .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)))
-    .limit(1);
-  // A sale paid (even in part) with store credit gives that credit back when it's voided.
-  if (order && order.status !== "Voided") {
-    const used = (order.payments ?? []).filter((p) => p.creditCode).map((p) => ({ code: p.creditCode!, amount: p.amount }));
-    if (used.length) await restoreStoreCredits(restaurantId, used);
-    await releaseSerials(restaurantId, serialsOf(order.items));
-    // A sale on account taken off the customer's balance again.
-    const owed = onAccountAmount(order);
-    if (order.tradeAccountId && owed > 0) await db.update(tradeAccounts).set({ balance: sql`round(${tradeAccounts.balance} - ${owed}, 2)` }).where(eq(tradeAccounts.id, order.tradeAccountId));
-  }
-  await db
-    .update(orders)
-    .set({ status: "Voided", voidReason: reason || "No reason given", voidedAt: Date.now() })
-    .where(and(eq(orders.id, orderId), eq(orders.restaurantId, restaurantId)));
-  if (order) await returnStockForOrder(restaurantId, order, { byName: session.name, note: reason || null });
-  // A voided order no longer occupies its table — free it up the same moment, rather than
-  // leaving it stuck "on-dine" until something else happens to notice.
-  if (order?.tableId) await freeTableIfNoLiveOrders(restaurantId, order.tableId, orderId);
+  await voidOrderCore(restaurantId, orderId, reason, session.name);
   revalidatePath("/order-line");
   revalidatePath("/manage-table");
   revalidatePath("/dashboard");

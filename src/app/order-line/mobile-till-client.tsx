@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { placeOrderAction } from "@/lib/actions/orders";
+import { placeOrderAction, voidOrderAction } from "@/lib/actions/orders";
 import { formatMoney, itemsRawTax, itemsSubtotal, roundMoney } from "@/lib/types";
 import { canonicalCode, parseEmbedded, type EmbeddedFormat } from "@/lib/barcode";
 import { formatQty } from "@/lib/units";
@@ -12,6 +12,7 @@ import { logAgeRefusalAction } from "@/lib/actions/age-checks";
 import { WeightPad } from "./weight-pad";
 import { applyPromotions, stripPromo, type PromotionDef } from "@/lib/promotions";
 import { AgeCheckModal } from "./age-check-modal";
+import { useTillZoom, ZoomButtons } from "./till-zoom";
 import type { Category, Dish, Order, OrderChannel, OrderItem, RestaurantTable, ThirdPartyProvider } from "@/lib/types";
 import {
   ArrowLeft,
@@ -121,6 +122,7 @@ export function MobileTillClient({
   variantsByDish?: Record<string, unknown[]>;
 }) {
   const router = useRouter();
+  const zoom = useTillZoom();
   const [, startTransition] = useTransition();
   const [screen, setScreen] = useState<Screen>("channel");
   const [cart, setCart] = useState<SimpleCart>(emptyCart);
@@ -329,6 +331,23 @@ export function MobileTillClient({
     setScreen("channel");
   }
 
+  // Void order (top of Review Order): cancels every item at once. An order already sent is voided
+  // (stock returned); a new one still being built is just cleared.
+  function voidWholeOrder() {
+    const sent = !!cart.editingOrderId;
+    if (!window.confirm(sent ? "Void this whole order? Everything on it is cancelled." : `Cancel all ${cart.items.length} item${cart.items.length === 1 ? "" : "s"} in this order?`)) return;
+    const id = cart.editingOrderId;
+    startOver();
+    if (id) {
+      startTransition(async () => {
+        await voidOrderAction(id, "Voided from the mobile Till");
+        router.refresh();
+        setToast("Order voided");
+        setTimeout(() => setToast(null), 3000);
+      });
+    }
+  }
+
   function send() {
     if (cart.items.length === 0 || sending) return;
     setSending(true);
@@ -368,7 +387,7 @@ export function MobileTillClient({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-neutral-50">
+    <div className="flex h-full min-h-0 flex-col bg-neutral-50" style={{ zoom: zoom.scale }}>
       {toast && (
         <div className="absolute left-1/2 top-3 z-50 -translate-x-1/2 rounded-full bg-neutral-900 px-4 py-2 text-sm font-semibold text-white shadow-lg">
           {toast}
@@ -415,9 +434,12 @@ export function MobileTillClient({
         <div className="flex flex-1 flex-col p-4">
           <div className="mb-1 flex items-center justify-between">
             <h1 className="text-lg font-bold text-neutral-900">{restaurantName}</h1>
-            <button onClick={onSwitchToFull} className="text-xs font-medium text-neutral-400 underline underline-offset-2">
-              Full Till
-            </button>
+            <div className="flex items-center gap-3">
+              <ZoomButtons zoom={zoom} />
+              <button onClick={onSwitchToFull} className="text-xs font-medium text-neutral-400 underline underline-offset-2">
+                Full Till
+              </button>
+            </div>
           </div>
           <p className="mb-5 text-sm text-neutral-400">What kind of order is this?</p>
           <div className="grid grid-cols-2 gap-3">
@@ -645,7 +667,18 @@ export function MobileTillClient({
       {screen === "cart" && (
         <div className="flex flex-1 min-h-0 flex-col">
           <div className="border-b border-neutral-200 bg-white p-3">
-            <BackHeader label="Review Order" onBack={() => setScreen("menu")} />
+            <div className="flex items-center justify-between gap-3">
+              <BackHeader label="Review Order" onBack={() => setScreen("menu")} />
+              {(cart.editingOrderId || cart.items.length > 0) && (
+                <button
+                  onClick={voidWholeOrder}
+                  aria-label="Void order"
+                  className="flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-3.5 py-2 text-sm font-semibold text-rose-600 active:scale-95"
+                >
+                  <Ban className="h-4 w-4" /> Void order
+                </button>
+              )}
+            </div>
           </div>
           <div className="flex-1 overflow-y-auto p-4">
             {cart.items.length === 0 ? (
