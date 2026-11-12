@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Armchair, Combine, Minus, Plus, Users, X } from "lucide-react";
+import { ArrowLeftRight, Armchair, Combine, Minus, Plus, Users, X } from "lucide-react";
 import { FloorLabel } from "@/components/floor-icons";
 import type { Order, RestaurantTable } from "@/lib/types";
 
@@ -30,6 +30,7 @@ export function DineInPopup({
   initial,
   onConfirm,
   onOpenOrder,
+  onTableAction,
   onClose,
 }: {
   floors: string[];
@@ -38,6 +39,9 @@ export function DineInPopup({
   initial: { tableId: string | null; guests: number; mergedTableIds: string[] };
   onConfirm: (choice: DineInChoice) => void;
   onOpenOrder: (order: Order) => void;
+  // Move an existing order to another table ("swap") or fold another table into it ("merge").
+  // Resolves with an error to show, or nothing when it worked.
+  onTableAction: (kind: "swap" | "merge", orderId: string, tableId: string) => Promise<string | undefined>;
   onClose: () => void;
 }) {
   const firstChosen = tables.find((t) => t.id === initial.tableId);
@@ -47,18 +51,44 @@ export function DineInPopup({
   const [extraIds, setExtraIds] = useState<string[]>(initial.mergedTableIds);
   const [mergeMode, setMergeMode] = useState(initial.mergedTableIds.length > 0);
   const [guests, setGuests] = useState(Math.max(1, initial.guests));
+  // A table that already has an order: what to do with it. Then, for Move / Merge, which table to use.
+  const [occupied, setOccupied] = useState<{ order: Order; table: RestaurantTable } | null>(null);
+  const [pick, setPick] = useState<{ kind: "swap" | "merge"; order: Order; table: RestaurantTable } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const areaTables = useMemo(() => tables.filter((t) => t.area === area).sort((a, b) => a.number - b.number), [tables, area]);
   const primary = tables.find((t) => t.id === primaryId) ?? null;
   const extras = extraIds.map((id) => tables.find((t) => t.id === id)).filter((t): t is RestaurantTable => !!t);
   const seats = [primary, ...extras].reduce((sum, t) => sum + (t?.capacity ?? 0), 0);
 
-  function tap(table: RestaurantTable) {
-    const open = activeOrderForTable(table);
-    if (open) {
-      onOpenOrder(open);
+  async function chooseDestination(table: RestaurantTable) {
+    if (!pick || busy) return;
+    if (table.id === pick.table.id) return;
+    if (pick.kind === "swap" && activeOrderForTable(table)) {
+      setError(`Table ${table.number} already has an order — use Merge to join them, or pick a free table.`);
       return;
     }
+    setBusy(true);
+    setError(null);
+    const problem = await onTableAction(pick.kind, pick.order.id, table.id);
+    setBusy(false);
+    if (problem) setError(problem);
+    else onClose();
+  }
+
+  function tap(table: RestaurantTable) {
+    if (pick) {
+      void chooseDestination(table);
+      return;
+    }
+    const open = activeOrderForTable(table);
+    if (open) {
+      setOccupied({ order: open, table });
+      setError(null);
+      return;
+    }
+    setOccupied(null);
     if (mergeMode && primary && table.id !== primary.id) {
       setExtraIds((ids) => (ids.includes(table.id) ? ids.filter((x) => x !== table.id) : [...ids, table.id]));
       return;
@@ -96,7 +126,7 @@ export function DineInPopup({
         <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-neutral-500">
           <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-indigo-400" /> Available</span>
           <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-orange-400" /> Reserved</span>
-          <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-teal-500" /> On Dine — tap to open its order</span>
+          <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-teal-500" /> On Dine — tap for options</span>
           <button
             type="button"
             onClick={() => {
@@ -114,6 +144,17 @@ export function DineInPopup({
         </div>
         {mergeMode && <p className="mb-2 rounded-lg bg-teal-50 px-3 py-1.5 text-xs font-medium text-teal-700">Tap other free tables to join them to {primary ? `Table ${String(primary.number).padStart(2, "0")}` : "this order"}. Tap one again to take it off.</p>}
 
+        {pick && (
+          <div className="mb-2 flex items-center justify-between gap-3 rounded-lg bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
+            <span>
+              {pick.kind === "swap"
+                ? `Tap a free table to move order #${pick.order.orderNumber} (Table ${pick.table.number}) to.`
+                : `Tap the table to merge into order #${pick.order.orderNumber} (Table ${pick.table.number}).`}
+            </span>
+            <button onClick={() => { setPick(null); setError(null); }} className="shrink-0 rounded-lg border border-amber-300 bg-white px-3 py-1 text-xs font-semibold">Cancel</button>
+          </div>
+        )}
+        {error && <p className="mb-2 rounded-lg bg-rose-50 px-3 py-2 text-sm font-medium text-rose-600">{error}</p>}
         <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-100/60 p-3">
           <div className="grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-2.5">
             {areaTables.map((table) => {
@@ -127,7 +168,7 @@ export function DineInPopup({
                   aria-label={`Table ${table.number}`}
                   className={`relative flex min-h-[92px] flex-col items-center justify-center gap-1 rounded-xl border-2 p-2 text-center transition active:scale-[0.97] ${
                     open ? STATUS_CARD["on-dine"] : STATUS_CARD[table.status]
-                  } ${isPrimary ? "!border-[var(--brand)] ring-2 ring-[var(--brand)]" : ""} ${isExtra ? "!border-[var(--brand)] border-dashed ring-2 ring-[var(--brand)]/60" : ""}`}
+                  } ${isPrimary || occupied?.table.id === table.id || pick?.table.id === table.id ? "!border-[var(--brand)] ring-2 ring-[var(--brand)]" : ""} ${isExtra ? "!border-[var(--brand)] border-dashed ring-2 ring-[var(--brand)]/60" : ""}`}
                 >
                   <span className="text-base font-bold text-neutral-800">Table {String(table.number).padStart(2, "0")}</span>
                   <span className="flex items-center gap-1 text-xs text-neutral-500">
@@ -143,6 +184,37 @@ export function DineInPopup({
           </div>
         </div>
 
+        {occupied && !pick ? (
+          <div className="mt-3 border-t border-neutral-100 pt-3">
+            <div className="mb-2 text-sm font-semibold text-neutral-900">
+              Table {String(occupied.table.number).padStart(2, "0")} has an open order
+              <span className="ml-1.5 font-normal text-neutral-500">
+                #{occupied.order.orderNumber} · {occupied.order.status} · {occupied.order.guests} guest{occupied.order.guests === 1 ? "" : "s"}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => onOpenOrder(occupied.order)} className="min-h-11 rounded-xl bg-[var(--brand)] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[var(--brand-dark)]">
+                Open this order
+              </button>
+              <button
+                onClick={() => { setPick({ kind: "swap", ...occupied }); setError(null); }}
+                className="flex min-h-11 items-center gap-1.5 rounded-xl border border-neutral-200 px-4 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
+              >
+                <ArrowLeftRight className="h-4 w-4" /> Move to another table
+              </button>
+              <button
+                onClick={() => { setPick({ kind: "merge", ...occupied }); setError(null); }}
+                className="flex min-h-11 items-center gap-1.5 rounded-xl border border-neutral-200 px-4 py-2.5 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
+              >
+                <Combine className="h-4 w-4" /> Merge another table into it
+              </button>
+              <button onClick={() => setOccupied(null)} className="min-h-11 rounded-xl px-4 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50">
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : pick ? null : (
+          <>
         <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-neutral-100 pt-3">
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-semibold text-neutral-900">{label || "No table chosen yet"}</div>
@@ -185,6 +257,8 @@ export function DineInPopup({
             </button>
           ))}
         </div>
+          </>
+        )}
       </div>
     </div>
   );

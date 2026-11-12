@@ -397,6 +397,8 @@ export function OrderLineClient({
   const [showCategories, setShowCategories] = useState(true);
   // The Dine in table popup (table + guests + merge).
   const [dineInOpen, setDineInOpen] = useState(false);
+  // Set when the popup was opened by Send to kitchen (no table yet): confirming a table sends the order.
+  const [sendAfterTable, setSendAfterTable] = useState(false);
   const [scanNotice, setScanNotice] = useState<{ kind: "ok" | "error"; text: string; code?: string } | null>(null);
 
   const [cart, setCart] = useState<CartState>(() => {
@@ -1047,6 +1049,26 @@ export function OrderLineClient({
     });
   }
 
+  // From the Dine in popup: move an order that is already on a table to another table, or merge another
+  // table into it — without opening the order first. Returns an error message, or nothing on success.
+  async function handleDineInTableAction(kind: "swap" | "merge", orderId: string, tableId: string) {
+    const result = kind === "swap" ? await swapOrderTableAction(orderId, tableId) : await mergeTableIntoOrderAction(orderId, tableId);
+    if (result.error) return result.error;
+    // If that very order is the one open in the cart, keep the cart in step with it.
+    if (result.order && cart.editingOrderId === orderId) {
+      setCart((prev) => ({
+        ...prev,
+        tableId: result.order!.tableId,
+        tableNumber: result.order!.tableNumber,
+        mergedTableNumbers: result.order!.mergedTableNumbers ?? [],
+        guests: result.order!.guests,
+        items: result.order!.items,
+      }));
+    }
+    router.refresh();
+    return undefined;
+  }
+
   function handleTableSelect(table: RestaurantTable) {
     const existing = activeOrderForTable(table);
     if (existing) {
@@ -1095,46 +1117,58 @@ export function OrderLineClient({
     );
   }
 
+  // "Send to kitchen" / paying: a Dine in order needs a table first. If none is chosen the table
+  // popup opens instead, and the order is sent the moment a table is confirmed.
   function handlePlaceOrder() {
+    if (cart.items.length === 0 || placingOrder) return;
+    if (cart.channel === "Dine in" && showTables && tables.length > 0 && !cart.editingOrderId && !cart.tableId) {
+      setSendAfterTable(true);
+      setDineInOpen(true);
+      return;
+    }
+    placeOrderNow(cart);
+  }
+
+  function placeOrderNow(cartNow: CartState) {
     // Guard against double/triple-tapping the button (or a slow network making someone tap
     // again before it visibly responds) firing this twice and creating duplicate orders.
-    if (cart.items.length === 0 || placingOrder) return;
+    if (cartNow.items.length === 0 || placingOrder) return;
     setPlacingOrder(true);
     // Captured now, before setCart(emptyCart) below wipes the cart this receipt is for — a
     // payment-included order auto-prints right after placement (see printReceiptLocally), and by
     // then React may already have cleared cart state.
-    const wasPaid = cart.payments.length > 0;
-    const receiptCart: CartState = { ...cart, items: priced.items };
+    const wasPaid = cartNow.payments.length > 0;
+    const receiptCart: CartState = { ...cartNow, items: priced.items };
     // What the kitchen printers need: the whole order if it is new, only what changed if it is an edit.
-    const kitchenItems = cart.editingOrderId && editingOrder ? diffForKitchen(editingOrder.items, priced.items) : itemsForKitchen(priced.items);
-    const kitchenTitle = cart.editingOrderId ? "ORDER CHANGED" : "NEW ORDER";
+    const kitchenItems = cartNow.editingOrderId && editingOrder ? diffForKitchen(editingOrder.items, priced.items) : itemsForKitchen(priced.items);
+    const kitchenTitle = cartNow.editingOrderId ? "ORDER CHANGED" : "NEW ORDER";
     const kitchenMeta = {
       createdAt: editingOrder?.createdAt ?? currentTimeMs(),
-      channel: cart.channel,
-      tableNumber: cart.tableNumber,
-      guests: cart.tableNumber ? cart.guests : null,
-      customerName: cart.customerName.trim() || undefined,
+      channel: cartNow.channel,
+      tableNumber: cartNow.tableNumber,
+      guests: cartNow.tableNumber ? cartNow.guests : null,
+      customerName: cartNow.customerName.trim() || undefined,
     };
     startTransition(async () => {
       try {
         const result = await placeOrderAction({
-          editingOrderId: cart.editingOrderId,
-          tableId: cart.tableId,
-          tableNumber: cart.tableNumber,
-          mergedTableIds: cart.editingOrderId ? undefined : cart.mergedTableIds,
-          guests: cart.guests,
-          channel: cart.channel,
-          thirdPartyProvider: cart.channel === "Third Party" ? cart.thirdPartyProvider : undefined,
-          items: cart.items,
-          payments: cart.payments,
+          editingOrderId: cartNow.editingOrderId,
+          tableId: cartNow.tableId,
+          tableNumber: cartNow.tableNumber,
+          mergedTableIds: cartNow.editingOrderId ? undefined : cartNow.mergedTableIds,
+          guests: cartNow.guests,
+          channel: cartNow.channel,
+          thirdPartyProvider: cartNow.channel === "Third Party" ? cartNow.thirdPartyProvider : undefined,
+          items: cartNow.items,
+          payments: cartNow.payments,
           cashReceived: cashLine ? cashReceivedAmount || undefined : undefined,
           extraDiscount: extraDiscountAmount || undefined,
-          couponCode: cart.appliedCoupon?.code,
-          loyaltyMemberId: cart.loyaltyMember?.id,
-          tradeAccountId: cart.tradeAccountId ?? undefined,
-          customerName: cart.customerName.trim() || undefined,
-          customerPhone: cart.customerPhone.trim() || undefined,
-          customerAddress: cart.customerAddress.trim() || undefined,
+          couponCode: cartNow.appliedCoupon?.code,
+          loyaltyMemberId: cartNow.loyaltyMember?.id,
+          tradeAccountId: cartNow.tradeAccountId ?? undefined,
+          customerName: cartNow.customerName.trim() || undefined,
+          customerPhone: cartNow.customerPhone.trim() || undefined,
+          customerAddress: cartNow.customerAddress.trim() || undefined,
         });
         if (result && "error" in result) {
           setStockNotice({ kind: "error", text: result.error });
@@ -2124,23 +2158,31 @@ export function OrderLineClient({
           initial={{ tableId: cart.tableId, guests: cart.guests, mergedTableIds: cart.mergedTableIds }}
           onConfirm={(choice) => {
             setDineInOpen(false);
-            setCart((prev) => ({
-              ...prev,
-              channel: "Dine in",
-              channelChosen: true,
+            const chosen = {
               tableId: choice.tableId,
               tableNumber: choice.tableNumber,
               guests: choice.guests,
               mergedTableIds: choice.mergedTableIds,
               mergedTableNumbers: choice.mergedTableNumbers,
-            }));
+            };
+            setCart((prev) => ({ ...prev, channel: "Dine in", channelChosen: true, ...chosen }));
+            // Opened by Send to kitchen with no table: now there is one, send the order.
+            if (sendAfterTable) {
+              setSendAfterTable(false);
+              placeOrderNow({ ...cart, channel: "Dine in", channelChosen: true, ...chosen });
+            }
           }}
           onOpenOrder={(order) => {
             setDineInOpen(false);
+            setSendAfterTable(false);
             loadOrderIntoCart(order);
             setView("order");
           }}
-          onClose={() => setDineInOpen(false)}
+          onTableAction={handleDineInTableAction}
+          onClose={() => {
+            setDineInOpen(false);
+            setSendAfterTable(false);
+          }}
         />
       )}
       {tableActionError && (
