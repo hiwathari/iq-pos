@@ -1052,6 +1052,9 @@ scanning, a connected scale, label printers.
 > change without all three is not done. This guide plus that FAQ are the source for the final
 > project documentation, so both must always match the live system. (Also in `CLAUDE.md`.)
 
+### 2026-11-13 — The Till opens in the simple Till first
+- **No schema change.** `TillModeSwitcher` now starts every device in the simple Till; "Full Till" switches for the session only (sessionStorage), "Mobile till" in the full Till switches back. Old saved `till-mode-override` in localStorage is removed on load.
+
 ### 2026-11-13 — Android Till app 2.0: full screen + launcher, source now in the repo
 - **No schema change.** New `android/` project (§7.9): full screen, can be set as the tablet's Home
   app, hidden admin menu with optional screen lock, native printing as before, JS dialogs, photo

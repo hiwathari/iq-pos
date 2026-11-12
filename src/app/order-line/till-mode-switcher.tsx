@@ -10,12 +10,12 @@ import type { KitchenPrinter } from "@/lib/kitchen-ticket";
 import type { Printer } from "@/lib/types";
 import type { VariantLite } from "@/lib/variants";
 
-// A handheld runner's phone/mobile POS gets the simplified order-only Till; a counter tablet
-// or desktop gets the full one. Auto-detected from screen width on first load. Going back to
-// Full from Simple is offered in Simple Mode itself; the reverse isn't needed since a wide
-// screen already auto-detects Full, so the full desktop Till is left completely untouched.
+// The Till opens in the simple (mobile) Till on every device — phone, tablet or computer. "Full Till"
+// (offered in the simple Till) switches to the full one for as long as that browser tab / app session
+// lasts (sessionStorage), so the next time the Till is opened it starts simple again. The full Till has a
+// "Mobile till" button to go back. (Before 2026-11-13 the choice was remembered for good and wide screens
+// started in the full Till; the old saved value is cleared.)
 const MODE_KEY = "till-mode-override";
-const MOBILE_BREAKPOINT = 700;
 
 type Mode = "full" | "simple";
 
@@ -113,13 +113,12 @@ export function TillModeSwitcher({
   const [mode, setMode] = useState<Mode | null>(null);
 
   useEffect(() => {
-    let resolved: Mode;
+    let resolved: Mode = "simple";
     try {
-      const override = localStorage.getItem(MODE_KEY);
-      resolved = override === "full" || override === "simple" ? override : window.innerWidth < MOBILE_BREAKPOINT ? "simple" : "full";
+      localStorage.removeItem(MODE_KEY);
+      if (sessionStorage.getItem(MODE_KEY) === "full") resolved = "full";
     } catch {
-      // Storage unavailable — fall back to auto-detecting from screen size.
-      resolved = window.innerWidth < MOBILE_BREAKPOINT ? "simple" : "full";
+      // Storage unavailable — start in the simple Till.
     }
     // Deferred a tick so this doesn't set state synchronously within the effect body.
     setTimeout(() => setMode(resolved), 0);
@@ -128,18 +127,18 @@ export function TillModeSwitcher({
   function switchToSimple() {
     setMode("simple");
     try {
-      localStorage.setItem(MODE_KEY, "simple");
+      sessionStorage.removeItem(MODE_KEY);
     } catch {
-      // Ignore — the switch still applies for this session even if it can't be remembered.
+      // Ignore — the switch still applies even if it can't be remembered.
     }
   }
 
   function switchToFull() {
     setMode("full");
     try {
-      localStorage.setItem(MODE_KEY, "full");
+      sessionStorage.setItem(MODE_KEY, "full");
     } catch {
-      // Ignore — the switch still applies for this session even if it can't be remembered.
+      // Ignore — the switch still applies for now even if it can't be remembered.
     }
   }
 
