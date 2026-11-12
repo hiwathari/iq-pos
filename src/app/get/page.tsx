@@ -14,7 +14,8 @@ export default function GetAppPage() {
       <img src="/brand/iq-pos-logo.png" alt="" width={56} height={56} className="h-14 w-14 object-contain" />
       <h1 className="mt-3 text-2xl font-bold text-neutral-900">IQ POS Till</h1>
       <p className="mt-2 max-w-sm text-sm text-neutral-500">
-        For Sunmi / Android till devices. Replaces the browser + print bridge setup with a single app.
+        For Android tablets and Sunmi till devices. Full screen, prints straight to your printers, and can be set as
+        the tablet&rsquo;s Home app so it opens by itself.
       </p>
       <a
         href="/downloads/iq-pos-till.apk"
@@ -27,6 +28,11 @@ export default function GetAppPage() {
         After downloading, open the file to install — your device will ask you to allow installing apps from this
         source the first time. This is a debug build for internal use, not from the Play Store.
       </p>
+      <ol className="mt-4 max-w-sm list-decimal space-y-1 pl-5 text-left text-xs text-neutral-500">
+        <li>Open the downloaded file and install it (if you have the older version, uninstall it first).</li>
+        <li>Press the tablet&rsquo;s Home button, choose <b>IQ POS Till</b>, then <b>Always</b> — it now opens on start-up.</li>
+        <li>To get out: tap the top-left corner of the screen 5 times and enter the admin code.</li>
+      </ol>
     </div>
   );
 }

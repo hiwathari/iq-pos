@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">IQ POS Till</string>
+    <!-- The page the Till opens. -->
+    <string name="pos_url" translatable="false">https://pos.luvder.com/</string>
+    <!-- Code asked for by the hidden admin menu (tap the top-left corner 5 times). Change it here before building,
+         or on the tablet from that menu. -->
+    <string name="default_admin_pin" translatable="false">2468</string>
+</resources>

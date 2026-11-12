@@ -1,0 +1,45 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.iqpos.till'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.iqpos.till'
+        // Android 5.0 and newer — covers every tablet still in use.
+        minSdk 21
+        targetSdk 34
+        versionCode 3
+        versionName '2.0'
+    }
+
+    // One fixed signing key kept in the repo, so every rebuild is signed the same and a tablet
+    // updates in place. This is the standard Android *debug* key — fine for sideloading from /get,
+    // not a Play Store release key.
+    signingConfigs {
+        sideload {
+            storeFile file('../debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.sideload
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError false
+    }
+}

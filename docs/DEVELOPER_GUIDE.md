@@ -522,38 +522,48 @@ bug, and isn't evidence the bridge or printer setup is wrong.
 
 ### 7.9 The IQ POS Till Android app (replaces browser + Termux bridge)
 
-A separate Android project (**not** part of this Next.js repo/build — a standalone Gradle/Kotlin
-project) that wraps the Till in a WebView and exposes printing natively, so a Sunmi/Android device
-doesn't need Termux running at all. Source isn't checked into this repo (it was generated and
-built ad hoc); recreate it from this description if it needs to change:
+Source: **`android/`** in this repo (plain Java, Gradle/AGP 8.7.2, **no third-party dependencies** —
+so no Kotlin stdlib/AndroidX; a build only needs Google's Maven and Maven Central). Package
+`com.iqpos.till`, version 2.0 (`versionCode 3`), `minSdk 21` (Android 5.0+) / `targetSdk 34`. It wraps
+the Till in a WebView on `https://pos.luvder.com/` (`res/values/strings.xml` → `pos_url`) and:
 
-- `MainActivity.kt` — a single-Activity WebView loading the platform's own URL (`res/values/strings.xml`'s
-  `pos_url`, currently `https://pos.luvder.com/`), with `addJavascriptInterface(PrintBridge(),
-  "AndroidPrintBridge")`. Extends plain `android.app.Activity`, **not**
-  `AppCompatActivity` — the first build used `AppCompatActivity` with a plain `android:Theme.*`
-  parent (`themes.xml`), which crashes on launch every time with `You need to use a Theme.AppCompat
-  theme (or descendant) with this activity`. Nothing here needs AppCompat widgets, so the fix was
-  switching the base class rather than the theme — also dropped the now-unused
-  `androidx.appcompat`/`androidx.core` dependencies entirely, which cut the APK from ~3.4MB to
-  ~0.8MB as a side effect.
-- Launcher icon: `res/mipmap-*/ic_launcher*.png`, a teal rounded-square "IQ POS" wordmark generated
-  from an SVG (`sharp`, the same image library already used for the printed receipt's logo) —
-  not the restaurant's own logo, just the app's own identity on the home screen.
-- `PrintBridge.kt` — the native counterpart to `lib/local-print-bridge.ts`: a `@JavascriptInterface
-  fun print(printerIp, printerPort, escposHex)` that hex-decodes and writes straight to a raw
-  `java.net.Socket` on a background thread, fire-and-forget. **No local HTTP server at all** inside
-  the app (unlike the Termux bridge) — same-process native call instead, which also sidesteps
-  Chrome's Private Network Access restrictions entirely.
-- `lib/local-print-bridge.ts` on the web side checks `window.AndroidPrintBridge` first and calls it
-  directly when present; it only falls back to the HTTP bridge (`public/downloads/iq-print-bridge.js`,
-  Termux) when that global doesn't exist — so the exact same web code path serves both a plain
-  browser+Termux setup and the APK, with no restaurant-specific branching needed.
-- Distributed as a debug-signed APK (fine for sideloading; not a Play Store release) hosted at
-  **`/get`** (`src/app/get/page.tsx`, linking to the static file at `public/downloads/iq-pos-till.apk`)
-  — a public, unauthenticated page (see `CUSTOMER_FACING_PREFIXES` in `src/proxy.ts`) so it's
-  reachable from a bare device browser before anything else is set up. Rebuilding it requires the
-  Android SDK (`compileSdk 34`, AGP 8.7.2, Kotlin 1.9.24) — not installed in every environment this
-  project gets worked on from; if that tooling isn't available, this is out of reach without it.
+- **Full screen** — immersive sticky mode (status and navigation bars hidden, swipe to peek), screen
+  kept on, camera-notch area used. Works on every Android version (API 30+ `WindowInsetsController`,
+  older `systemUiVisibility`).
+- **Launcher (Home app)** — `MainActivity` has a second intent filter with `category.HOME` +
+  `DEFAULT` (and `launchMode="singleTask"`), so Android lists it as a choice for the Home app. After
+  installing: press the tablet's Home button → choose **IQ POS Till** → **Always**. From then on the
+  Till is what shows on boot and on every Home press; Back steps back inside the Till and never leaves
+  it. To change this: Settings → Apps → Default apps → Home app (or the app's hidden admin menu).
+- **Hidden admin menu** — tap the top-left corner 5 times quickly, enter the admin code (default
+  `2468`, `default_admin_pin` in `strings.xml`; changeable from the menu). Options: reload the Till,
+  **screen lock (kiosk)** on/off (`startLockTask()` — Android shows its "screen pinned" prompt once
+  unless the tablet is set up as a managed/device-owner kiosk), choose the Home app, Android
+  settings, change the code.
+- **Native printing** — `PrintBridge.java`: `@JavascriptInterface print(printerIp, port, escposHex)`,
+  hex → bytes → raw `java.net.Socket` on a background thread, 5 s connect timeout, fire-and-forget (no
+  local HTTP server). `lib/local-print-bridge.ts` checks `window.AndroidPrintBridge` first and only
+  falls back to the HTTP bridge (`public/downloads/iq-print-bridge.js`, Termux) when it is absent.
+- **Also** — `window.IQPOSApp` (`reload()`, `version()`); the browser's JS `alert`/`confirm` dialogs
+  (the old app showed none, so "Free all tables?" confirmations silently answered *no*); photo upload
+  (`<input type=file>`, gallery or camera) for the icon/photo pickers; camera for barcode scanning
+  (runtime permission asked on first use); file downloads to the Downloads folder; `tel:`/`mailto:`
+  links open the right app; a "Can't reach the Till" page (`assets/offline.html`) that retries by itself
+  when the connection returns. User-agent gets ` IQPOSTill/2.0` appended.
+- **Building** — needs the Android SDK (platform 34, build-tools 34.0.0), JDK 17+ and Gradle 8.9+:
+  `cd android && gradle assembleRelease` → `app/build/outputs/apk/release/app-release.apk`, copy to
+  `public/downloads/iq-pos-till.apk`. Maven Central's front door (`repo.maven.apache.org`) can
+  rate-limit shared networks, so `settings.gradle` points at `repo1.maven.org` (Maven Central itself).
+- **Signing** — `android/debug.keystore` is the standard Android *debug* key (password `android`),
+  committed on purpose so every rebuild is signed identically and tablets update in place. It is not a
+  Play Store key. **The 1.1 APK (before 2026-11-13) was signed with a different debug key, so a tablet
+  with it must uninstall it once before installing 2.0** (the login is remembered by the web page's
+  session cookie, which is lost on uninstall — sign in again).
+- Distributed as that APK at **`/get`** (`src/app/get/page.tsx`, static file
+  `public/downloads/iq-pos-till.apk`), a public page (`CUSTOMER_FACING_PREFIXES` in `src/proxy.ts`) so
+  it opens from a bare device browser. Not tested on a physical tablet when 2.0 was built — only
+  compiled, linted (no API-level errors) and signature-checked (v1 + v2) in a build environment with
+  no device/emulator; test printing and the Home button on one tablet first.
 
 ### 7.10 Reports (`/reports`)
 
@@ -978,8 +988,8 @@ when something here gets built, move it to §14 and the section that describes i
 - **Local network print only runs from the full Till** (Print button + auto-print on payment, for
   the printer with `tillReceiptPrinter` on). Not from the Kitchen Display, not from the
   mobile/Simple Till (which has no print button and no card payments).
-- **The Till Android app's source isn't in this repo** (§7.9) and the APK is debug-signed for
-  sideloading, not a Play Store release.
+- **The Till Android app's APK is debug-signed for sideloading** (§7.9, source in `android/`), not a
+  Play Store release; 2.0 was built without a physical device to test on.
 - **AI website briefs:** Claude reading only runs once an Anthropic key is saved in Super Admin;
   without it, pattern matching fills the form. The website itself is still built by hand from
   the brief — nothing generates or hosts a site automatically yet.
@@ -1041,6 +1051,12 @@ scanning, a connected scale, label printers.
 > `/faq` page), re-capturing the marked screenshot in `public/help/` when the screen changed. A
 > change without all three is not done. This guide plus that FAQ are the source for the final
 > project documentation, so both must always match the live system. (Also in `CLAUDE.md`.)
+
+### 2026-11-13 — Android Till app 2.0: full screen + launcher, source now in the repo
+- **No schema change.** New `android/` project (§7.9): full screen, can be set as the tablet's Home
+  app, hidden admin menu with optional screen lock, native printing as before, JS dialogs, photo
+  upload, camera scanning, downloads, offline page. `public/downloads/iq-pos-till.apk` replaced with
+  version 2.0 (new signing key — uninstall 1.1 first). `/get` page text updated.
 
 ### 2026-11-02 — Retail plan Phases 3 + 4: the Till for shops, then stock control and purchasing
 - **Schema** — run on Turso **before** this code is deployed (one file, runs once; ALTER TABLE can't be repeated):
