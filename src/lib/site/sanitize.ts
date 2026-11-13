@@ -1,4 +1,5 @@
 import sanitizeHtml from "sanitize-html";
+import { FONTS, googleFontsImport } from "./fonts";
 
 // Everything the AI writes — and everything a customer saves from the editor — passes through here before it
 // is stored or served. The preview is also served under a strict Content-Security-Policy (see
@@ -40,11 +41,18 @@ export function cleanCss(css: string): string {
     .replace(/@import\s+(?:url\()?\s*['"]?([^'")\s;]+)['"]?\s*\)?[^;]*;?/gi, (m, url: string) => (/^https:\/\/fonts\.googleapis\.com\//i.test(url) ? m : ""))
     .replace(/expression\s*\(/gi, "(")
     .replace(/javascript\s*:/gi, "")
-    .replace(/behaviou?r\s*:[^;}]*/gi, "")
+    .replace(/(?<![\w-])behaviou?r\s*:[^;}]*/gi, "")
     .replace(/-moz-binding\s*:[^;}]*/gi, "");
 }
 
 export function documentFor(title: string, html: string, css: string): string {
   const safeTitle = title.replace(/[<>&"]/g, "");
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${safeTitle}</title><style>*,*::before,*::after{box-sizing:border-box}body{margin:0}img{max-width:100%}${css}</style></head><body>${html}</body></html>`;
+}
+
+/** Makes sure every curated font used in the page is actually loaded (the editor lets people pick any of them). */
+export function withFontImports(html: string, css: string): string {
+  const used = FONTS.filter((f) => new RegExp(f.family, "i").test(css) || new RegExp(`font-family:[^;"]*${f.family}`, "i").test(html));
+  const missing = used.filter((f) => !css.includes(`family=${f.family.replace(/ /g, "+")}`)).map((f) => f.family);
+  return missing.length ? googleFontsImport(missing) + css : css;
 }

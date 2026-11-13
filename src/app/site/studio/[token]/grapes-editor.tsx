@@ -4,6 +4,9 @@ import { useRef, useState } from "react";
 import StudioEditor from "@grapesjs/studio-sdk/react";
 import "@grapesjs/studio-sdk/style";
 import { saveEditsAction } from "@/lib/actions/site-builder";
+import { buildBlocks } from "@/lib/site/blocks";
+import { ALL_FONTS_URL, FONTS } from "@/lib/site/fonts";
+import type { Design } from "@/lib/site/templates";
 
 // Only what we use from the editor — structural, because the SDK bundles its own GrapesJS copy.
 interface Editor {
@@ -15,7 +18,7 @@ interface Editor {
 // The free, click-to-edit side of the studio, built on GrapesJS Studio SDK. Loaded only when the Edit tab opens
 // (see studio-client). The licence key is a front-end key tied to our domains (not a secret); it is read on the
 // server from the GRAPESJS_STUDIO_LICENSE_KEY environment variable and passed in, never committed.
-export default function GrapesEditor({ token, html, css, licenseKey, onSaved }: { token: string; html: string; css: string; licenseKey: string; onSaved: () => void }) {
+export default function GrapesEditor({ token, html, css, licenseKey, design, onSaved }: { token: string; html: string; css: string; licenseKey: string; design: Design; onSaved: () => void }) {
   const editorRef = useRef<Editor | null>(null);
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
@@ -55,6 +58,11 @@ export default function GrapesEditor({ token, html, css, licenseKey, onSaved }: 
               default: { pages: [{ name: "Home", component: `${html}<style>${css}</style>` }] },
             },
             pages: false,
+            // Ready-made sections and elements to drop in, in the colours of the chosen design.
+            blocks: { default: buildBlocks(design) as never },
+            // Our curated Google fonts, loaded in the canvas so each one shows as soon as it's picked.
+            fonts: { default: FONTS.map((f) => ({ id: `'${f.family}', ${f.fallback}`, label: f.family })) },
+            gjsOptions: { canvas: { styles: [ALL_FONTS_URL] } },
             storage: {
               type: "self",
               // The project handed in above is what loads; nothing is read back from the browser.

@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { Loader2, Sparkles, TriangleAlert } from "lucide-react";
 import { previewCouponAction, runJobAction, startPurchaseAction } from "@/lib/actions/site-builder";
 import { BUILD_PENCE, CHANGE_PENCE, formatPence } from "@/lib/site/builder-pricing";
+import type { Design, SiteData } from "@/lib/site/templates";
+import { DesignPanel } from "./design-panel";
 
 const GrapesEditor = dynamic(() => import("./grapes-editor"), { ssr: false, loading: () => <p className="py-10 text-center text-white/50">Opening the editor…</p> });
 
@@ -23,6 +25,8 @@ interface Props {
   paymentChecked: boolean | null;
   cancelled: boolean;
   studioLicense: string;
+  data: SiteData;
+  design: Design;
 }
 
 function CouponBox({ kind, coupon, setCoupon, onPrice }: { kind: "build" | "change"; coupon: string; setCoupon: (v: string) => void; onPrice: (label: string | null) => void }) {
@@ -63,9 +67,10 @@ function CouponBox({ kind, coupon, setCoupon, onPrice }: { kind: "build" | "chan
 }
 
 export function StudioClient(props: Props) {
-  const { token, name, status, hasSite, credit, lastError, html, css, previewSrc, paymentsEnabled, paymentChecked, cancelled, studioLicense } = props;
+  const { token, name, status, hasSite, credit, lastError, html, css, previewSrc, paymentsEnabled, paymentChecked, cancelled, studioLicense, data, design } = props;
   const router = useRouter();
-  const [tab, setTab] = useState<"preview" | "edit" | "ask">("preview");
+  const [tab, setTab] = useState<"preview" | "design" | "edit" | "ask">("preview");
+  const [route, setRoute] = useState<"free" | "ai">("free");
   const [coupon, setCoupon] = useState("");
   const [couponLabel, setCouponLabel] = useState<string | null>(null);
   const [instruction, setInstruction] = useState("");
@@ -159,7 +164,24 @@ export function StudioClient(props: Props) {
       )}
 
       {!writing && !runError && !hasSite && !credit && (
-        <div className="mx-auto mt-10 max-w-lg rounded-2xl border border-white/10 bg-white/[0.03] p-7">
+        <div className="mt-8">
+          <div className="mb-6 grid max-w-3xl gap-3 sm:grid-cols-2">
+            {(
+              [
+                ["free", "Choose a free design", "Pick a ready-made restaurant design, set your colours and fonts, and it fills in your details and menu. Free."],
+                ["ai", `AI custom design · ${formatPence(BUILD_PENCE)}`, "Our AI writes a one-of-a-kind page from your brief."],
+              ] as const
+            ).map(([key, title, blurb]) => (
+              <button key={key} type="button" onClick={() => setRoute(key)} className={`rounded-2xl border p-5 text-left ${route === key ? "border-teal-300 bg-teal-300/[0.07]" : "border-white/10 hover:border-white/30"}`}>
+                <p className="font-display text-lg font-bold">{title}</p>
+                <p className="mt-1 text-sm text-white/55">{blurb}</p>
+              </button>
+            ))}
+          </div>
+          {route === "free" ? (
+            <DesignPanel token={token} data={data} initialDesign={design} hasSite={false} onApplied={() => router.refresh()} />
+          ) : (
+        <div className="max-w-lg rounded-2xl border border-white/10 bg-white/[0.03] p-7">
           <h2 className="font-display text-2xl font-bold">Build my website</h2>
           <p className="mt-2 text-white/60">
             Our AI writes your one-page website from your brief in about a minute. You then preview it, edit anything by clicking on it (free), and can ask for changes ({formatPence(CHANGE_PENCE)} each).
@@ -180,6 +202,8 @@ export function StudioClient(props: Props) {
           </button>
           <p className="mt-3 text-center text-xs text-white/40">Secure card payment by Stripe.</p>
         </div>
+          )}
+        </div>
       )}
 
       {!writing && hasSite && (
@@ -188,6 +212,7 @@ export function StudioClient(props: Props) {
             {(
               [
                 ["preview", "Preview"],
+                ["design", "Design (free)"],
                 ["edit", "Edit by hand (free)"],
                 ["ask", `Ask AI for a change · ${formatPence(CHANGE_PENCE)}`],
               ] as const
@@ -216,7 +241,9 @@ export function StudioClient(props: Props) {
             </div>
           )}
 
-          {tab === "edit" && <GrapesEditor token={token} html={html} css={css} licenseKey={studioLicense} onSaved={() => router.refresh()} />}
+          {tab === "design" && <DesignPanel token={token} data={data} initialDesign={design} hasSite onApplied={() => { setTab("preview"); router.refresh(); }} />}
+
+          {tab === "edit" && <GrapesEditor token={token} html={html} css={css} licenseKey={studioLicense} design={design} onSaved={() => router.refresh()} />}
 
           {tab === "ask" && (
             <div className="max-w-2xl rounded-2xl border border-white/10 bg-white/[0.03] p-7">

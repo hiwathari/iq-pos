@@ -6,7 +6,9 @@ import { sitePayments, siteProjects } from "@/db/schema";
 import { listPence, priceAfterCoupon, type PurchaseKind } from "./builder-pricing";
 import { checkCoupon, redeemCoupon } from "./coupons";
 import { generateSite, reviseSite } from "./generate";
-import { cleanCss, cleanHtml } from "./sanitize";
+import { cleanCss, cleanHtml, withFontImports } from "./sanitize";
+import { briefToSiteData, sanitiseDesign, type SiteDetails } from "./site-data";
+import { render, type Design } from "./templates";
 import { createCheckoutSession, retrieveCheckoutSession, stripeConfigured } from "./stripe";
 
 export type SiteProject = typeof siteProjects.$inferSelect;
@@ -194,8 +196,58 @@ export async function saveManualEdit(token: string, html: string, css: string): 
   if (!project || !project.html || project.status === "generating") return false;
   const cleanedHtml = cleanHtml(html.slice(0, 400_000));
   if (cleanedHtml.length < 50) return false;
-  await db.update(siteProjects).set({ html: cleanedHtml, css: cleanCss(css.slice(0, 400_000)), updatedAt: Date.now() }).where(eq(siteProjects.id, project.id));
+  const cleanedCss = withFontImports(cleanedHtml, cleanCss(css.slice(0, 400_000)));
+  await db.update(siteProjects).set({ html: cleanedHtml, css: cleanedCss, updatedAt: Date.now() }).where(eq(siteProjects.id, project.id));
   return true;
+}
+
+const t = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+
+/**
+ * Free: builds (or rebuilds) the site from one of the ready-made designs using the brief's data plus the
+ * details/design the customer chose. No AI, no payment. Replaces the current page, hand edits included —
+ * the studio asks the customer to confirm that first.
+ */
+export async function applyDesign(token: string, designInput: Partial<Design>, details: Partial<SiteDetails>): Promise<{ ok: true } | { ok: false; error: string }> {
+  const project = await getProject(token);
+  if (!project) return { ok: false, error: "We couldn't find your site." };
+  if (project.status === "generating") return { ok: false, error: "Your site is being written right now — give it a minute." };
+  if (await pendingCredit(project.id)) return { ok: false, error: "You have a paid build waiting — let it finish first." };
+
+  const design = sanitiseDesign(designInput);
+  const brief = { ...(project.brief as Record<string, unknown>) };
+  const fields = { ...((brief.fields as Record<string, unknown>) ?? {}) };
+  fields.restaurantName = t(details.name, 120) || fields.restaurantName || project.name;
+  fields.tagline = t(details.tagline, 140);
+  fields.cuisine = t(details.cuisine, 120);
+  fields.about = t(details.about, 1500);
+  fields.phone = t(details.phone, 40);
+  fields.email = t(details.email, 200);
+  fields.address = t(details.address, 300);
+  fields.instagram = t(details.instagram, 80);
+  fields.openingHours = t(details.hours, 700);
+  fields.colours = [design.primary, design.accent];
+  brief.fields = fields;
+  brief.design = design;
+
+  const { html, css } = render(briefToSiteData(brief), design);
+  const cleanedHtml = cleanHtml(html);
+  const cleanedCss = withFontImports(cleanedHtml, cleanCss(css));
+  await db
+    .update(siteProjects)
+    .set({
+      brief,
+      name: String(fields.restaurantName).slice(0, 120),
+      html: cleanedHtml,
+      css: cleanedCss,
+      engine: "template",
+      status: "ready",
+      generations: project.generations + 1,
+      lastError: null,
+      updatedAt: Date.now(),
+    })
+    .where(eq(siteProjects.id, project.id));
+  return { ok: true };
 }
 
 export async function listProjects(limit = 200) {

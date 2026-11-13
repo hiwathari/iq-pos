@@ -3,7 +3,9 @@
 import { headers } from "next/headers";
 import { checkCoupon } from "@/lib/site/coupons";
 import { BUILD_PENCE, CHANGE_PENCE, formatPence, type PurchaseKind } from "@/lib/site/builder-pricing";
-import { beginPurchase, confirmPaymentById, getProject, runNextJob, saveManualEdit } from "@/lib/site/projects";
+import { applyDesign, beginPurchase, confirmPaymentById, getProject, runNextJob, saveManualEdit } from "@/lib/site/projects";
+import type { SiteDetails } from "@/lib/site/site-data";
+import type { Design } from "@/lib/site/templates";
 
 // Public actions for the customer studio (/site/studio/<token>). The token in the URL is the only credential,
 // like an invoice link — it is 24 random characters and never listed anywhere.
@@ -65,4 +67,9 @@ export async function runJobAction(token: string): Promise<{ ok: true; ran: bool
 export async function saveEditsAction(token: string, html: string, css: string): Promise<{ ok: boolean }> {
   if (typeof html !== "string" || typeof css !== "string") return { ok: false };
   return { ok: await saveManualEdit(token, html, css) };
+}
+
+/** Free: build or rebuild the site from a ready-made design (no AI, no payment). */
+export async function applyDesignAction(token: string, design: Partial<Design>, details: Partial<SiteDetails>): Promise<{ ok: true } | { ok: false; error: string }> {
+  return applyDesign(String(token), design ?? {}, details ?? {});
 }

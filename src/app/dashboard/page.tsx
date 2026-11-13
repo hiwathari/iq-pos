@@ -18,6 +18,8 @@ import { EndShiftButton } from "./end-shift-button";
 import { OpenTillButton } from "./open-till-button";
 import { DeviceLogins } from "./device-logins";
 import { BusinessKillSwitch } from "./business-kill-switch";
+import { WebsiteCard } from "./website-card";
+import { findRestaurantProject } from "@/lib/site/from-restaurant";
 import { getRestaurantKillLevel } from "@/lib/kill-switch";
 import { AutoVoidNotice } from "./auto-void-notice";
 import { AUTO_VOID_REASON } from "@/lib/order-helpers";
@@ -193,6 +195,8 @@ export default async function DashboardPage() {
         <AutoVoidNotice orders={carriedOverOrders} />
 
         {session.role === "admin" && <BusinessKillSwitch restaurantId={restaurantId} initialOff={(await getRestaurantKillLevel(restaurantId)) !== null} />}
+
+        {session.role === "admin" && <WebsiteCard existingToken={await findRestaurantProject(restaurantId).catch(() => null)} />}
 
         {session.role === "admin" && <DeviceLogins showKitchen={profile.features.kitchenDisplay} />}
 

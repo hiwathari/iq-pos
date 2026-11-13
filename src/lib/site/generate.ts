@@ -100,7 +100,7 @@ export function parseDraft(text: string): { html: string; css: string } {
   return { html, css };
 }
 
-async function callGemini(system: string, user: string): Promise<string> {
+async function callGeminiOnce(system: string, user: string): Promise<string> {
   const key = await getSecretSetting(SETTING_GEMINI_KEY);
   if (!key) throw new Error("No Gemini key is saved in Super Admin.");
   const model = ((await getPlainSetting(SETTING_GEMINI_MODEL)) || DEFAULT_GEMINI_MODEL).replace(/^models\//, "");
@@ -120,12 +120,26 @@ async function callGemini(system: string, user: string): Promise<string> {
     error?: { message?: string };
     candidates?: { finishReason?: string; content?: { parts?: { text?: string }[] } }[];
   };
-  if (!res.ok) throw new Error(`Gemini: ${json?.error?.message || `error ${res.status}`}`);
+  if (!res.ok) throw Object.assign(new Error(`Gemini: ${json?.error?.message || `error ${res.status}`}`), { status: res.status });
   const cand = json.candidates?.[0];
   const text = (cand?.content?.parts ?? []).map((p) => p.text ?? "").join("");
   if (!text) throw new Error(`Gemini returned nothing (${cand?.finishReason ?? "no candidate"}).`);
   if (cand?.finishReason === "MAX_TOKENS") throw new Error("The page was too long for the AI to finish — try a shorter brief.");
   return text;
+}
+
+// Google answers 503 ("high demand") and 429 now and then — those are worth a couple of patient retries.
+async function callGemini(system: string, user: string): Promise<string> {
+  const waits = [3000, 8000, 15000];
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await callGeminiOnce(system, user);
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      if (attempt >= waits.length || (status !== 503 && status !== 429 && status !== 500)) throw error;
+      await new Promise((r) => setTimeout(r, waits[attempt]));
+    }
+  }
 }
 
 async function callClaude(apiKey: string, system: string, user: string): Promise<string> {

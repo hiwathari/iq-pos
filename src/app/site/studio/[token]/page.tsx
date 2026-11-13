@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { stripeConfigured } from "@/lib/site/stripe";
 import { confirmPaymentById, getProject, pendingCredit } from "@/lib/site/projects";
+import { briefToSiteData, designFromBrief } from "@/lib/site/site-data";
 import { getSiteBase } from "../../_components/site-base";
 import { StudioClient } from "./studio-client";
 
@@ -45,6 +46,8 @@ export default async function StudioPage({ params, searchParams }: { params: Pro
         paymentChecked={paymentChecked}
         cancelled={query.cancelled === "1"}
         // Front-end licence key for the GrapesJS Studio editor (set in Vercel; "DEV_LICENSE_KEY" only works on localhost).
+        data={briefToSiteData(project.brief as Record<string, unknown>)}
+        design={designFromBrief(project.brief as Record<string, unknown>)}
         studioLicense={process.env.GRAPESJS_STUDIO_LICENSE_KEY || "DEV_LICENSE_KEY"}
       />
     </section>
