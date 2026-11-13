@@ -35,6 +35,7 @@ import {
 } from "@/lib/actions/regional-admins";
 import { DEFAULT_BRAND_COLOR, isValidHexColor } from "@/lib/color";
 import { KillSwitchCard } from "./kill-switch-card";
+import { RestaurantKillButton } from "./restaurant-kill-button";
 import { CreateRestaurantForm } from "./create-restaurant-form";
 
 interface RestaurantRow {
@@ -71,6 +72,7 @@ export function SuperAdminClient({
   regionalAdmins,
   newWebsiteRequests = null,
   killSwitch = null,
+  killLevels = {},
 }: {
   restaurants: RestaurantRow[];
   totals: { restaurantCount: number; userCount: number; orderCount: number };
@@ -79,6 +81,7 @@ export function SuperAdminClient({
   // Null for regional admins, or when the website_requests table hasn't been created yet.
   newWebsiteRequests?: number | null;
   killSwitch?: { on: boolean; updatedAt: number | null } | null;
+  killLevels?: Record<string, "admin" | "super">;
 }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [brandingTarget, setBrandingTarget] = useState<RestaurantRow | null>(null);
@@ -206,6 +209,7 @@ export function SuperAdminClient({
               >
                 <Globe className="h-4 w-4" />
               </button>
+              {isSuperAdmin && <RestaurantKillButton restaurantId={r.id} name={r.name} level={killLevels[r.id] ?? null} />}
               <form action={toggleRestaurantActiveAction.bind(null, r.id, !r.active)}>
                 <button
                   type="submit"

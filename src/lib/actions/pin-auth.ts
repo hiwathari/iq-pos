@@ -5,11 +5,14 @@ import { redirect } from "next/navigation";
 import { db } from "@/db/client";
 import { printers, restaurants, users } from "@/db/schema";
 import { createSession, rememberDeviceRestaurant } from "@/lib/auth";
+import { getKillState, isBlocked } from "@/lib/kill-switch";
 import { registerTillDevice } from "@/lib/till-license";
 
 // PIN-unlocked devices (till, kitchen display) get a shorter session than a full staff login,
 // since they're shared hardware left logged in for a shift rather than a personal device.
 const DEVICE_SESSION_SECONDS = 60 * 60 * 16;
+
+const SWITCHED_OFF = "This business is switched off right now. Ask your manager to switch it back on.";
 
 export interface PinLoginState {
   error?: string;
@@ -32,6 +35,8 @@ export async function tillPinLoginAction(
 
   const [restaurant] = await db.select().from(restaurants).where(eq(restaurants.id, staff.restaurantId)).limit(1);
   if (!restaurant || !restaurant.active) return { error: "Incorrect code." };
+
+  if (isBlocked(await getKillState(), { role: "till", restaurantId: staff.restaurantId })) return { error: SWITCHED_OFF };
 
   // Till licences: this device must fit within the plan's till limit (step 6.8).
   const licenceError = await registerTillDevice(staff.restaurantId);
@@ -64,6 +69,7 @@ export async function kitchenPinLoginAction(
     if (!staff.active || !staff.restaurantId) return { error: "Incorrect code." };
     const [restaurant] = await db.select().from(restaurants).where(eq(restaurants.id, staff.restaurantId)).limit(1);
     if (!restaurant || !restaurant.active) return { error: "Incorrect code." };
+    if (isBlocked(await getKillState(), { role: "kitchen_display", restaurantId: staff.restaurantId })) return { error: SWITCHED_OFF };
 
     await createSession(
       {
@@ -87,6 +93,7 @@ export async function kitchenPinLoginAction(
 
   const [restaurant] = await db.select().from(restaurants).where(eq(restaurants.id, display.restaurantId)).limit(1);
   if (!restaurant || !restaurant.active) return { error: "Incorrect code." };
+  if (isBlocked(await getKillState(), { role: "kitchen_display", restaurantId: display.restaurantId })) return { error: SWITCHED_OFF };
 
   await createSession(
     {
@@ -119,6 +126,7 @@ export async function staffPinLoginAction(
 
   const [restaurant] = await db.select().from(restaurants).where(eq(restaurants.id, staff.restaurantId)).limit(1);
   if (!restaurant || !restaurant.active) return { error: "Incorrect code." };
+  if (isBlocked(await getKillState(), { role: staff.role, restaurantId: staff.restaurantId })) return { error: SWITCHED_OFF };
 
   await createSession({
     userId: staff.id,

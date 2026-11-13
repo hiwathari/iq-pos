@@ -1,8 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { IMPERSONATION_COOKIE_NAME, SESSION_COOKIE_NAME, verifySessionToken, type Role } from "@/lib/session";
-import { getRestaurantByCustomDomain } from "@/lib/data/restaurants";
+import { getRestaurantByCustomDomain, getRestaurantBySlug } from "@/lib/data/restaurants";
 import { landingFor } from "@/lib/device";
-import { isKillSwitchOn } from "@/lib/kill-switch";
+import { getKillState, isBlocked } from "@/lib/kill-switch";
 
 const PUBLIC_PATHS = ["/login", "/till-login", "/kitchen-login", "/staff-login"];
 
@@ -89,6 +89,25 @@ function homeFor(role: Role, userAgent: string | null) {
   return landingFor(role, userAgent);
 }
 
+// Is this request for a switched-off business's public pages — /order/<slug>/... or its own custom domain?
+async function publicPageSwitchedOff(request: NextRequest, off: Record<string, string>) {
+  const { pathname } = request.nextUrl;
+  const hostname = (request.headers.get("host") ?? "").split(":")[0].toLowerCase();
+  try {
+    if (pathname.startsWith("/order/")) {
+      const slug = pathname.split("/")[2];
+      const restaurant = slug ? await getRestaurantBySlug(slug) : null;
+      if (restaurant && off[restaurant.id]) return true;
+    } else if (hostname && !isKnownAppHost(hostname) && !isSiteHost(hostname)) {
+      const restaurant = await getRestaurantByCustomDomain(hostname);
+      if (restaurant && off[restaurant.id]) return true;
+    }
+  } catch {
+    // lookup failed — fail open
+  }
+  return false;
+}
+
 // What everyone sees while the Super Admin kill switch is on. Browsers navigating get a plain page;
 // fetches, server actions and API callers get JSON. Never cached.
 function killSwitchResponse(request: NextRequest) {
@@ -113,19 +132,37 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Kill switch (Super Admin): while on, nothing works except the /login page and Super Admin sessions.
-  if (await isKillSwitchOn()) {
+  // Kill switches: the whole platform (Super Admin) and individual businesses (that business's admin, or
+  // Super Admin). While one applies to a request, nothing works except the /login page and Super Admin
+  // sessions — see lib/kill-switch.ts for who is let through.
+  const kill = await getKillState();
+  const businessesOff = Object.keys(kill.restaurants).length > 0;
+  if (kill.global || businessesOff) {
     const killToken = request.cookies.get(SESSION_COOKIE_NAME)?.value;
     const killSession = killToken ? await verifySessionToken(killToken) : null;
     if (killSession?.role !== "super_admin") {
-      if (pathname === "/login") {
-        // Let the Super Admin reach the sign-in form; a leftover staff session on this browser is dropped
-        // so it can't keep the form from loading.
-        const res = NextResponse.next();
-        if (killSession) res.cookies.delete(SESSION_COOKIE_NAME);
-        return res;
+      let blocked = false;
+      if (killSession) {
+        // A regional admin works inside a business through the "manage as" cookie.
+        const restaurantId =
+          killSession.restaurantId ??
+          (killSession.role === "regional_admin" ? (request.cookies.get(IMPERSONATION_COOKIE_NAME)?.value ?? null) : null);
+        blocked = isBlocked(kill, { role: killSession.role, restaurantId });
+      } else {
+        blocked = kill.global;
       }
-      return killSwitchResponse(request);
+      // A switched-off business's public pages (online ordering, its own domain) are off for customers too.
+      if (!blocked && businessesOff && (await publicPageSwitchedOff(request, kill.restaurants))) blocked = true;
+      if (blocked) {
+        if (pathname === "/login") {
+          // Let people reach the sign-in form; a blocked session on this browser is dropped so it can't keep
+          // the form from loading.
+          const res = NextResponse.next();
+          if (killSession) res.cookies.delete(SESSION_COOKIE_NAME);
+          return res;
+        }
+        return killSwitchResponse(request);
+      }
     }
   }
 

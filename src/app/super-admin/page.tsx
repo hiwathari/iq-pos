@@ -3,7 +3,7 @@ import { AppShell } from "@/components/app-shell";
 import { requireSession } from "@/lib/scope";
 import { countNewWebsiteRequests } from "@/lib/data/website-requests";
 import { listAssignedRestaurantIds, listRegionalAdmins, listRestaurantsWithStats, platformTotals } from "@/lib/data/restaurants";
-import { getKillSwitchStatus } from "@/lib/kill-switch";
+import { getKillSwitchStatus, listRestaurantKillLevels } from "@/lib/kill-switch";
 import { SuperAdminClient } from "./super-admin-client";
 
 export default async function SuperAdminPage() {
@@ -13,12 +13,13 @@ export default async function SuperAdminPage() {
   const isSuperAdmin = session.role === "super_admin";
   const assignedIds = isSuperAdmin ? undefined : await listAssignedRestaurantIds(session.userId);
 
-  const [restaurants, totals, regionalAdmins, newWebsiteRequests, killSwitch] = await Promise.all([
+  const [restaurants, totals, regionalAdmins, newWebsiteRequests, killSwitch, killLevels] = await Promise.all([
     listRestaurantsWithStats(assignedIds),
     isSuperAdmin ? platformTotals() : Promise.resolve(null),
     isSuperAdmin ? listRegionalAdmins() : Promise.resolve([]),
     isSuperAdmin ? countNewWebsiteRequests() : Promise.resolve(null),
     isSuperAdmin ? getKillSwitchStatus() : Promise.resolve(null),
+    isSuperAdmin ? listRestaurantKillLevels() : Promise.resolve({}),
   ]);
 
   return (
@@ -30,6 +31,7 @@ export default async function SuperAdminPage() {
         regionalAdmins={regionalAdmins}
         newWebsiteRequests={newWebsiteRequests}
         killSwitch={killSwitch}
+        killLevels={killLevels}
       />
     </AppShell>
   );

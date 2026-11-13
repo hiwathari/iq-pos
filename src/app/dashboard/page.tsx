@@ -17,6 +17,8 @@ import { DashboardCharts } from "./dashboard-charts";
 import { EndShiftButton } from "./end-shift-button";
 import { OpenTillButton } from "./open-till-button";
 import { DeviceLogins } from "./device-logins";
+import { BusinessKillSwitch } from "./business-kill-switch";
+import { getRestaurantKillLevel } from "@/lib/kill-switch";
 import { AutoVoidNotice } from "./auto-void-notice";
 import { AUTO_VOID_REASON } from "@/lib/order-helpers";
 import {
@@ -189,6 +191,8 @@ export default async function DashboardPage() {
         </div>
 
         <AutoVoidNotice orders={carriedOverOrders} />
+
+        {session.role === "admin" && <BusinessKillSwitch restaurantId={restaurantId} initialOff={(await getRestaurantKillLevel(restaurantId)) !== null} />}
 
         {session.role === "admin" && <DeviceLogins showKitchen={profile.features.kitchenDisplay} />}
 

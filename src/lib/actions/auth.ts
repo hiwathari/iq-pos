@@ -1,6 +1,6 @@
 "use server";
 
-import { isKillSwitchOn } from "@/lib/kill-switch";
+import { getKillState, isBlocked } from "@/lib/kill-switch";
 import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db/client";
@@ -38,8 +38,13 @@ export async function loginAction(_prevState: LoginState | undefined, formData: 
     return { error: "Invalid email or password." };
   }
 
-  if (user.role !== "super_admin" && (await isKillSwitchOn())) {
-    return { error: "The system is switched off right now. Only the platform owner can sign in." };
+  const kill = await getKillState();
+  if (isBlocked(kill, user)) {
+    return {
+      error: kill.global
+        ? "The system is switched off right now. Only the platform owner can sign in."
+        : "This business is switched off right now. Ask your manager or the platform owner to switch it back on.",
+    };
   }
 
   await createSession(

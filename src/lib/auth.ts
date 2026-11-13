@@ -1,5 +1,5 @@
 import "server-only";
-import { isKillSwitchOn } from "@/lib/kill-switch";
+import { getKillState, isBlocked } from "@/lib/kill-switch";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import {
@@ -26,10 +26,9 @@ export async function verifyPassword(password: string, hash: string) {
 }
 
 export async function createSession(payload: SessionPayload, maxAgeSeconds: number = SESSION_DURATION_SECONDS) {
-  // Kill switch: nobody but a Super Admin can start a session while the platform is switched off.
-  if (payload.role !== "super_admin" && (await isKillSwitchOn())) {
-    throw new Error("The system is switched off.");
-  }
+  // Kill switches: no sign-in while the platform — or this person's business — is switched off (Super Admin
+  // excepted; a business's own admin can still sign in when they switched it off themselves).
+  if (isBlocked(await getKillState(), payload)) throw new Error("The system is switched off.");
   const token = await signSessionToken(payload, maxAgeSeconds);
   const store = await cookies();
   store.set(SESSION_COOKIE_NAME, token, {
