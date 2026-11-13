@@ -105,7 +105,7 @@ export function DineInPopup({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-3" onClick={onClose}>
       <div className="flex max-h-[92vh] w-full max-w-3xl flex-col rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-neutral-900">Dine in — choose a table</h2>
+          <h2 className="text-lg font-semibold text-neutral-900">Tables — choose a table</h2>
           <button onClick={onClose} aria-label="Close" className="rounded-full p-1 text-neutral-400 hover:bg-neutral-100">
             <X className="h-5 w-5" />
           </button>

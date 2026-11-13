@@ -41,6 +41,7 @@ import { startSumupChargeAction, pollSumupChargeAction, cancelSumupChargeAction 
 import { startTeyaChargeAction, pollTeyaChargeAction, cancelTeyaChargeAction } from "@/lib/actions/teya";
 import { businessDateKey, businessDayRange, shiftDateKey } from "@/lib/business-day";
 import { TableLayoutPicker } from "@/components/table-layout-picker";
+import { ChannelPopup } from "@/components/channel-popup";
 import { DineInPopup } from "@/components/dine-in-popup";
 import { EndShiftButton } from "@/app/dashboard/end-shift-button";
 import { OpenTillButton } from "@/app/dashboard/open-till-button";
@@ -129,6 +130,11 @@ function currentTimeMs() {
 const TOOL_BTN =
   "flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-2.5 py-2.5 text-sm font-medium text-neutral-500 hover:bg-neutral-50 2xl:text-base [&>svg]:size-5";
 const MENU_ROW = "flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium text-neutral-700 hover:bg-neutral-50 [&>svg]:size-5 [&>span]:inline";
+
+// The order types in the order the Till shows them. Anything a business has beyond these (e.g. Wait list, In store) follows.
+const CHANNEL_ORDER: OrderChannel[] = ["Dine in", "Take Away", "Online", "Delivery", "Third Party", "Wait List"];
+// Types that open a details popup when tapped (Tables has its own popup).
+const CHANNEL_POPUP_TYPES: OrderChannel[] = ["Take Away", "Online", "Delivery", "Third Party"];
 
 const QUEUE_TABS = ["All", "Dine in", "Wait List", "Take Away", "Delivery", "Served"] as const;
 const SHOP_QUEUE_TABS = ["All", "In store", "Click & collect", "Delivery", "Served"] as const;
@@ -396,6 +402,10 @@ export function OrderLineClient({
   const searchParams = useSearchParams();
   const emptyCart = useMemo<CartState>(() => ({ ...EMPTY_CART, channel: channels[0] ?? "Dine in" }), [channels]);
   const queueTabs: readonly QueueTab[] = showTables ? QUEUE_TABS : SHOP_QUEUE_TABS;
+  const orderedChannels = useMemo(
+    () => [...channels].sort((a, b) => (CHANNEL_ORDER.indexOf(a) === -1 ? 99 : CHANNEL_ORDER.indexOf(a)) - (CHANNEL_ORDER.indexOf(b) === -1 ? 99 : CHANNEL_ORDER.indexOf(b))),
+    [channels]
+  );
   const [, startTransition] = useTransition();
   const [placingOrder, setPlacingOrder] = useState(false);
   // Shown above the main button after placing: "block" stock errors (the sale didn't go
@@ -424,6 +434,8 @@ export function OrderLineClient({
   const [endDayOpen, setEndDayOpen] = useState(false);
   // The Dine in table popup (table + guests + merge).
   const [dineInOpen, setDineInOpen] = useState(false);
+  // The details popup for Take away / Online / Delivery / 3rd party (like the Tables popup, but for those types).
+  const [channelPopup, setChannelPopup] = useState<OrderChannel | null>(null);
   // Set when the popup was opened by Send to kitchen (no table yet): confirming a table sends the order.
   const [sendAfterTable, setSendAfterTable] = useState(false);
   const [scanNotice, setScanNotice] = useState<{ kind: "ok" | "error"; text: string; code?: string } | null>(null);
@@ -1442,6 +1454,7 @@ export function OrderLineClient({
     onReprintKitchen: kitchenPrinters.length > 0 ? reprintKitchenTickets : undefined,
     floors,
     onOpenDineIn: () => setDineInOpen(true),
+    onOpenChannelDetails: () => setChannelPopup(cart.channel),
     onPriceOverride: canOverridePrice ? (lineId: string) => setPriceOverrideFor(lineId) : undefined,
   };
 
@@ -1685,22 +1698,29 @@ export function OrderLineClient({
                     <span className="text-xs font-semibold">Camera</span>
                   </button>
                 )}
-                <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  {channels.map((c) => {
+                {/* The order types, in the order staff use them: Tables, Take away, Online, Delivery, 3rd party. The chosen one is
+                    lit up; tapping a type opens its popup (tables, or the customer / address / app details). */}
+                <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto rounded-3xl border border-[var(--brand)]/25 bg-[var(--brand-light)] p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {orderedChannels.map((c) => {
                     const active = cart.channel === c;
                     return (
                       <button
                         key={c}
                         onClick={() => {
                           setCart((prev) => ({ ...prev, channel: c, channelChosen: true }));
-                          if (c === "Dine in" && showTables && !cart.editingOrderId) setDineInOpen(true);
+                          if (cart.editingOrderId) return;
+                          if (c === "Dine in" && showTables) setDineInOpen(true);
+                          else if (CHANNEL_POPUP_TYPES.includes(c)) setChannelPopup(c);
                         }}
                         aria-pressed={active}
-                        title={c === "Dine in" ? "Dine in — choose the table and guests" : c}
-                        className={`flex min-h-[76px] min-w-[84px] flex-1 shrink-0 flex-col items-center justify-center gap-1 rounded-2xl border p-2 text-center transition active:scale-[0.97] 2xl:min-h-[92px] 2xl:min-w-[104px] [&>svg]:size-6 ${
-                          active ? "border-[var(--brand)] bg-[var(--brand)] text-white shadow-sm" : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50"
+                        title={c === "Dine in" ? "Tables — choose the table and guests" : c}
+                        className={`relative flex min-h-[76px] min-w-[84px] flex-1 shrink-0 flex-col items-center justify-center gap-1 rounded-2xl border-2 p-2 text-center transition active:scale-[0.97] 2xl:min-h-[92px] 2xl:min-w-[104px] [&>svg]:size-6 ${
+                          active
+                            ? "border-[var(--brand-dark)] bg-[var(--brand)] text-white shadow-lg ring-2 ring-[var(--brand)]/40"
+                            : "border-transparent bg-white text-neutral-700 shadow-sm hover:border-[var(--brand)]/40"
                         }`}
                       >
+                        {active && <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-white text-[var(--brand)]"><Check className="h-3 w-3" strokeWidth={3} /></span>}
                         <ChannelIcon channel={c} className={`h-6 w-6 ${active ? "text-white" : "text-[var(--brand)]"}`} />
                         <span className="text-sm font-bold leading-tight 2xl:text-base">{channelLabel(c)}</span>
                       </button>
@@ -1880,7 +1900,7 @@ export function OrderLineClient({
                       : "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
                   }`}
                 >
-                  {tab}
+                  {tab === "Dine in" ? "Tables" : tab}
                   <span
                     className={`flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-xs font-semibold ${
                       queueTab === tab ? "bg-white/20 text-white" : "bg-neutral-100 text-neutral-500"
@@ -2277,6 +2297,18 @@ export function OrderLineClient({
           }}
         />
       )}
+      {channelPopup && (
+        <ChannelPopup
+          channel={channelPopup}
+          initial={{ customerName: cart.customerName, customerPhone: cart.customerPhone, customerAddress: cart.customerAddress, thirdPartyProvider: cart.thirdPartyProvider }}
+          providers={THIRD_PARTY_PROVIDERS}
+          onConfirm={(d) => {
+            setCart((prev) => ({ ...prev, channel: channelPopup, channelChosen: true, ...d }));
+            setChannelPopup(null);
+          }}
+          onClose={() => setChannelPopup(null)}
+        />
+      )}
       {tableActionError && (
         <div className="fixed inset-x-0 bottom-24 z-[60] flex justify-center px-4 lg:bottom-6">
           <div className="flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg">
@@ -2342,6 +2374,7 @@ interface CartPanelProps {
   onMergeTableClick: () => void;
   // Opens the Dine in table popup (table, guests, merge).
   onOpenDineIn: () => void;
+  onOpenChannelDetails: () => void;
   onVoidClick: () => void;
   onShareInvoiceClick: () => void;
   onClose: () => void;
@@ -2408,6 +2441,7 @@ function CartPanel({
   onSwapTableClick,
   onMergeTableClick,
   onOpenDineIn,
+  onOpenChannelDetails,
   onVoidClick,
   onShareInvoiceClick,
   onClose,
@@ -2438,7 +2472,7 @@ function CartPanel({
             ? `Table ${[cart.tableNumber, ...cart.mergedTableNumbers].map((n) => String(n).padStart(2, "0")).join(" + ")}`
             : "Choose table"
         } · ${cart.guests} ${cart.guests === 1 ? "guest" : "guests"}`
-      : cart.channel === "Take Away" || cart.channel === "Delivery"
+      : cart.channel === "Take Away" || cart.channel === "Delivery" || cart.channel === "Online"
         ? [cart.customerName || "Add customer", cart.customerPhone].filter(Boolean).join(" · ")
         : cart.channel === "Third Party"
           ? cart.thirdPartyProvider
@@ -2651,8 +2685,7 @@ function CartPanel({
           own, and discounts/totals/payment/the main button stay pinned at the bottom. */}
       <div className={`mb-2 flex flex-col gap-2 ${tableEditorOpen ? "min-h-0 shrink" : "shrink-0"}`}>
         {/* Table & guests (or customer details) stay closed until tapped. */}
-        {cart.channel !== "Online" &&
-          (tableEditorOpen ? (
+        {(tableEditorOpen && (cart.channel === "Dine in" || cart.channel === "Wait List") ? (
             <div className="max-h-72 min-h-0 space-y-2.5 overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 p-2.5 [scrollbar-width:none] 2xl:max-h-96">
             {(cart.channel === "Dine in" || cart.channel === "Wait List") && (
               <div className="flex items-end gap-2">
@@ -2695,66 +2728,6 @@ function CartPanel({
               </div>
             )}
 
-            {(cart.channel === "Take Away" || cart.channel === "Delivery") && (
-              <>
-                <div>
-                  <label className="mb-1 flex items-center gap-1.5 text-xs font-medium text-neutral-500">
-                    <User className="h-3.5 w-3.5" /> Customer Name
-                  </label>
-                  <input
-                    value={cart.customerName}
-                    onChange={(e) => setCart((prev) => ({ ...prev, customerName: e.target.value }))}
-                    placeholder="e.g. Sarah"
-                    className="w-full rounded-lg border border-neutral-200 px-3.5 py-2.5 text-base outline-none focus:border-teal-500"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 flex items-center gap-1.5 text-xs font-medium text-neutral-500">
-                    <Phone className="h-3.5 w-3.5" /> Phone
-                  </label>
-                  <input
-                    value={cart.customerPhone}
-                    onChange={(e) => setCart((prev) => ({ ...prev, customerPhone: e.target.value }))}
-                    placeholder="+44 7000 000000"
-                    className="w-full rounded-lg border border-neutral-200 px-3.5 py-2.5 text-base outline-none focus:border-teal-500"
-                  />
-                </div>
-              </>
-            )}
-
-            {cart.channel === "Delivery" && (
-              <div>
-                <label className="mb-1 flex items-center gap-1.5 text-xs font-medium text-neutral-500">
-                  <MapPin className="h-3.5 w-3.5" /> Delivery Address
-                </label>
-                <textarea
-                  value={cart.customerAddress}
-                  onChange={(e) => setCart((prev) => ({ ...prev, customerAddress: e.target.value }))}
-                  rows={2}
-                  placeholder="Flat, street, postcode…"
-                  className="w-full resize-none rounded-lg border border-neutral-200 px-3.5 py-2.5 text-base outline-none focus:border-teal-500"
-                />
-              </div>
-            )}
-
-            {cart.channel === "Third Party" && (
-              <div>
-                <label className="mb-1 block text-xs font-medium text-neutral-500">Provider</label>
-                <select
-                  value={cart.thirdPartyProvider}
-                  onChange={(e) =>
-                    setCart((prev) => ({ ...prev, thirdPartyProvider: e.target.value as ThirdPartyProvider }))
-                  }
-                  className="w-full rounded-lg border border-neutral-200 px-3.5 py-2.5 text-base outline-none focus:border-teal-500"
-                >
-                  {THIRD_PARTY_PROVIDERS.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
               <button
                 onClick={() => setTableEditorOpen(false)}
                 className="min-h-11 w-full rounded-lg bg-[var(--brand)] py-2.5 text-base font-semibold text-white hover:bg-[var(--brand-dark)]"
@@ -2764,7 +2737,7 @@ function CartPanel({
             </div>
           ) : (
             <button
-              onClick={() => (cart.channel === "Dine in" && !cart.editingOrderId ? onOpenDineIn() : setTableEditorOpen(true))}
+              onClick={() => (cart.channel === "Dine in" && !cart.editingOrderId ? onOpenDineIn() : cart.channel === "Dine in" || cart.channel === "Wait List" ? setTableEditorOpen(true) : onOpenChannelDetails())}
               className="flex min-h-11 w-full items-center justify-between gap-2 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-left hover:border-[var(--brand)]"
             >
               <span className="flex min-w-0 items-center gap-2 text-[15px] text-neutral-700">
@@ -2776,7 +2749,7 @@ function CartPanel({
                 <span className="truncate">{setupSummary}</span>
               </span>
               <span className="flex shrink-0 items-center gap-1 text-sm font-semibold text-[var(--brand-dark)]">
-                {cart.channel === "Dine in" || cart.channel === "Wait List" ? "Table & guests" : "Details"}
+                {cart.channel === "Dine in" || cart.channel === "Wait List" ? "Table & guests" : cart.channel === "Third Party" ? "Provider" : "Details"}
                 <ChevronDown className="h-4 w-4" />
               </span>
             </button>
@@ -4492,6 +4465,7 @@ function TablesOverview({
 
 // The order types shown as tiles beside Search (and as the label on the order panel).
 const CHANNEL_SHORT: Partial<Record<OrderChannel, string>> = {
+  "Dine in": "Tables",
   "Wait List": "Wait list",
   "Take Away": "Take away",
   "Third Party": "3rd party",

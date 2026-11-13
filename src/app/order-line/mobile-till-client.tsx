@@ -76,7 +76,7 @@ function isOrderClosedOut(o: Order) {
 // Every order type the Simple Till can show; the business type (lib/business-profile.ts) picks
 // which ones, in its own order.
 const CHANNEL_BUTTONS: Record<OrderChannel, { label: string; icon: typeof UtensilsCrossed }> = {
-  "Dine in": { label: "Dine In", icon: UtensilsCrossed },
+  "Dine in": { label: "Tables", icon: UtensilsCrossed },
   "Take Away": { label: "Take Away", icon: ShoppingBag },
   "Wait List": { label: "Wait List", icon: Users },
   Delivery: { label: "Delivery", icon: Bike },
