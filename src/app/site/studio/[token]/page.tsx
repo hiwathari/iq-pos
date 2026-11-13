@@ -44,6 +44,8 @@ export default async function StudioPage({ params, searchParams }: { params: Pro
         paymentsEnabled={await stripeConfigured()}
         paymentChecked={paymentChecked}
         cancelled={query.cancelled === "1"}
+        // Front-end licence key for the GrapesJS Studio editor (set in Vercel; "DEV_LICENSE_KEY" only works on localhost).
+        studioLicense={process.env.GRAPESJS_STUDIO_LICENSE_KEY || "DEV_LICENSE_KEY"}
       />
     </section>
   );

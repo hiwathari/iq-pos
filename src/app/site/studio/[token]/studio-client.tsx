@@ -22,6 +22,7 @@ interface Props {
   paymentsEnabled: boolean;
   paymentChecked: boolean | null;
   cancelled: boolean;
+  studioLicense: string;
 }
 
 function CouponBox({ kind, coupon, setCoupon, onPrice }: { kind: "build" | "change"; coupon: string; setCoupon: (v: string) => void; onPrice: (label: string | null) => void }) {
@@ -62,7 +63,7 @@ function CouponBox({ kind, coupon, setCoupon, onPrice }: { kind: "build" | "chan
 }
 
 export function StudioClient(props: Props) {
-  const { token, name, status, hasSite, credit, lastError, html, css, previewSrc, paymentsEnabled, paymentChecked, cancelled } = props;
+  const { token, name, status, hasSite, credit, lastError, html, css, previewSrc, paymentsEnabled, paymentChecked, cancelled, studioLicense } = props;
   const router = useRouter();
   const [tab, setTab] = useState<"preview" | "edit" | "ask">("preview");
   const [coupon, setCoupon] = useState("");
@@ -215,7 +216,7 @@ export function StudioClient(props: Props) {
             </div>
           )}
 
-          {tab === "edit" && <GrapesEditor token={token} html={html} css={css} onSaved={() => router.refresh()} />}
+          {tab === "edit" && <GrapesEditor token={token} html={html} css={css} licenseKey={studioLicense} onSaved={() => router.refresh()} />}
 
           {tab === "ask" && (
             <div className="max-w-2xl rounded-2xl border border-white/10 bg-white/[0.03] p-7">
