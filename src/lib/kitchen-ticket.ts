@@ -35,6 +35,8 @@ export interface KitchenTicketData {
   guests?: number | null;
   staffName?: string;
   customerName?: string;
+  customerPhone?: string;
+  customerAddress?: string;
   items: KitchenTicketItem[];
   // Heading over the items: "NEW ORDER", "ADDED TO ORDER", "REPRINT"…
   title: string;
@@ -63,7 +65,10 @@ export function buildKitchenTicketHex(d: KitchenTicketData): string {
   if (d.tableNumber) b.push(...text(d.channel), ...lines());
   const when = new Date(d.createdAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   b.push(...text(`${when}${d.staffName ? `  ·  ${d.staffName}` : ""}`), ...lines());
-  if (d.customerName) b.push(...text(d.customerName), ...lines());
+  // A take away / delivery is called by the customer's name: big, with the phone and the delivery address.
+  if (d.customerName) b.push(...bold(true), ...size(0x01), ...text(d.customerName), ...size(0x00), ...bold(false), ...lines());
+  if (d.customerPhone) b.push(...text(d.customerPhone), ...lines());
+  if (d.customerAddress) b.push(...text(d.customerAddress.slice(0, 96)), ...lines());
   b.push(...hr());
   for (const it of d.items) {
     const prefix = it.kind === "cancelled" ? "CANCEL " : it.kind === "changed" ? "CHANGE " : it.kind === "added" ? "ADD " : "";

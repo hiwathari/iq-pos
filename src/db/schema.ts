@@ -47,6 +47,8 @@ export const restaurants = sqliteTable("restaurants", {
   taxEnabled: int("tax_enabled", { mode: "boolean" }).notNull().default(false),
   // Dark colours for the Till and Kitchen Display (Settings → Till dark mode). Off by default.
   tillDarkMode: int("till_dark_mode", { mode: "boolean" }).notNull().default(false),
+  // Print the QR code (link to the customer's online invoice) at the bottom of receipts. On by default.
+  invoiceQrEnabled: int("invoice_qr_enabled", { mode: "boolean" }).notNull().default(true),
   // Chosen on the Super Admin create form ("Restaurant" vs "Cafe"), editable later in Settings.
   // "cafe" is counter-service: a brand-new order that's already paid in full skips "In Kitchen"
   // entirely and is created straight as "Served" (see placeOrderAction). "restaurant" (the

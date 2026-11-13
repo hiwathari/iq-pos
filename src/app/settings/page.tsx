@@ -67,6 +67,7 @@ export default async function SettingsPage() {
             invoiceLogoUrl={restaurant?.invoiceLogoUrl ?? ""}
             invoiceFooterText={restaurant?.invoiceFooterText ?? "Thank you for dining with us!"}
             returnsPolicy={restaurant?.returnsPolicy ?? ""}
+            invoiceQrEnabled={restaurant?.invoiceQrEnabled ?? true}
           />
         </div>
         <div className="border-t border-neutral-100 pt-8">

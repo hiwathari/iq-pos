@@ -319,6 +319,8 @@ export function OrderLineClient({
   invoiceLogoUrl,
   invoiceFooterText,
   returnsPolicy,
+  invoiceQrEnabled = true,
+  todaySales,
   openTime,
   timezone,
   localPrintTarget,
@@ -360,6 +362,9 @@ export function OrderLineClient({
   invoiceLogoUrl?: string;
   invoiceFooterText: string;
   returnsPolicy?: string;
+  // Print the QR code to the online invoice on receipts (Settings → Invoice Details).
+  invoiceQrEnabled?: boolean;
+  todaySales?: { cash: number; card: number };
   openTime: string | null;
   timezone: string;
   localPrintTarget: { ip: string; port: number | null } | null;
@@ -414,6 +419,7 @@ export function OrderLineClient({
   // Categories button (or the ✕ on the open category) comes back here; All Menu shows every item.
   const [showCategories, setShowCategories] = useState(true);
   // Open Till / End Day boxes (full Till only), opened from the top bar or the ⋯ menu.
+  const [daySalesOpen, setDaySalesOpen] = useState(false);
   const [openTillOpen, setOpenTillOpen] = useState(false);
   const [endDayOpen, setEndDayOpen] = useState(false);
   // The Dine in table popup (table + guests + merge).
@@ -544,7 +550,7 @@ export function OrderLineClient({
       if (result.error) window.alert(result.error);
       else if (accept) {
         void printKitchenTickets(
-          { orderNumber: order.orderNumber, createdAt: order.createdAt, channel: order.channel, tableNumber: order.tableNumber, guests: order.guests, customerName: order.customerName ?? undefined },
+          { orderNumber: order.orderNumber, createdAt: order.createdAt, channel: order.channel, tableNumber: order.tableNumber, guests: order.guests, customerName: order.customerName ?? undefined, customerPhone: order.customerPhone ?? undefined, customerAddress: order.channel === "Delivery" ? order.customerAddress ?? undefined : undefined },
           itemsForKitchen(order.items),
           "NEW ORDER"
         );
@@ -1115,7 +1121,7 @@ export function OrderLineClient({
   // printer, else its category's). Built here and sent straight to the printer — nothing goes to
   // the server for printing. A failure is kept and shown (see print-center.tsx).
   async function printKitchenTickets(
-    meta: { orderNumber: string; createdAt: number; channel: string; tableNumber: number | null; guests: number | null; customerName?: string },
+    meta: { orderNumber: string; createdAt: number; channel: string; tableNumber: number | null; guests: number | null; customerName?: string; customerPhone?: string; customerAddress?: string },
     items: RoutedItem[],
     title: string
   ) {
@@ -1134,7 +1140,7 @@ export function OrderLineClient({
   function reprintKitchenTickets() {
     if (!editingOrder) return;
     void printKitchenTickets(
-      { orderNumber: editingOrder.orderNumber, createdAt: editingOrder.createdAt, channel: editingOrder.channel, tableNumber: editingOrder.tableNumber, guests: editingOrder.guests, customerName: editingOrder.customerName ?? undefined },
+      { orderNumber: editingOrder.orderNumber, createdAt: editingOrder.createdAt, channel: editingOrder.channel, tableNumber: editingOrder.tableNumber, guests: editingOrder.guests, customerName: editingOrder.customerName ?? undefined, customerPhone: editingOrder.customerPhone ?? undefined, customerAddress: editingOrder.channel === "Delivery" ? editingOrder.customerAddress ?? undefined : undefined },
       itemsForKitchen(editingOrder.items),
       "REPRINT"
     );
@@ -1171,6 +1177,8 @@ export function OrderLineClient({
       tableNumber: cartNow.tableNumber,
       guests: cartNow.tableNumber ? cartNow.guests : null,
       customerName: cartNow.customerName.trim() || undefined,
+      customerPhone: cartNow.customerPhone.trim() || undefined,
+      customerAddress: cartNow.channel === "Delivery" ? cartNow.customerAddress.trim() || undefined : undefined,
     };
     startTransition(async () => {
       try {
@@ -1318,7 +1326,7 @@ export function OrderLineClient({
       payments: receiptCart.payments.length > 0 ? receiptCart.payments : undefined,
       footerText: invoiceFooterText,
       gift,
-      invoiceUrl: orderId ? `${window.location.origin}/invoice/${orderId}` : undefined,
+      invoiceUrl: invoiceQrEnabled && orderId ? `${window.location.origin}/invoice/${orderId}` : undefined,
       ...shopReceiptExtras(receiptCart, totals, orderId ? orderNumber : null),
     });
     await printViaLocalBridge({ printerIp: localPrintTarget.ip, printerPort: localPrintTarget.port, escposHex: hex });
@@ -1337,7 +1345,7 @@ export function OrderLineClient({
     printTicket({
       orderNumber: editingOrder?.orderNumber ?? "NEW",
       createdAt: editingOrder?.createdAt ?? currentTimeMs(),
-      invoiceUrl: cart.editingOrderId ? `${window.location.origin}/invoice/${cart.editingOrderId}` : undefined,
+      invoiceUrl: invoiceQrEnabled && cart.editingOrderId ? `${window.location.origin}/invoice/${cart.editingOrderId}` : undefined,
       tableNumber: cart.tableNumber,
       channel: cart.channel,
       items: priced.items,
@@ -1528,21 +1536,14 @@ export function OrderLineClient({
             </button>
             {/* The rest sit in the ⋯ menu when the bar is narrow, and inline when it has room. */}
             <div className="hidden items-center gap-1.5 @5xl:flex">
-              {shiftControls && (
-                <>
-                  <button
-                    onClick={() => shiftControls.pendingOpeningBalance === null && setOpenTillOpen(true)}
-                    title={shiftControls.pendingOpeningBalance === null ? "Open Till — enter the starting cash" : `Till is open with ${formatMoney(shiftControls.pendingOpeningBalance, currencySymbol)}`}
-                    aria-label="Open Till"
-                    className={`${TOOL_BTN} ${shiftControls.pendingOpeningBalance === null ? "!border-amber-300 !bg-amber-50 !text-amber-700" : "!border-emerald-200 !bg-emerald-50 !text-emerald-700"}`}
-                  >
-                    <Wallet className="h-4 w-4" /> <span className="hidden 2xl:inline">{shiftControls.pendingOpeningBalance === null ? "Open Till" : "Till open"}</span>
-                  </button>
-                  <button onClick={() => setEndDayOpen(true)} title="End Day — count the till and close the day" aria-label="End Day" className={TOOL_BTN}>
-                    <ClipboardList className="h-4 w-4" /> <span className="hidden 2xl:inline">End Day</span>
-                  </button>
-                </>
-              )}
+              <button
+                onClick={() => setDaySalesOpen(true)}
+                title="Day sales — today's takings, Open Till and End Day"
+                aria-label="Day sales"
+                className={`${TOOL_BTN} ${shiftControls && shiftControls.pendingOpeningBalance === null ? "!border-amber-300 !bg-amber-50 !text-amber-700" : ""}`}
+              >
+                <Wallet className="h-4 w-4" /> <span className="hidden 2xl:inline">Day sales</span>
+              </button>
               {printerList && (
                 <button onClick={() => setPrintersPanelOpen(true)} title="Printers — type each printer's IP and choose what prints where" aria-label="Printers" className={TOOL_BTN}>
                   <Printer className="h-4 w-4" /> <span className="hidden 2xl:inline">Printers</span>
@@ -1584,34 +1585,15 @@ export function OrderLineClient({
                         <Smartphone className="h-5 w-5" /> Mobile till (simple Till)
                       </button>
                     )}
-                    {shiftControls && (
-                      <>
-                        {shiftControls.pendingOpeningBalance === null ? (
-                          <button
-                            onClick={() => {
-                              setMoreOpen(false);
-                              setOpenTillOpen(true);
-                            }}
-                            className={MENU_ROW}
-                          >
-                            <Wallet className="h-5 w-5" /> Open Till (starting cash)
-                          </button>
-                        ) : (
-                          <div className={`${MENU_ROW} cursor-default !text-emerald-700 hover:!bg-transparent`}>
-                            <Wallet className="h-5 w-5" /> Till open · {formatMoney(shiftControls.pendingOpeningBalance, currencySymbol)}
-                          </div>
-                        )}
-                        <button
-                          onClick={() => {
-                            setMoreOpen(false);
-                            setEndDayOpen(true);
-                          }}
-                          className={MENU_ROW}
-                        >
-                          <ClipboardList className="h-5 w-5" /> End Day
-                        </button>
-                      </>
-                    )}
+                    <button
+                      onClick={() => {
+                        setMoreOpen(false);
+                        setDaySalesOpen(true);
+                      }}
+                      className={MENU_ROW}
+                    >
+                      <Wallet className="h-5 w-5" /> Day sales · Open &amp; End Day
+                    </button>
                     <SoundSettingsButton className={MENU_ROW} />
                     <FullscreenButton className={MENU_ROW} label="Full screen" />
                     <button onClick={() => window.location.reload()} className={MENU_ROW}>
@@ -2219,6 +2201,22 @@ export function OrderLineClient({
             setTableActionMode(null);
             setTableActionError(null);
           }}
+        />
+      )}
+      {daySalesOpen && (
+        <DaySalesModal
+          sales={todaySales ?? { cash: 0, card: 0 }}
+          currencySymbol={currencySymbol}
+          shift={shiftControls}
+          onOpenTill={() => {
+            setDaySalesOpen(false);
+            setOpenTillOpen(true);
+          }}
+          onEndDay={() => {
+            setDaySalesOpen(false);
+            setEndDayOpen(true);
+          }}
+          onClose={() => setDaySalesOpen(false)}
         />
       )}
       {shiftControls && (
@@ -3385,6 +3383,75 @@ function DiscountsModal({
 
 type SplitShare = { label: string; amount: number; paidWith: string | null };
 
+// "Day sales": today's cash and card takings (moved off the top bar), with Open Till and End Day inside.
+function DaySalesModal({
+  sales,
+  currencySymbol,
+  shift,
+  onOpenTill,
+  onEndDay,
+  onClose,
+}: {
+  sales: { cash: number; card: number };
+  currencySymbol: string;
+  shift?: ShiftControls;
+  onOpenTill: () => void;
+  onEndDay: () => void;
+  onClose: () => void;
+}) {
+  const total = sales.cash + sales.card;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-neutral-900">Day sales</h2>
+          <button onClick={onClose} aria-label="Close" className="rounded-full p-1 text-neutral-400 hover:bg-neutral-100">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="rounded-2xl border border-neutral-200 p-4">
+          <div className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Today so far</div>
+          <div className="mt-1 text-3xl font-extrabold text-neutral-900">{formatMoney(total, currencySymbol)}</div>
+          <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+            <div className="rounded-xl bg-neutral-50 p-3">
+              <div className="text-xs text-neutral-400">Cash</div>
+              <div className="text-lg font-bold text-neutral-900">{formatMoney(sales.cash, currencySymbol)}</div>
+            </div>
+            <div className="rounded-xl bg-neutral-50 p-3">
+              <div className="text-xs text-neutral-400">Card</div>
+              <div className="text-lg font-bold text-neutral-900">{formatMoney(sales.card, currencySymbol)}</div>
+            </div>
+          </div>
+        </div>
+        {shift && (
+          <div className="mt-4 space-y-2">
+            {shift.pendingOpeningBalance === null ? (
+              <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700">The till hasn&rsquo;t been opened today — enter the starting cash.</p>
+            ) : (
+              <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
+                Till opened with {formatMoney(shift.pendingOpeningBalance, currencySymbol)}
+                {shift.openingBalanceSetByName ? ` by ${shift.openingBalanceSetByName}` : ""}
+              </p>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={onOpenTill}
+                disabled={shift.pendingOpeningBalance !== null}
+                className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Wallet className="h-4 w-4" /> Open Till
+              </button>
+              <button onClick={onEndDay} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-neutral-900 px-3 py-2.5 text-sm font-semibold text-white hover:bg-neutral-800">
+                <ClipboardList className="h-4 w-4" /> End Day
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Add (or change, or remove) a tip: a percentage of the bill, round up to a whole amount, or typed.
 function TipModal({ saleTotal, tip, currencySymbol, onApply, onClose }: { saleTotal: number; tip: number; currencySymbol: string; onApply: (amount: number) => void; onClose: () => void }) {
   const [typed, setTyped] = useState(tip > 0 ? tip.toFixed(2) : "");
@@ -3994,6 +4061,8 @@ function CustomItemModal({
   );
 }
 
+// One open ticket in the Tickets view: who/where it is for (table number, or the customer's name for a
+// take away / delivery), when it was placed, what is on it and where it stands.
 function OrderCard({
   order,
   selected,
@@ -4007,6 +4076,21 @@ function OrderCard({
 }) {
   const isVoided = order.status === "Voided";
   const updated = wasOrderUpdated(order);
+  const onTable = !!order.tableNumber;
+  const named = !onTable && !!order.customerName;
+  const tableLabel = onTable
+    ? `Table ${String(order.tableNumber).padStart(2, "0")}${order.mergedTableNumbers?.length ? ` + ${order.mergedTableNumbers.map((n) => String(n).padStart(2, "0")).join(" + ")}` : ""}`
+    : null;
+  const channelLabelText = order.channel === "Third Party" && order.thirdPartyProvider ? `3rd party · ${order.thirdPartyProvider}` : channelLabel(order.channel);
+  const title = tableLabel ?? (named ? order.customerName! : channelLabelText);
+  const placed = new Date(order.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const minutes = Math.max(0, Math.floor((currentTimeMs() - order.createdAt) / 60000));
+  const ago = minutes < 1 ? "just now" : minutes < 60 ? `${minutes} min ago` : minutes < 24 * 60 ? `${Math.floor(minutes / 60)} h ${minutes % 60} min ago` : formatOrderTimestamp(order.createdAt);
+  const lines = order.items.slice(0, 3);
+  const more = order.items.length - lines.length;
+  const itemCount = order.items.reduce((sum, i) => sum + i.qty, 0);
+  const total = orderTotal(order);
+  const paidWith = order.payments?.length ? [...new Set(order.payments.map((p) => p.method))].join(" + ") : order.paymentMethod;
   return (
     <button
       onClick={onClick}
@@ -4014,49 +4098,81 @@ function OrderCard({
         CARD_TINTS[order.status]
       } ${selected ? "ring-2 ring-teal-500" : ""} ${isVoided ? "opacity-75" : ""}`}
     >
-      <div className="flex items-center justify-between text-sm font-semibold text-neutral-800">
-        <span className="flex items-center gap-1">
-          {isVoided && <XCircle className="h-3.5 w-3.5 shrink-0 text-rose-500" />}
-          <span className={isVoided ? "line-through decoration-rose-400" : undefined}>
-            Order #{order.orderNumber} <span className="font-normal text-neutral-400">· Seq {orderSequence(order.orderNumber)}</span>
-          </span>
-        </span>
-        <span className="flex items-center gap-1 text-neutral-500">
-          {order.channel === "Delivery" && <Bike className="h-3.5 w-3.5 text-blue-500" />}
-          {order.channel === "Take Away" && <ShoppingBag className="h-3.5 w-3.5 text-amber-500" />}
-          {order.tableNumber
-            ? `Table ${String(order.tableNumber).padStart(2, "0")}${
-                order.mergedTableNumbers?.length ? ` + ${order.mergedTableNumbers.join(" + ")}` : ""
-              }`
-            : order.channel}
-        </span>
-      </div>
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="text-sm text-neutral-500">Item: {order.items.reduce((s, i) => s + i.qty, 0)}X</span>
-        <span className={`text-base font-bold text-neutral-900 2xl:text-lg ${isVoided ? "text-neutral-400 line-through" : ""}`}>
-          {formatMoney(orderTotal(order), currencySymbol)}
-        </span>
-      </div>
-      {updated && (
-        <span className="flex w-fit items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
-          <RefreshCw className="h-3 w-3" /> Updated
-        </span>
-      )}
-      {order.placedVia !== "staff" && (
-        <span className="flex w-fit items-center gap-1 rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
-          <Globe className="h-3 w-3" /> {order.placedVia === "kiosk" ? "Kiosk" : "Online"}
-        </span>
-      )}
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-neutral-400">{formatOrderTimestamp(order.createdAt)}</span>
-        <div className="flex items-center gap-1.5">
-          {!order.paymentMethod && !isVoided && (
-            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">Unpaid</span>
-          )}
-          <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_STYLES[order.status]}`}>
-            {order.status}
-          </span>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className={`flex items-center gap-1.5 truncate text-lg font-bold leading-tight text-neutral-900 ${isVoided ? "line-through decoration-rose-400" : ""}`}>
+            {isVoided && <XCircle className="h-4 w-4 shrink-0 text-rose-500" />}
+            {!onTable && <ChannelIcon channel={order.channel} className="h-4 w-4 shrink-0 text-neutral-500" />}
+            <span className="truncate">{title}</span>
+          </div>
+          <div className="mt-0.5 truncate text-xs text-neutral-500">
+            {onTable ? `${channelLabelText}${order.guests ? ` · ${order.guests} guest${order.guests === 1 ? "" : "s"}` : ""}` : named ? channelLabelText : ""}
+          </div>
         </div>
+        <div className="shrink-0 text-right">
+          <div className="text-base font-bold leading-tight text-neutral-800">{placed}</div>
+          <div className="text-[11px] text-neutral-400">{ago}</div>
+        </div>
+      </div>
+
+      <div className="text-xs text-neutral-500">
+        #{order.orderNumber} <span className="text-neutral-400">· Seq {orderSequence(order.orderNumber)}</span>
+        {order.createdByName ? <span> · by {order.createdByName}</span> : null}
+      </div>
+
+      {(order.customerPhone || (order.channel === "Delivery" && order.customerAddress)) && (
+        <div className="space-y-0.5 text-xs text-neutral-600">
+          {order.customerPhone && (
+            <div className="flex items-center gap-1 truncate">
+              <Phone className="h-3 w-3 shrink-0 text-neutral-400" /> {order.customerPhone}
+            </div>
+          )}
+          {order.channel === "Delivery" && order.customerAddress && (
+            <div className="flex items-center gap-1 truncate">
+              <MapPin className="h-3 w-3 shrink-0 text-neutral-400" /> {order.customerAddress}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="space-y-0.5 rounded-lg bg-neutral-900/[0.05] px-2.5 py-1.5 text-xs text-neutral-700">
+        {lines.map((i, idx) => (
+          <div key={`${i.lineId ?? i.dishId}-${idx}`} className="flex items-baseline gap-1.5">
+            <span className="shrink-0 font-semibold text-teal-600">{qtyPrefix(i)}</span>
+            <span className="min-w-0 truncate">{i.name}</span>
+            {i.note && <MessageSquarePlus className="h-3 w-3 shrink-0 text-amber-500" aria-label="Has a note" />}
+          </div>
+        ))}
+        {more > 0 && <div className="text-neutral-400">+ {more} more line{more === 1 ? "" : "s"}</div>}
+      </div>
+
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-xs text-neutral-500">{itemCount} item{itemCount === 1 ? "" : "s"}</span>
+        <span className={`text-base font-bold text-neutral-900 2xl:text-lg ${isVoided ? "text-neutral-400 line-through" : ""}`}>
+          {formatMoney(total, currencySymbol)}
+          {(order.tip ?? 0) > 0 && !isVoided && <span className="ml-1 text-xs font-semibold text-teal-600">+{formatMoney(order.tip, currencySymbol)} tip</span>}
+        </span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        {updated && (
+          <span className="flex w-fit items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+            <RefreshCw className="h-3 w-3" /> Updated
+          </span>
+        )}
+        {order.placedVia !== "staff" && (
+          <span className="flex w-fit items-center gap-1 rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
+            <Globe className="h-3 w-3" /> {order.placedVia === "kiosk" ? "Kiosk" : "Online"}
+          </span>
+        )}
+        <span className="ml-auto flex items-center gap-1.5">
+          {!order.paymentMethod && !isVoided ? (
+            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">Unpaid</span>
+          ) : (
+            paidWith && !isVoided && <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">Paid · {paidWith}</span>
+          )}
+          <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_STYLES[order.status]}`}>{order.status}</span>
+        </span>
       </div>
     </button>
   );

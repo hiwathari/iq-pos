@@ -36,6 +36,8 @@ export function TillModeSwitcher({
   invoiceLogoUrl,
   invoiceFooterText,
   returnsPolicy,
+  invoiceQrEnabled = true,
+  todaySales,
   openTime,
   timezone,
   localPrintTarget,
@@ -75,6 +77,9 @@ export function TillModeSwitcher({
   invoiceLogoUrl?: string;
   invoiceFooterText: string;
   returnsPolicy?: string;
+  invoiceQrEnabled?: boolean;
+  // Today's cash and card takings (shown in the full Till's Day sales box).
+  todaySales?: { cash: number; card: number };
   openTime: string | null;
   timezone: string;
   // The restaurant's default printer, when set up for local network printing (see
@@ -187,6 +192,8 @@ export function TillModeSwitcher({
       invoiceLogoUrl={invoiceLogoUrl}
       invoiceFooterText={invoiceFooterText}
       returnsPolicy={returnsPolicy}
+      invoiceQrEnabled={invoiceQrEnabled}
+      todaySales={todaySales}
       openTime={openTime}
       timezone={timezone}
       localPrintTarget={localPrintTarget}

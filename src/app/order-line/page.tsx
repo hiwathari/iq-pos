@@ -17,7 +17,6 @@ import { listInventoryItems } from "@/lib/data/inventory";
 import { DEFAULT_EMBEDDED_FORMATS } from "@/lib/barcode";
 import { hasKitchen, salesByTender } from "@/lib/types";
 import { businessDayStart } from "@/lib/business-day";
-import { TodaySales } from "@/components/today-sales";
 import { TillModeSwitcher } from "./till-mode-switcher";
 import { listActivePromotionDefs } from "@/lib/data/promotions";
 import { listVariantsByDish } from "@/lib/data/menu";
@@ -109,7 +108,7 @@ export default async function OrderLinePage() {
   const today = { cash: todaySales.cash - todayRefunds.cash, card: todaySales.card - todayRefunds.card };
 
   return (
-    <AppShell title="Till" till headerExtra={<TodaySales cash={today.cash} card={today.card} currencySymbol={currencySymbol} />}>
+    <AppShell title="Till" till>
       <FloorIconsProvider icons={floorIcons}>
       <TillModeSwitcher
         categories={categories}
@@ -128,6 +127,8 @@ export default async function OrderLinePage() {
         invoiceLogoUrl={restaurant?.invoiceLogoUrl ?? undefined}
         invoiceFooterText={restaurant?.invoiceFooterText ?? profile.receiptFooter}
         returnsPolicy={restaurant?.returnsPolicy ?? undefined}
+        invoiceQrEnabled={restaurant?.invoiceQrEnabled ?? true}
+        todaySales={today}
         openTime={restaurant?.openTime ?? null}
         timezone={restaurant?.timezone ?? "UTC"}
         localPrintTarget={localPrintTarget}

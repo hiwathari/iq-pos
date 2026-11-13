@@ -327,6 +327,8 @@ export interface InvoiceDetailsInput {
   invoiceLogoUrl: string;
   invoiceFooterText: string;
   returnsPolicy?: string;
+  // Whether receipts print the QR code to the online invoice.
+  invoiceQrEnabled?: boolean;
 }
 
 export async function updateInvoiceDetailsAction(input: InvoiceDetailsInput) {
@@ -342,6 +344,7 @@ export async function updateInvoiceDetailsAction(input: InvoiceDetailsInput) {
       invoiceLogoUrl: input.invoiceLogoUrl.trim() || null,
       invoiceFooterText: input.invoiceFooterText.trim() || "Thank you for dining with us!",
       returnsPolicy: (input.returnsPolicy ?? "").trim().slice(0, 300) || null,
+      ...(input.invoiceQrEnabled !== undefined ? { invoiceQrEnabled: !!input.invoiceQrEnabled } : {}),
     })
     .where(eq(restaurants.id, restaurantId));
   revalidatePath("/settings");
