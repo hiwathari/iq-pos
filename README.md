@@ -18,7 +18,7 @@ A web-based, multi-restaurant point of sale platform.
 1. Copy `.env.example` to `.env.local` and fill in `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, and `JWT_SECRET`.
 2. `npm install`
 3. `npm run db:push` — pushes the schema to your Turso database.
-4. `npm run db:seed` — wipes all existing data and seeds one super admin plus one restaurant with an admin and staff account (see console output for credentials and PINs).
+4. `npm run db:seed` — wipes all existing data and seeds one super admin plus one restaurant with an admin and staff account. Emails, names and passwords come from `SEED_*` environment variables (listed at the top of `scripts/seed.ts`; nothing is hard-coded); the Till/Kitchen PINs are random and printed at the end.
 5. `npm run dev`
 
 ## Scripts

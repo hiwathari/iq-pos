@@ -23,18 +23,34 @@ const db = drizzle(client, { schema });
 const hash = (pw: string) => bcrypt.hash(pw, 10);
 const uuid = () => crypto.randomUUID();
 
-// Fixed (not re-randomized on every run) so the credentials handed out alongside this
-// script stay valid. Rotate any of these by editing here and re-running `npm run db:seed`.
+// Nothing secret lives in this file. Every email, name and password comes from the environment
+// (.env.local, or inline on the command line) so none of it is ever committed:
+//   SEED_SUPER_ADMIN_EMAIL, SEED_SUPER_ADMIN_PASSWORD
+//   SEED_RESTAURANT_NAME, SEED_RESTAURANT_SLUG
+//   SEED_ADMIN_EMAIL, SEED_ADMIN_NAME, SEED_ADMIN_PASSWORD
+//   SEED_STAFF_EMAIL, SEED_STAFF_NAME, SEED_STAFF_PASSWORD
+// The staff Till / Kitchen PINs are random each run and printed once at the end.
+function need(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    console.error(`Missing ${name}. See the list of SEED_* variables at the top of scripts/seed.ts.`);
+    process.exit(1);
+  }
+  return value;
+}
+
+const randomPin = () => String(100000 + Math.floor(Math.random() * 900000));
+
 const CREDENTIALS = {
-  superAdmin: { email: "hello@iqpos.app", password: "2kg4KYBkXoovE5" },
-  restaurant: { name: "Al Zayt", slug: "al-zayt" },
-  admin: { email: "info@alzayt.co.uk", name: "Al Zayt Admin", password: "M7TzBLg2c6ckJ%" },
+  superAdmin: { email: need("SEED_SUPER_ADMIN_EMAIL").toLowerCase(), password: need("SEED_SUPER_ADMIN_PASSWORD") },
+  restaurant: { name: need("SEED_RESTAURANT_NAME"), slug: need("SEED_RESTAURANT_SLUG") },
+  admin: { email: need("SEED_ADMIN_EMAIL").toLowerCase(), name: need("SEED_ADMIN_NAME"), password: need("SEED_ADMIN_PASSWORD") },
   staff: {
-    email: "ajnas@alzyat.co.uk",
-    name: "Ajnas",
-    password: "#NLLKpFc@f5Xg7",
-    tillPin: "891906",
-    kitchenPin: "934236",
+    email: need("SEED_STAFF_EMAIL").toLowerCase(),
+    name: need("SEED_STAFF_NAME"),
+    password: need("SEED_STAFF_PASSWORD"),
+    tillPin: randomPin(),
+    kitchenPin: randomPin(),
   },
 };
 
@@ -127,9 +143,10 @@ async function main() {
   await db.insert(schema.orderCounters).values({ restaurantId, value: 0 });
 
   console.log("\nDone. Accounts:");
-  console.log(`  Super Admin      ${CREDENTIALS.superAdmin.email} / ${CREDENTIALS.superAdmin.password}`);
-  console.log(`  Restaurant Admin ${CREDENTIALS.admin.email} / ${CREDENTIALS.admin.password}`);
-  console.log(`  Staff            ${CREDENTIALS.staff.email} / ${CREDENTIALS.staff.password}`);
+  console.log(`  Super Admin      ${CREDENTIALS.superAdmin.email}`);
+  console.log(`  Restaurant Admin ${CREDENTIALS.admin.email}`);
+  console.log(`  Staff            ${CREDENTIALS.staff.email}`);
+  console.log("  (passwords are the SEED_* values you supplied)");
   console.log(`\nDevice PINs (enter at /till-login or /kitchen-login, no email/password needed):`);
   console.log(`  Till PIN (${CREDENTIALS.staff.name})    ${CREDENTIALS.staff.tillPin}`);
   console.log(`  Kitchen PIN (${CREDENTIALS.staff.name})  ${CREDENTIALS.staff.kitchenPin}`);
