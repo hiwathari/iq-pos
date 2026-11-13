@@ -31,6 +31,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Globe,
+  Sparkles,
   Printer,
 } from "lucide-react";
 import { BrandLogo } from "./brand-logo";
@@ -202,6 +203,17 @@ export function Sidebar({
           >
             <Globe className="h-[18px] w-[18px] shrink-0" strokeWidth={2} />
             {!collapsed && "Website Requests"}
+          </Link>
+        )}
+        {role === "super_admin" && !isImpersonating && (
+          <Link
+            href="/super-admin/site-builder"
+            prefetch={false}
+            title={collapsed ? "Website builder" : undefined}
+            className={linkClass(pathname === "/super-admin/site-builder")}
+          >
+            <Sparkles className="h-[18px] w-[18px] shrink-0" strokeWidth={2} />
+            {!collapsed && "Website builder"}
           </Link>
         )}
         {isSuperOrRegional && !isImpersonating && (

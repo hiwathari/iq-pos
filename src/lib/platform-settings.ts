@@ -64,3 +64,40 @@ export async function saveAnthropicApiKey(key: string | null) {
     .values({ key: SETTING_ANTHROPIC_KEY, value, updatedAt })
     .onConflictDoUpdate({ target: platformSettings.key, set: { value, updatedAt } });
 }
+
+// ---- Generic settings (website builder etc.) -----------------------------------------------------
+export const SETTING_GEMINI_KEY = "gemini_api_key";
+export const SETTING_GEMINI_MODEL = "gemini_model";
+export const SETTING_STRIPE_KEY = "stripe_secret_key";
+export const SETTING_STRIPE_WEBHOOK = "stripe_webhook_secret";
+export const SETTING_SITE_PROMPT = "site_prompt_extra";
+export const SETTING_SITE_ENGINE = "site_engine";
+
+export async function getPlainSetting(key: string): Promise<string | null> {
+  const row = await readSetting(key);
+  return row ? row.value : null;
+}
+
+export async function savePlainSetting(key: string, value: string | null) {
+  if (value === null || value === "") {
+    await db.delete(platformSettings).where(eq(platformSettings.key, key));
+    return;
+  }
+  const updatedAt = Date.now();
+  await db.insert(platformSettings).values({ key, value, updatedAt }).onConflictDoUpdate({ target: platformSettings.key, set: { value, updatedAt } });
+}
+
+export async function getSecretSetting(key: string): Promise<string | null> {
+  const row = await readSetting(key);
+  return row ? decrypt(row.value) : null;
+}
+
+export async function saveSecretSetting(key: string, value: string | null) {
+  await savePlainSetting(key, value ? encrypt(value) : null);
+}
+
+// Never the secret itself — only whether it is set and its last four characters.
+export async function secretSettingStatus(key: string): Promise<{ configured: boolean; last4: string | null }> {
+  const value = await getSecretSetting(key);
+  return { configured: !!value, last4: value ? value.slice(-4) : null };
+}

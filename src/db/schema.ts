@@ -1304,3 +1304,67 @@ export const platformSettings = sqliteTable("platform_settings", {
   value: text("value").notNull(),
   updatedAt: int("updated_at").notNull(),
 });
+
+// ---- Website builder (iq.luvder.com/build → paid AI build → /site/studio/<token>) ----------------
+// A customer's generated website. Found only by its unguessable `token` (no accounts). `html` is the
+// sanitised <body> markup and `css` its stylesheet — the exact pair GrapesJS loads and saves.
+export const siteProjects = sqliteTable("site_projects", {
+  id: id(),
+  token: text("token").notNull().unique(),
+  // The brief this was built from (website_requests.id); the full answers are copied into `brief`.
+  requestId: text("request_id"),
+  name: text("name").notNull(),
+  contactEmail: text("contact_email").notNull(),
+  brief: text("brief", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
+  html: text("html"),
+  css: text("css"),
+  status: text("status", { enum: ["awaiting_payment", "paid", "generating", "ready", "failed"] }).notNull().default("awaiting_payment"),
+  // Which engine wrote the latest version: "gemini" | "claude".
+  engine: text("engine"),
+  generations: int("generations").notNull().default(0),
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at"),
+  updatedAt: int("updated_at"),
+});
+
+// One row per purchase. kind "build" = the first generation, "change" = one AI change request. A row that
+// is `paid` but not yet `consumed` is a credit still to be used (e.g. the AI call failed — retry is free).
+export const sitePayments = sqliteTable("site_payments", {
+  id: id(),
+  projectId: text("project_id").notNull().references(() => siteProjects.id, { onDelete: "cascade" }),
+  kind: text("kind", { enum: ["build", "change"] }).notNull(),
+  // What the customer asked for, for a "change".
+  instruction: text("instruction"),
+  listPence: int("list_pence").notNull(),
+  amountPence: int("amount_pence").notNull(),
+  couponId: text("coupon_id"),
+  couponCode: text("coupon_code"),
+  stripeSessionId: text("stripe_session_id").unique(),
+  status: text("status", { enum: ["pending", "paid", "consumed", "failed"] }).notNull().default("pending"),
+  createdAt: timestamp("created_at"),
+  paidAt: int("paid_at"),
+  consumedAt: int("consumed_at"),
+});
+
+// Super Admin's coupon codes: a percentage or fixed amount off, optionally expiring and/or limited in uses.
+export const siteCoupons = sqliteTable("site_coupons", {
+  id: id(),
+  code: text("code").notNull().unique(),
+  percentOff: int("percent_off"),
+  penceOff: int("pence_off"),
+  appliesTo: text("applies_to", { enum: ["any", "build", "change"] }).notNull().default("any"),
+  expiresAt: int("expires_at"),
+  maxUses: int("max_uses"),
+  uses: int("uses").notNull().default(0),
+  active: int("active", { mode: "boolean" }).notNull().default(true),
+  note: text("note"),
+  createdAt: timestamp("created_at"),
+});
+
+export const siteCouponRedemptions = sqliteTable("site_coupon_redemptions", {
+  id: id(),
+  couponId: text("coupon_id").notNull().references(() => siteCoupons.id, { onDelete: "cascade" }),
+  paymentId: text("payment_id").notNull().unique(),
+  projectId: text("project_id").notNull(),
+  createdAt: timestamp("created_at"),
+});

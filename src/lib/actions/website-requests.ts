@@ -10,6 +10,7 @@ import { requireSession } from "@/lib/scope";
 import { EMPTY_BRIEF, isBlobUrl, MAX_DESCRIPTION, type BriefFields, type BriefFile } from "@/lib/site/brief";
 import { testAnthropicKey } from "@/lib/site/extract-ai";
 import { clientIpHash } from "@/lib/site/rate-limit";
+import { createProject } from "@/lib/site/projects";
 
 export interface WebsiteBriefAnswers {
   style: string;
@@ -45,7 +46,7 @@ function strList(value: unknown, maxItems: number, maxLen: number) {
 
 // Public — called from the /build page on iq.luvder.com with no session. Every field is
 // re-validated and trimmed here rather than trusted from the client.
-export async function submitWebsiteRequestAction(payload: WebsiteBriefPayload): Promise<{ ok: true; ref: string } | { ok: false; error: string }> {
+export async function submitWebsiteRequestAction(payload: WebsiteBriefPayload): Promise<{ ok: true; ref: string; studioToken: string | null } | { ok: false; error: string }> {
   const contactName = str(payload?.contact?.name, 120);
   const contactEmail = str(payload?.contact?.email, 200).toLowerCase();
   const contactPhone = str(payload?.contact?.phone, 40);
@@ -116,8 +117,21 @@ export async function submitWebsiteRequestAction(payload: WebsiteBriefPayload): 
     })
     .returning({ id: websiteRequests.id });
 
+  // The paid instant-build project (see lib/site/projects.ts). Never lets a failure here lose the brief itself.
+  let studioToken: string | null = null;
+  try {
+    studioToken = await createProject({
+      requestId: row.id,
+      name: restaurantName,
+      contactEmail,
+      brief: { fields, answers, files, description },
+    });
+  } catch (error) {
+    console.error("[website-requests] couldn't create the site project", error);
+  }
+
   revalidatePath("/super-admin/website-requests");
-  return { ok: true, ref: row.id.slice(0, 8).toUpperCase() };
+  return { ok: true, ref: row.id.slice(0, 8).toUpperCase(), studioToken };
 }
 
 async function requireSuperAdmin() {

@@ -123,6 +123,7 @@ export function BuildClient({
   const [readingIndex, setReadingIndex] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [ref, setRef] = useState("");
+  const [studioToken, setStudioToken] = useState<string | null>(null);
   const [showAllMenu, setShowAllMenu] = useState(false);
   const topRef = useRef<HTMLDivElement>(null);
 
@@ -282,6 +283,7 @@ export function BuildClient({
       return;
     }
     setRef(result.ref);
+    setStudioToken(result.studioToken);
     setStep("done");
   }
 
@@ -693,6 +695,19 @@ export function BuildClient({
             Thanks{contact.name ? `, ${contact.name.split(" ")[0]}` : ""}. We&apos;ll build the first version of {fields.restaurantName || "your site"} and email a preview link to {contact.email}.
           </p>
           <div className="mt-6 inline-block rounded-full border border-white/10 px-4 py-1.5 font-mono text-sm text-white/60">Reference {ref}</div>
+          {studioToken && (
+            <div className="mx-auto mt-8 max-w-md rounded-2xl border border-teal-300/30 bg-teal-300/[0.06] p-6">
+              <p className="font-display text-xl font-bold">Don&apos;t want to wait?</p>
+              <p className="mt-2 text-sm text-white/60">Our AI can write your website in about a minute. Preview it, edit anything by clicking on it, and ask for changes.</p>
+              <Link
+                href={`${base}/studio/${studioToken}`}
+                className="mt-5 inline-flex items-center justify-center rounded-full bg-teal-400 px-6 py-3 font-semibold text-[#04201F] hover:bg-teal-300"
+              >
+                Build my website now — £4.99
+              </Link>
+              <p className="mt-3 text-xs text-white/40">Later AI changes are £1.00 each. Editing by hand is free. Have a code? You can enter it on the next page.</p>
+            </div>
+          )}
           <ol className="mx-auto mt-10 flex max-w-md flex-col gap-4 text-left">
             {["We review your brief and files — usually within one working day.", "You get a preview link to try on your phone.", "Tell us what to change, then we put it live on your domain."].map((t, i) => (
               <li key={t} className="flex gap-4">
