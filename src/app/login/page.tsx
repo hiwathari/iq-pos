@@ -1,10 +1,12 @@
 import { BrandLogo } from "@/components/brand-logo";
 import { getRememberedDeviceRestaurantId } from "@/lib/auth";
 import { getRestaurant } from "@/lib/data/restaurants";
+import { isKillSwitchOn } from "@/lib/kill-switch";
 import { LoginForm } from "./login-form";
 
 export default async function LoginPage() {
   const restaurantId = await getRememberedDeviceRestaurantId();
+  const switchedOff = await isKillSwitchOn();
   const restaurant = restaurantId ? await getRestaurant(restaurantId) : null;
 
   return (
@@ -13,6 +15,11 @@ export default async function LoginPage() {
         <div className="mb-8 flex justify-center">
           <BrandLogo name={restaurant?.name} logoUrl={restaurant?.invoiceLogoUrl} />
         </div>
+        {switchedOff && (
+          <div role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+            <strong>The system is switched off.</strong> Only the platform owner can sign in right now.
+          </div>
+        )}
         <div className="rounded-2xl border border-neutral-200 bg-white p-7 shadow-sm">
           <h1 className="mb-1 text-lg font-semibold text-neutral-900">Sign in</h1>
           <p className="mb-6 text-sm text-neutral-500">Enter your username and password.</p>

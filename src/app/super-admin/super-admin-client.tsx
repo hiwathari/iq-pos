@@ -34,6 +34,7 @@ import {
   type CreateRegionalAdminState,
 } from "@/lib/actions/regional-admins";
 import { DEFAULT_BRAND_COLOR, isValidHexColor } from "@/lib/color";
+import { KillSwitchCard } from "./kill-switch-card";
 import { CreateRestaurantForm } from "./create-restaurant-form";
 
 interface RestaurantRow {
@@ -69,6 +70,7 @@ export function SuperAdminClient({
   isSuperAdmin,
   regionalAdmins,
   newWebsiteRequests = null,
+  killSwitch = null,
 }: {
   restaurants: RestaurantRow[];
   totals: { restaurantCount: number; userCount: number; orderCount: number };
@@ -76,6 +78,7 @@ export function SuperAdminClient({
   regionalAdmins: RegionalAdminRow[];
   // Null for regional admins, or when the website_requests table hasn't been created yet.
   newWebsiteRequests?: number | null;
+  killSwitch?: { on: boolean; updatedAt: number | null } | null;
 }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [brandingTarget, setBrandingTarget] = useState<RestaurantRow | null>(null);
@@ -121,6 +124,8 @@ export function SuperAdminClient({
           </div>
         )}
       </div>
+
+      {isSuperAdmin && killSwitch && <KillSwitchCard initialOn={killSwitch.on} updatedAt={killSwitch.updatedAt} />}
 
       {isSuperAdmin && (
         <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">

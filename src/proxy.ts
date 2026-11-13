@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { IMPERSONATION_COOKIE_NAME, SESSION_COOKIE_NAME, verifySessionToken, type Role } from "@/lib/session";
 import { getRestaurantByCustomDomain } from "@/lib/data/restaurants";
 import { landingFor } from "@/lib/device";
+import { isKillSwitchOn } from "@/lib/kill-switch";
 
 const PUBLIC_PATHS = ["/login", "/till-login", "/kitchen-login", "/staff-login"];
 
@@ -88,6 +89,19 @@ function homeFor(role: Role, userAgent: string | null) {
   return landingFor(role, userAgent);
 }
 
+// What everyone sees while the Super Admin kill switch is on. Browsers navigating get a plain page;
+// fetches, server actions and API callers get JSON. Never cached.
+function killSwitchResponse(request: NextRequest) {
+  const headers = { "Cache-Control": "no-store", "Retry-After": "300" };
+  const wantsHtml =
+    request.method === "GET" && (request.headers.get("accept") ?? "").includes("text/html") && !request.headers.get("rsc");
+  if (!wantsHtml) {
+    return NextResponse.json({ error: "The system is switched off. Please try again later." }, { status: 503, headers });
+  }
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Switched off</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#fafafa;font-family:system-ui,sans-serif;color:#171717}main{max-width:26rem;padding:2rem;text-align:center}h1{font-size:1.25rem;margin:0 0 .5rem}p{color:#525252;margin:0 0 1rem;line-height:1.5}a{color:#a3a3a3;font-size:.8rem}</style></head><body><main><h1>The system is switched off</h1><p>This service is temporarily unavailable. Please try again later.</p><a href="/login">Platform owner sign-in</a></main></body></html>`;
+  return new NextResponse(html, { status: 503, headers: { ...headers, "Content-Type": "text/html; charset=utf-8" } });
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -98,6 +112,26 @@ export async function proxy(request: NextRequest) {
   ) {
     return NextResponse.next();
   }
+
+  // Kill switch (Super Admin): while on, nothing works except the /login page and Super Admin sessions.
+  if (await isKillSwitchOn()) {
+    const killToken = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+    const killSession = killToken ? await verifySessionToken(killToken) : null;
+    if (killSession?.role !== "super_admin") {
+      if (pathname === "/login") {
+        // Let the Super Admin reach the sign-in form; a leftover staff session on this browser is dropped
+        // so it can't keep the form from loading.
+        const res = NextResponse.next();
+        if (killSession) res.cookies.delete(SESSION_COOKIE_NAME);
+        return res;
+      }
+      return killSwitchResponse(request);
+    }
+  }
+
+  // API routes sit outside everything below (they weren't matched at all before the kill switch widened
+  // the matcher) — they do their own auth.
+  if (pathname.startsWith("/api")) return NextResponse.next();
 
   const siteRewrite = rewriteSiteHost(request);
   if (siteRewrite) return siteRewrite;
@@ -156,5 +190,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

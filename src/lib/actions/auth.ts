@@ -1,5 +1,6 @@
 "use server";
 
+import { isKillSwitchOn } from "@/lib/kill-switch";
 import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/db/client";
@@ -35,6 +36,10 @@ export async function loginAction(_prevState: LoginState | undefined, formData: 
   const valid = await verifyPassword(password, user.passwordHash);
   if (!valid) {
     return { error: "Invalid email or password." };
+  }
+
+  if (user.role !== "super_admin" && (await isKillSwitchOn())) {
+    return { error: "The system is switched off right now. Only the platform owner can sign in." };
   }
 
   await createSession(
